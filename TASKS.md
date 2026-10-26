@@ -1,6 +1,6 @@
 # FractureOS v3 task board
 
-Status: v0.1.9 deployed with weather, CPU temperature, face/theme previews and native/web dashboards; Inno installers validated on Windows x64. Full module roadmap remains open. See [release validation](docs/RELEASE-VALIDATION.md). Updated 2026-10-26.
+Status: v0.1.9 deployed with weather, CPU temperature, face/theme previews and native/web dashboards; Inno installers validated on Windows x64 and v0.1.9 downloads published. Full module roadmap remains open. See [release validation](docs/RELEASE-VALIDATION.md). Updated 2026-10-26.
 
 Checkboxes mean the stated deliverable is complete, not merely discussed. Design tasks and implementation tasks are tracked separately. Update this file as each deliverable lands; add evidence or a limitation alongside completed implementation tasks. Experimental features remain open until demonstrated on the target hardware or explicitly declined by the owner.
 
@@ -36,7 +36,7 @@ The P-series checkboxes below describe complete target modules. Initial implemen
 - [x] V03 Add persistent on-device module switches and PC controls.
 - [x] V04 Add an opt-in hub weather worker, unusual-only settings and compact weather symbols.
 - [x] V05 Add separate native Windows and web dashboards, with no dashboard process while closed.
-- [ ] V06 Build an Inno Setup installer with uninstallation and publish downloadable builds.
+- [x] V06 Build an Inno Setup installer with uninstallation and publish downloadable builds.
 - [x] V07 Correct Linux/TomTom LAN address ownership and verify routing.
 - [x] V08 Add authenticated notification forwarding and application exclusions. Silent webhook implemented; automatic Windows toast capture and notification sound playback remain pending.
 - [x] V10 Replace disk widget with live CPU temperature; add optional signed PawnIO sensor support for Windows.

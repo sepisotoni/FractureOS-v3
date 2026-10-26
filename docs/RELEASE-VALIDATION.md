@@ -12,6 +12,8 @@
 - Optional PawnIO signed module download verified against upstream SHA-256; extracted IntelMSR (5,324 bytes) and AMDFamily17 (10,652 bytes) only. The driver is never installed automatically. **Actual Intel/AMD PawnIO readings on Windows hardware remain unverified**, as do real Spotify playback/control and ARM64 runtime.
 - Host LAN mapping corrected: Linux `.105`, TomTom LAN alias `.114` → internal `.115`; local `.114` reached the ARM TomTom and HTTPS continued at `.105`. Owner-PC access and USB unplug/replug still need physical acceptance. See NETWORK.md.
 
+The published version-pinned Linux installer was downloaded, compared with the local source, and run successfully against the public v0.1.9 release. All six platform payloads (including two Inno installers), SHA256SUMS and build provenance are published. The installed hub is active on `.105:47831`; final `.114` Telnet reached FractureOS 0.1.9 with real CPU temperature and normal weather suppressed.
+
 ## Previous release records
 
 # v0.1.8 validation — 2026-10-26
