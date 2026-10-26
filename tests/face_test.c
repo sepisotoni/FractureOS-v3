@@ -12,7 +12,7 @@ int main(void){char root[]="/tmp/fracture-face-test-XXXXXX",path[512],line[128],
  strcpy(line,"face-reset");command(line,reply,sizeof reply);assert(!strcmp(reply,"OK\n"));assert(face.hour_color==0x4be1fa);
  candidate=face;assert(!face_field(&candidate,"digit0","1,1,0,2"));assert(!face_field(&candidate,"digit0","0,0,320,241"));assert(!face_field(&candidate,"time_format","13"));assert(!face_field(&candidate,"hour_color","zzzzzz"));
  {struct tm t;unsigned short saved[W*H];memset(&t,0,sizeof t);t.tm_hour=10;
- face.hour_only=1;face.blink=1;face_layout(&face,1);face_draw(&t);memcpy(saved,pixels,sizeof saved);
+ face.show_seconds=0;face.hour_only=1;face.blink=1;face_layout(&face,1);face_draw(&t);memcpy(saved,pixels,sizeof saved);
  face_layout(&face,2);face_draw(&t);assert(!memcmp(saved,pixels,sizeof saved));
  t.tm_sec=1;face_draw(&t);assert(!memcmp(saved,pixels,sizeof saved));
  t.tm_min=1;t.tm_sec=0;face_draw(&t);assert(memcmp(saved,pixels,sizeof saved));memcpy(saved,pixels,sizeof saved);

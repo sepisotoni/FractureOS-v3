@@ -2,7 +2,7 @@
 static double link_at,battery_at;
 static int battery_state=-1;
 static int link_live(void){return link_at>0&&mono()-link_at<15;}
-static void dashboard_chrome(void){uint16_t bg=daylight?rgb(245,247,250):face_color(face.background),c=link_live()?theme_color(theme.accent):theme_color(theme.muted);int x=12,y=2;
+static void dashboard_chrome(void){uint16_t bg=appearance_day?rgb(245,247,250):face_color(face.background),c=link_live()?theme_color(theme.accent):theme_color(theme.muted);int x=12,y=2;
  /* Two linked rounded loops, or separated loops with a break. */
  rounded(x,y+7,17,10,5,c);rounded(x+2,y+9,13,6,3,bg);rounded(x+10,y+1,17,10,5,c);rounded(x+12,y+3,13,6,3,bg);
  if(link_live())stroke(x+9,y+12,x+17,y+6,c);else{rect(x+10,y+7,6,5,bg);stroke(x+1,y+1,x+5,y+4,c);}

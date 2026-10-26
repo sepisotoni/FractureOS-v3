@@ -368,6 +368,15 @@ func (b *Broker) call(cmd string) (string, error) {
 	if strings.HasPrefix(cmd, "stats-temp ") && strings.HasSuffix(cmd, " hub") && time.Now().Before(b.temperaturePCUntil) {
 		return "OK", nil
 	}
+	if strings.HasPrefix(cmd, "weather-state ") {
+		conf, err := readConfig()
+		if err != nil {
+			return "", err
+		}
+		if !conf.Weather.Enabled {
+			return "OK disabled", nil
+		}
+	}
 	out, e := deviceCommand(b.device, cmd)
 	if e == nil && strings.HasPrefix(cmd, "stats-temp ") && strings.HasSuffix(cmd, " pc") {
 		b.temperaturePCUntil = time.Now().Add(8 * time.Second)
@@ -591,6 +600,10 @@ func settings(open bool) error {
 				http.Error(w, "invalid configuration", 400)
 				return
 			}
+			// Hub integrations are edited through /integrations. Preserve the latest
+			// values when saving local connection/media settings from an older form.
+			newc.Weather = c.Weather
+			newc.Notifications = c.Notifications
 			if newc.Token == "" {
 				newc.Token = c.Token
 			}

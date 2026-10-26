@@ -17,7 +17,7 @@ static int theme_load(void){Theme next=theme;char path[640];theme_path(path,size
 static int theme_save(const Theme *next){char path[640],temp[650];FILE *f;int ok;theme_path(path,sizeof path,1);snprintf(temp,sizeof temp,"%s.new",path);f=fopen(temp,"w");if(!f)return 0;
  fprintf(f,"background=%06lx\nforeground=%06lx\nmuted=%06lx\naccent=%06lx\nsurface=%06lx\nhour_color=%06lx\nminute_color=%06lx\nface_colors=%d\n",next->background,next->foreground,next->muted,next->accent,next->surface,next->hour_color,next->minute_color,next->face_colors);
  ok=fflush(f)==0&&fsync(fileno(f))==0;if(fclose(f))ok=0;if(!ok||rename(temp,path)){unlink(temp);return 0;}return 1;}
-static int daylight;
-static void appearance_apply(int hour){daylight=cfg.profile!=2&&(cfg.appearance==1||(cfg.appearance==2&&hour>=7&&hour<19));}
-static uint16_t theme_color(unsigned long color){int scale=cfg.profile==2?45:100;if(daylight){if(color==theme.background)color=0xf5f7fa;else if(color==theme.foreground)color=0x101c30;else if(color==theme.surface)color=0xdde6ef;else if(color==theme.muted)color=0x43556c;else color=0x075aa6;}return rgb(((color>>16)&255)*scale/100,((color>>8)&255)*scale/100,(color&255)*scale/100);}
+static int appearance_day;
+static void appearance_apply(int hour){appearance_day=cfg.profile!=2&&(cfg.appearance==1||(cfg.appearance==2&&hour>=7&&hour<19));}
+static uint16_t theme_color(unsigned long color){int scale=cfg.profile==2?45:100;if(appearance_day){if(color==theme.background)color=0xf5f7fa;else if(color==theme.foreground)color=0x101c30;else if(color==theme.surface)color=0xdde6ef;else if(color==theme.muted)color=0x43556c;else color=0x075aa6;}return rgb(((color>>16)&255)*scale/100,((color>>8)&255)*scale/100,(color&255)*scale/100);}
 static void theme_json(char *reply,size_t cap){snprintf(reply,cap,"{\"background\":\"%06lx\",\"foreground\":\"%06lx\",\"muted\":\"%06lx\",\"accent\":\"%06lx\",\"surface\":\"%06lx\",\"hour_color\":\"%06lx\",\"minute_color\":\"%06lx\",\"face_colors\":%d}\n",theme.background,theme.foreground,theme.muted,theme.accent,theme.surface,theme.hour_color,theme.minute_color,theme.face_colors);}

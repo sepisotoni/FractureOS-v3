@@ -183,7 +183,7 @@ func platformDashboard() error {
 			size = 4096
 		}
 		buf := make([]uint16, size+1)
-		user32.NewProc("GetWindowTextW").Call(v, uintptr(len(buf)), uintptr(unsafe.Pointer(&buf[0])))
+		user32.NewProc("GetWindowTextW").Call(v, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
 		return syscall.UTF16ToString(buf)
 	}
 	checked := func(id int) bool {
@@ -489,7 +489,7 @@ func platformDashboard() error {
 			}
 			gdi32.NewProc("SetTextColor").Call(dc, col)
 			buf := make([]uint16, 128)
-			user32.NewProc("GetWindowTextW").Call(item.Window, uintptr(len(buf)), uintptr(unsafe.Pointer(&buf[0])))
+			user32.NewProc("GetWindowTextW").Call(item.Window, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
 			user32.NewProc("DrawTextW").Call(dc, uintptr(unsafe.Pointer(&buf[0])), ^uintptr(0), uintptr(unsafe.Pointer(&r)), 0x25)
 			if item.State&0x10 != 0 {
 				r.Left += 4
@@ -595,8 +595,17 @@ func platformDashboard() error {
 	if atom, _, e := user32.NewProc("RegisterClassW").Call(uintptr(unsafe.Pointer(&wc))); atom == 0 {
 		return e
 	}
+	var work winRect
+	user32.NewProc("SystemParametersInfoW").Call(0x30, 0, uintptr(unsafe.Pointer(&work)), 0)
+	x, y := int(work.Left), int(work.Top)
+	if work.Right-work.Left > 922 {
+		x += (int(work.Right-work.Left) - 922) / 2
+	}
+	if work.Bottom-work.Top > 710 {
+		y += (int(work.Bottom-work.Top) - 710) / 2
+	}
 	var e error
-	hwnd, _, e = user32.NewProc("CreateWindowExW").Call(0, uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(wide("FractureOS — Dashboard"))), 0x02ca0000, 0x80000000, 0x80000000, 922, 710, 0, 0, instance, 0)
+	hwnd, _, e = user32.NewProc("CreateWindowExW").Call(0, uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(wide("FractureOS — Dashboard"))), 0x02ca0000, uintptr(x), uintptr(y), 922, 710, 0, 0, instance, 0)
 	if hwnd == 0 {
 		return e
 	}
