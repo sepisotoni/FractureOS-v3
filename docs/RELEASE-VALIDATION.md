@@ -1,3 +1,19 @@
+# v0.1.9 validation — 2026-10-26
+
+- Built with the existing ARMv5 GCC 3.3.4/glibc 2.3.2 SDK and pinned Go 1.27.3. The stripped device binary is **60,168 bytes**. Exactly one 170,000-byte face atlas remains selected; weather uses small numeric state and drawn symbols, with no new bitmap pack.
+- Deployed the final `v0.1.9` slot to the actual TomTom, read back and SHA-256 verified every uploaded payload, preserved settings/stock startup, and observed version 0.1.9 healthy. Device primitive checks passed. Evidence: ignored `artifacts/deploy-v019-final`.
+- Manual device checks: ten preview faces loaded; Back cancelled face/theme previews; normal weather hidden in unusual-only mode; thunderstorm and always-visible weather rendered; day/night rendering captured; telemetry/weather disabling reaped their hub processes and hid readings; re-enabling restored them. Actual CPU temperature **36–37°C**, from Linux `coretemp` package sensor. Traffic uses the larger direction. No fake sensor or battery percentage.
+- Device measured **932 KiB RSS**, 1,788 KiB virtual memory, one thread while live metrics were displayed. SD had 437,732 KiB free during preview validation; final release adds another small rollback slot. No long-duration soak or power-loss test is claimed.
+- Authenticated notification delivered; excluded app suppressed; device notification switch rejected delivery. Original notification settings restored. No sound was emitted. Full Windows toast capture/sounds remain pending.
+- Linux hub weather fetched real Open-Meteo conditions (27.1°C/cloudy during checks), cached them, and kept them hidden in unusual-only mode. Location is the editable Johannesburg default. Weather data is not an emergency alert feed.
+- Web dashboard HTML/JavaScript syntax, redacted settings API and remote integration settings were checked against the running hub. A local headless-Chrome screenshot attempt timed out; web browser visual acceptance is not claimed.
+- Existing Go tests, race detector and Linux vet passed. Existing C core/face checks passed; the colon-only check now explicitly disables seconds, since the Nunito face displays seconds. No new Python test scripts or scheduled validation jobs were created.
+- Windows x64/ARM64 compiled. Inno Setup x64 installation, native window opening/tab navigation/closing and uninstallation passed on Windows runners. Screenshot review exposed blank custom button captions, fixed by correcting GetWindowTextW argument order. Native settings persistence is checked separately using cross-process WM_SETTEXT. Final run [40366486090](https://github.com/sepisotoni/FractureOS-v3/actions/runs/40366486090) passed native settings persistence, all five tabs, opening/closing, installation and uninstallation. Dashboard working set was **20,848,640 bytes (19.9 MiB)** in the offline Windows runner. Both x64 and ARM64 installers were produced; only x64 was executed.
+- Optional PawnIO signed module download verified against upstream SHA-256; extracted IntelMSR (5,324 bytes) and AMDFamily17 (10,652 bytes) only. The driver is never installed automatically. **Actual Intel/AMD PawnIO readings on Windows hardware remain unverified**, as do real Spotify playback/control and ARM64 runtime.
+- Host LAN mapping corrected: Linux `.105`, TomTom LAN alias `.114` → internal `.115`; local `.114` reached the ARM TomTom and HTTPS continued at `.105`. Owner-PC access and USB unplug/replug still need physical acceptance. See NETWORK.md.
+
+## Previous release records
+
 # v0.1.8 validation — 2026-10-26
 
 - Hierarchical menu paths, custom timer editing, stopwatch pause/resume/reset, navigation back/home, player selection and an explicit volume editor were manually exercised on the real TomTom. The owner confirmed the physical colored indicator and 1.5s Back / 3s Home gestures. Longer suspend, reboot and shutdown actions were deliberately not executed; wake/recovery remains unverified.

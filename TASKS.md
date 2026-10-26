@@ -1,6 +1,6 @@
 # FractureOS v3 task board
 
-Status: v0.1.8 clock and editable legacy faces deployed; initial Linux hub/CLI and Windows tray/installer implemented. Full module roadmap remains open. See [release validation](docs/RELEASE-VALIDATION.md). Updated 2026-10-26.
+Status: v0.1.9 deployed with weather, CPU temperature, face/theme previews and native/web dashboards; Inno installers validated on Windows x64. Full module roadmap remains open. See [release validation](docs/RELEASE-VALIDATION.md). Updated 2026-10-26.
 
 Checkboxes mean the stated deliverable is complete, not merely discussed. Design tasks and implementation tasks are tracked separately. Update this file as each deliverable lands; add evidence or a limitation alongside completed implementation tasks. Experimental features remain open until demonstrated on the target hardware or explicitly declined by the owner.
 
@@ -39,8 +39,8 @@ The P-series checkboxes below describe complete target modules. Initial implemen
 - [ ] V06 Build an Inno Setup installer with uninstallation and publish downloadable builds.
 - [x] V07 Correct Linux/TomTom LAN address ownership and verify routing.
 - [x] V08 Add authenticated notification forwarding and application exclusions. Silent webhook implemented; automatic Windows toast capture and notification sound playback remain pending.
-- [ ] V10 Replace disk widget with live CPU temperature; add optional signed PawnIO sensor support for Windows.
-- [ ] V09 Manually validate on the TomTom, preserve settings and document measured limits.
+- [x] V10 Replace disk widget with live CPU temperature; add optional signed PawnIO sensor support for Windows.
+- [x] V09 Manually validate on the TomTom, preserve settings and document measured limits.
 
 ## D — Design
 
@@ -126,4 +126,4 @@ The P-series checkboxes below describe complete target modules. Initial implemen
 
 ## Current handoff
 
-The v0.1.8 application runs on the TomTom, with persistent startup and preserved OpenTom recovery. The Linux hub is installed as a user service on the owner's host. Remaining work starts with real Windows acceptance, physical button/noise validation, portable toolchain packaging and the broader module lifecycle/protocol/editor design. The large feature catalog remains a roadmap, not a completed implementation. Use manual target-device checks for follow-up UI changes; do not add Python test harnesses or scheduled test jobs.
+The v0.1.9 application runs on the TomTom, with persistent startup and preserved OpenTom recovery. The Linux hub is installed as a user service on the owner's host. Remaining work starts with real Windows acceptance, physical button/noise validation, portable toolchain packaging and the broader module lifecycle/protocol/editor design. The large feature catalog remains a roadmap, not a completed implementation. Use manual target-device checks for follow-up UI changes; do not add Python test harnesses or scheduled test jobs.
