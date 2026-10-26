@@ -25,7 +25,7 @@ Checkboxes mean the stated deliverable is complete, not merely discussed. Design
 - [x] U03 Render date/seconds at final readable size and thicken digits by configurable 0–2 pixels; dynamically size status information. Manual device captures recorded.
 - [x] U04 Restore CPU/RAM icons, add disk and download/upload measurements; verify live hub values and lazy worker shutdown on device.
 - [x] U05 Implement a Windows Spotify client bridge without developer credentials; validate device/hub payloads and Windows cross-builds. Real Windows playback/artwork/control acceptance remains separate.
-- [ ] U06 Package, deploy and publish v0.1.8, update controls/install documentation and verify public installation.
+- [x] U06 Package, deploy and publish v0.1.8, update controls/install documentation and verify public installation. Version-pinned GitHub installer completed on Linux and the hub service reported active.
 
 The P-series checkboxes below describe complete target modules. Initial implementations above do not imply those broader acceptance criteria are finished.
 
