@@ -31,14 +31,15 @@ The P-series checkboxes below describe complete target modules. Initial implemen
 
 ## V — Dashboard, weather and compact UI revision
 
-- [ ] V01 Hide missing metrics, show maximum traffic direction, center the date and adapt crowded clocks to horizontal time.
-- [ ] V02 Add on-device face/theme previews, day/night appearance and a compact neon dashboard face.
-- [ ] V03 Add persistent on-device module switches and PC controls.
-- [ ] V04 Add an opt-in hub weather worker, unusual-only settings and compact weather symbols.
-- [ ] V05 Add separate native Windows and web dashboards, with no dashboard process while closed.
+- [x] V01 Hide missing metrics, show maximum traffic direction, center the date and adapt crowded clocks to horizontal time.
+- [x] V02 Add on-device face/theme previews, day/night appearance and a compact neon dashboard face.
+- [x] V03 Add persistent on-device module switches and PC controls.
+- [x] V04 Add an opt-in hub weather worker, unusual-only settings and compact weather symbols.
+- [x] V05 Add separate native Windows and web dashboards, with no dashboard process while closed.
 - [ ] V06 Build an Inno Setup installer with uninstallation and publish downloadable builds.
-- [ ] V07 Correct Linux/TomTom LAN address ownership and verify routing.
-- [ ] V08 Add authenticated notification forwarding and application exclusions; record Windows listener consent/identity requirements.
+- [x] V07 Correct Linux/TomTom LAN address ownership and verify routing.
+- [x] V08 Add authenticated notification forwarding and application exclusions. Silent webhook implemented; automatic Windows toast capture and notification sound playback remain pending.
+- [ ] V10 Replace disk widget with live CPU temperature; add optional signed PawnIO sensor support for Windows.
 - [ ] V09 Manually validate on the TomTom, preserve settings and document measured limits.
 
 ## D — Design

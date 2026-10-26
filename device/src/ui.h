@@ -13,6 +13,7 @@ static void text_fit(int x,int y,const char *s,int width,int scale,uint16_t colo
 static void rounded(int x,int y,int w,int h,int r,uint16_t color){int row,inset,dy;for(row=0;row<h;row++){dy=row<r?r-1-row:row>=h-r?row-(h-r):0;inset=0;if(dy)while(inset<r&&(r-inset)*(r-inset)+dy*dy>r*r)inset++;rect(x+inset,y+row,w-2*inset,1,color);}}
 static void stroke(int x,int y,int x2,int y2,uint16_t color){int dx=abs(x2-x),sx=x<x2?1:-1,dy=-abs(y2-y),sy=y<y2?1:-1,e=dx+dy,t;for(;;){rect(x,y,2,2,color);if(x==x2&&y==y2)break;t=2*e;if(t>=dy){e+=dy;x+=sx;}if(t<=dx){e+=dx;y+=sy;}}}
 static void icon(int x,int y,int kind,uint16_t c,uint16_t bg){int i;
+ if(kind==16){rounded(x+8,y,7,17,3,c);rounded(x+10,y+2,3,13,1,bg);rounded(x+5,y+13,13,10,5,c);rect(x+11,y+7,1,11,c);rect(x+18,y+4,3,2,c);rect(x+18,y+9,3,2,c);return;}
  if(kind==14){rounded(x+1,y+4,21,14,4,c);rounded(x+3,y+6,17,10,2,bg);rect(x+5,y+12,2,2,c);rect(x+16,y+12,3,2,c);return;}
  if(kind==15){stroke(x+5,y+1,x+5,y+19,c);stroke(x+1,y+15,x+5,y+19,c);stroke(x+9,y+15,x+5,y+19,c);stroke(x+17,y+19,x+17,y+1,c);stroke(x+13,y+5,x+17,y+1,c);stroke(x+21,y+5,x+17,y+1,c);return;}
  if(kind==11){stroke(x+8,y+3,x+8,y+17,c);stroke(x+8,y+3,x+19,y,c);stroke(x+19,y,x+19,y+15,c);rounded(x+1,y+14,8,6,3,c);rounded(x+12,y+12,8,6,3,c);return;}

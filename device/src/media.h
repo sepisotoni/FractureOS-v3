@@ -25,20 +25,23 @@ static int media_command(const char *name,const char *a,const char *b){int p,pos
  return 0;}
 static void duration_text(char *s,size_t cap,int seconds){if(seconds<0)seconds=0;if(seconds>=3600)snprintf(s,cap,"%d:%02d:%02d",seconds/3600,seconds/60%60,seconds%60);else snprintf(s,cap,"%02d:%02d",seconds/60,seconds%60);}
 static int metrics_live(void){return cfg.telemetry&&stats_at>0&&mono()-stats_at<10;}
-static int metric_count(void){return cfg.profile==1&&metrics_live()?(cpu>=0)+(ram>=0)+(disk_usage>=0)+(net_down>=0||net_up>=0):0;}
-static int status_rows(void){int slots=(timer_end>0)+(watch_start>0||watch_elapsed>0)+(cfg.alarm_hour>=0),count=(slots+1)/2;count+=(metric_count()+1)/2;if(weather_visible())count++;if(media_live()&&media_title[0])count++;if(notice_until>mono())count++;return count;}
+static int temperature_live(void){return cfg.telemetry&&temp_at>0&&mono()-temp_at<10&&cpu_temp>=-500;}
+static int metric_count(void){return cfg.profile==1&&metrics_live()?(cpu>=0)+(ram>=0)+temperature_live()+(net_down>=0||net_up>=0):0;}
+static int status_rows(void){int slots=(timer_end>0)+(watch_start>0||watch_elapsed>0)+(cfg.alarm_hour>=0),count=(slots+1)/2;count+=(metric_count()+1)/2;if(weather_visible())count++;if(media_live()&&media_title[0])count++;if(notice_until>mono())count++;return count>5?5:count;}
 static void status_draw(int top){int row=top+7;char s[128],a[24];uint16_t fg=theme_color(theme.foreground),accent=theme_color(theme.accent);rect(18,top,284,1,theme_color(theme.surface));
  if(timer_end>0||watch_start>0||watch_elapsed>0||cfg.alarm_hour>=0){int count=(timer_end>0)+(watch_start>0||watch_elapsed>0)+(cfg.alarm_hour>=0),slot=0,width=count==1?296:148;
  if(timer_end>0){duration_text(a,sizeof a,(int)(timer_end-mono()+0.999));snprintf(s,sizeof s,"%s",a);icon(12+(slot%2)*width,row,3,accent,0);text_fit(38+(slot%2)*width,row,s,width-29,1,fg);slot++;if(slot==2&&count>2)row+=27;}
  if(watch_start>0||watch_elapsed>0){duration_text(a,sizeof a,(int)(watch_elapsed+(watch_start?mono()-watch_start:0)));icon(12+(slot%2)*width,row,5,accent,0);text_fit(38+(slot%2)*width,row,a,width-29,1,fg);slot++;if(slot==2&&count>2)row+=27;}
  if(cfg.alarm_hour>=0){snprintf(a,sizeof a,"%02d:%02d",cfg.alarm_hour,cfg.alarm_minute);icon(12+(slot%2)*width,row,8,accent,0);text_fit(38+(slot%2)*width,row,a,width-29,1,fg);slot++;if(slot==2&&count>2)row+=27;}
  row+=27;}
- if(metric_count()){int values[4],icons[4]={1,10,14,15},i,slot=0;values[0]=cpu;values[1]=ram;values[2]=disk_usage;values[3]=net_down>net_up?net_down:net_up;
- for(i=0;i<4;i++)if(values[i]>=0){int x=16+(slot%2)*152;icon(x,row,icons[i],accent,0);if(i==3){if(values[i]>=1024)snprintf(a,sizeof a,"%d.%d M/s",values[i]/1024,(values[i]%1024)*10/1024);else snprintf(a,sizeof a,"%d K/s",values[i]);}else snprintf(a,sizeof a,"%d%%",values[i]);text_fit(x+29,row,a,119,1,fg);slot++;if(slot%2==0)row+=27;}if(slot%2)row+=27;}
+ if(notice_until>mono()){text_fit(16,row,notification,288,1,accent);row+=27;}
  if(weather_visible()){weather_icon(16,row,weather_code,accent,theme_color(theme.background));snprintf(s,sizeof s,"%s%d C / %s",weather_temp<0?"-":"",abs(weather_temp)/10,weather_label(weather_code));text_fit(47,row,s,259,1,fg);row+=27;}
+ if(metric_count()){int values[4],icons[4]={1,10,16,15},i,slot=0;values[0]=cpu;values[1]=ram;values[2]=temperature_live()?cpu_temp:-1000;values[3]=net_down>net_up?net_down:net_up;
+ for(i=0;i<4;i++)if((values[i]>=0||(i==2&&temperature_live()))&&row<=H-23){int x=16+(slot%2)*152;icon(x,row,icons[i],accent,0);if(i==3){if(values[i]>=1024)snprintf(a,sizeof a,"%d.%d M/s",values[i]/1024,(values[i]%1024)*10/1024);else snprintf(a,sizeof a,"%d K/s",values[i]);}else if(i==2)snprintf(a,sizeof a,"%s%d C",temp_pc?"PC ":"",values[i]/10);else snprintf(a,sizeof a,"%d%%",values[i]);text_fit(x+29,row,a,119,1,fg);slot++;if(slot%2==0)row+=27;}if(slot%2)row+=27;}
 
- if(media_live()&&media_title[0]){snprintf(s,sizeof s,"Spotify / %s",media_title);text_fit(16,row,s,288,1,fg);row+=27;}
- if(notice_until>mono())text_fit(16,row,notification,288,1,accent);}
+
+ if(row<=H-23&&media_live()&&media_title[0]){snprintf(s,sizeof s,"Spotify / %s",media_title);text_fit(16,row,s,288,1,fg);row+=27;}
+}
 static void media_draw(void){int x,y,progress;char s[40];uint16_t fg=theme_color(theme.foreground),muted=theme_color(theme.muted),accent=theme_color(theme.accent),bg=theme_color(theme.background);
  text(18,7,"Spotify",2,rgb(30,215,96));if(media_art)for(y=0;y<96;y++)for(x=0;x<96;x++)pixels[(44+y)*W+16+x]=media_art[y*96+x];else{rounded(16,44,96,96,14,theme_color(theme.surface));icon(51,79,5,accent,theme_color(theme.surface));}
  text_fit(126,45,media_live()&&media_title[0]?media_title:"No active track",180,2,fg);text_fit(126,76,media_artist,180,1,muted);text_fit(126,99,media_message,180,1,muted);

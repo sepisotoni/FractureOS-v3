@@ -39,18 +39,19 @@ const version = "0.1.9"
 var page string
 
 type Config struct {
-	Device           string             `json:"device"`
-	Hub              string             `json:"hub"`
-	Listen           string             `json:"listen"`
-	Token            string             `json:"token"`
-	Fingerprint      string             `json:"fingerprint"`
-	HubMetrics       bool               `json:"hub_metrics"`
-	MetricsDisk      string             `json:"metrics_disk"`
-	MetricsInterface string             `json:"metrics_interface"`
-	MediaEnabled     bool               `json:"media_enabled"`
-	MediaStatus      bool               `json:"media_status"`
-	Weather          WeatherConfig      `json:"weather"`
-	Notifications    NotificationConfig `json:"notifications"`
+	WindowsTemperature bool               `json:"windows_temperature"`
+	Device             string             `json:"device"`
+	Hub                string             `json:"hub"`
+	Listen             string             `json:"listen"`
+	Token              string             `json:"token"`
+	Fingerprint        string             `json:"fingerprint"`
+	HubMetrics         bool               `json:"hub_metrics"`
+	MetricsDisk        string             `json:"metrics_disk"`
+	MetricsInterface   string             `json:"metrics_interface"`
+	MediaEnabled       bool               `json:"media_enabled"`
+	MediaStatus        bool               `json:"media_status"`
+	Weather            WeatherConfig      `json:"weather"`
+	Notifications      NotificationConfig `json:"notifications"`
 }
 
 func configDir() string {
@@ -191,7 +192,7 @@ func validateCommand(cmd string) error {
 				}
 			}
 		}
-	case "hold-indicator":
+	case "link", "hold-indicator":
 		if len(a) == 2 && n(1, 0, 1) {
 			return nil
 		}
@@ -220,6 +221,10 @@ func validateCommand(cmd string) error {
 			return nil
 		}
 		if len(a) == 3 && n(1, 0, 23) && n(2, 0, 59) {
+			return nil
+		}
+	case "stats-temp":
+		if (len(a) == 2 || (len(a) == 3 && (a[2] == "hub" || a[2] == "pc"))) && n(1, -1000, 1500) {
 			return nil
 		}
 	case "stats-extra":
@@ -347,10 +352,11 @@ func hubRequest(c Config, path string, payload any) (string, error) {
 }
 
 type Broker struct {
-	mu       sync.Mutex
-	device   string
-	cached   string
-	cachedAt time.Time
+	mu                 sync.Mutex
+	device             string
+	cached             string
+	cachedAt           time.Time
+	temperaturePCUntil time.Time
 }
 
 func (b *Broker) call(cmd string) (string, error) {
@@ -359,7 +365,13 @@ func (b *Broker) call(cmd string) (string, error) {
 	if cmd == "status" && time.Since(b.cachedAt) < time.Second {
 		return b.cached, nil
 	}
+	if strings.HasPrefix(cmd, "stats-temp ") && strings.HasSuffix(cmd, " hub") && time.Now().Before(b.temperaturePCUntil) {
+		return "OK", nil
+	}
 	out, e := deviceCommand(b.device, cmd)
+	if e == nil && strings.HasPrefix(cmd, "stats-temp ") && strings.HasSuffix(cmd, " pc") {
+		b.temperaturePCUntil = time.Now().Add(8 * time.Second)
+	}
 	if e == nil && cmd == "status" {
 		b.cached = out
 		b.cachedAt = time.Now()
@@ -489,6 +501,7 @@ func hubBackground(ctx context.Context, b *Broker) {
 					lastSync = time.Now()
 				}
 			}
+			_, _ = b.call("link 1")
 			if !c.HubMetrics {
 				stopWorker()
 				continue
@@ -659,6 +672,12 @@ func main() {
 		}
 	case "web":
 		e = settings(true)
+	case "temperature-worker":
+		e = windowsTemperatureWorker(false)
+	case "pawnio-check":
+		e = windowsTemperatureWorker(true)
+	case "pawnio-modules":
+		e = installPawnModules()
 	case "weather-worker":
 		e = weatherWorker()
 	case "notify":
@@ -739,6 +758,39 @@ func configCommand(a []string) error {
 		}
 	case "media_status":
 		c.MediaStatus, e = strconv.ParseBool(a[2])
+		if e != nil {
+			return e
+		}
+	case "windows_temperature":
+		c.WindowsTemperature, e = strconv.ParseBool(a[2])
+		if e != nil {
+			return e
+		}
+	case "weather_enabled":
+		c.Weather.Enabled, e = strconv.ParseBool(a[2])
+		if e != nil {
+			return e
+		}
+	case "weather_latitude", "weather_longitude", "weather_hot", "weather_cold", "weather_wind":
+		var v float64
+		v, e = strconv.ParseFloat(a[2], 64)
+		if e != nil {
+			return e
+		}
+		switch a[1] {
+		case "weather_latitude":
+			c.Weather.Latitude = v
+		case "weather_longitude":
+			c.Weather.Longitude = v
+		case "weather_hot":
+			c.Weather.Hot = v
+		case "weather_cold":
+			c.Weather.Cold = v
+		case "weather_wind":
+			c.Weather.Wind = v
+		}
+	case "notifications_enabled":
+		c.Notifications.Enabled, e = strconv.ParseBool(a[2])
 		if e != nil {
 			return e
 		}

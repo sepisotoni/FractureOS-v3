@@ -142,15 +142,9 @@ func metricsWorker() error {
 				continue
 			}
 			_, _ = hubCall(c, fmt.Sprintf("stats %d %d", usage, memory))
-			disk := -1
-			mount := c.MetricsDisk
-			if mount == "" {
-				mount = "/"
-			}
-			var fs syscall.Statfs_t
-			if syscall.Statfs(mount, &fs) == nil && fs.Blocks > 0 {
-				disk = int((fs.Blocks - fs.Bfree) * 100 / fs.Blocks)
-			}
+			_, _ = hubCall(c, fmt.Sprintf("stats-temp %d hub", cpuTemperature()))
+			disk := -1 // Disk was replaced by CPU temperature on the clock.
+
 			samples, err := networkSample(c.MetricsInterface)
 			down, up := -1, -1
 			now := time.Now()
@@ -231,3 +225,50 @@ func networkSample(selected string) (map[string][2]uint64, error) {
 func localMediaWorker() error { return errors.New("Spotify client sharing runs on Windows") }
 
 func platformDashboard() error { return settings(true) }
+
+// Only CPU-specific drivers, never an NVMe, motherboard or arbitrary ACPI sensor.
+func cpuTemperature() int {
+	dirs, _ := filepath.Glob("/sys/class/hwmon/hwmon*")
+	best := -1000
+	bestPriority := -1
+	for _, dir := range dirs {
+		data, e := os.ReadFile(filepath.Join(dir, "name"))
+		if e != nil {
+			continue
+		}
+		name := strings.TrimSpace(string(data))
+		switch name {
+		case "coretemp", "k10temp", "zenpower", "cpu_thermal":
+		default:
+			continue
+		}
+		paths, _ := filepath.Glob(filepath.Join(dir, "temp*_input"))
+		for _, path := range paths {
+			b, e := os.ReadFile(path)
+			if e != nil {
+				continue
+			}
+			n, e := strconv.Atoi(strings.TrimSpace(string(b)))
+			if e != nil || n < -50000 || n > 150000 {
+				continue
+			}
+			label, _ := os.ReadFile(strings.TrimSuffix(path, "_input") + "_label")
+			kind := strings.ToLower(strings.TrimSpace(string(label)))
+			priority := 0
+			if strings.HasPrefix(kind, "package") || kind == "tdie" {
+				priority = 2
+			} else if kind == "tctl" {
+				priority = 1
+			}
+			if priority > bestPriority || (priority == bestPriority && n/100 > best) {
+				best = n / 100
+				bestPriority = priority
+			}
+		}
+	}
+	return best
+}
+
+func windowsTemperatureWorker(check bool) error {
+	return errors.New("PawnIO temperature collection runs on Windows x64")
+}

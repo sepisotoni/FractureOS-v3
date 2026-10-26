@@ -19,6 +19,12 @@ import (
 var gdi32 = syscall.NewLazyDLL("gdi32.dll")
 
 type winRect struct{ Left, Top, Right, Bottom int32 }
+type winDrawItem struct {
+	Type, ID, Item, Action, State uint32
+	Window, DC                    uintptr
+	Rect                          winRect
+	Data                          uintptr
+}
 type winPaint struct {
 	DC                 uintptr
 	Erase              int32
@@ -27,26 +33,28 @@ type winPaint struct {
 	Reserved           [32]byte
 }
 type dashboardStatus struct {
-	Version       string `json:"version"`
-	Profile       string `json:"profile"`
-	Face          string `json:"face"`
-	Theme         string `json:"theme"`
-	Brightness    int    `json:"brightness"`
-	Offset        int    `json:"offset"`
-	Timer         int    `json:"timer_seconds"`
-	CPU           int    `json:"cpu"`
-	RAM           int    `json:"ram"`
-	Disk          int    `json:"disk"`
-	Traffic       int    `json:"traffic"`
-	WeatherLive   bool   `json:"weather_live"`
-	WeatherCode   int    `json:"weather_code"`
-	Temperature   int    `json:"temperature_tenths"`
-	Unusual       bool   `json:"weather_unusual"`
-	Telemetry     int    `json:"telemetry"`
-	Weather       int    `json:"weather"`
-	Notifications int    `json:"notifications"`
-	Media         int    `json:"media_enabled"`
-	Appearance    int    `json:"appearance"`
+	TemperaturePC  bool   `json:"cpu_temp_pc"`
+	TemperatureCPU int    `json:"cpu_temp_tenths"`
+	Version        string `json:"version"`
+	Profile        string `json:"profile"`
+	Face           string `json:"face"`
+	Theme          string `json:"theme"`
+	Brightness     int    `json:"brightness"`
+	Offset         int    `json:"offset"`
+	Timer          int    `json:"timer_seconds"`
+	CPU            int    `json:"cpu"`
+	RAM            int    `json:"ram"`
+	Disk           int    `json:"disk"`
+	Traffic        int    `json:"traffic"`
+	WeatherLive    bool   `json:"weather_live"`
+	WeatherCode    int    `json:"weather_code"`
+	Temperature    int    `json:"temperature_tenths"`
+	Unusual        bool   `json:"weather_unusual"`
+	Telemetry      int    `json:"telemetry"`
+	Weather        int    `json:"weather"`
+	Notifications  int    `json:"notifications"`
+	Media          int    `json:"media_enabled"`
+	Appearance     int    `json:"appearance"`
 }
 
 func platformDashboard() error {
@@ -150,7 +158,7 @@ func platformDashboard() error {
 		}
 		control("EDIT", value, id, x, y, w, 30, style)
 	}
-	button := func(id int, s string, x, y, w int) { control("BUTTON", s, id, x, y, w, 34, 0x10000) }
+	button := func(id int, s string, x, y, w int) { control("BUTTON", s, id, x, y, w, 34, 0x10000|0xb) }
 	check := func(id int, s string, on bool, x, y int) {
 		v := control("BUTTON", s, id, x, y, 700, 28, 0x10000|3)
 		if on {
@@ -238,7 +246,10 @@ func platformDashboard() error {
 			check(234, "Show Spotify in the clock status bar", c.MediaStatus, 36, 403)
 			button(235, "Save connection", 36, 462, 220)
 			button(214, "Advanced web settings", 280, 462, 240)
-			label("Your Linux hub keeps running when this window closes.", 36, 530)
+			check(236, "Use this PC's CPU temperature (optional PawnIO driver)", c.WindowsTemperature, 36, 508)
+			button(237, "Get sensor modules", 36, 550, 220)
+			button(238, "Install PawnIO", 280, 550, 180)
+			button(239, "Check sensor", 480, 550, 180)
 		case 3:
 			check(240, "Enable weather on the Linux hub", q.Weather.Enabled, 36, 135)
 			label("Latitude", 36, 180)
@@ -347,6 +358,7 @@ func platformDashboard() error {
 				}
 				next.MediaEnabled = checked(233)
 				next.MediaStatus = checked(234)
+				next.WindowsTemperature = checked(236)
 				if e := saveConfig(next); e != nil {
 					mu.Lock()
 					message = e.Error()
@@ -359,6 +371,22 @@ func platformDashboard() error {
 					mu.Unlock()
 				}
 				invalidate()
+			case 237:
+				async(func() (string, error) {
+					e := installPawnModules()
+					return "Signed sensor modules ready. Install PawnIO, then check the sensor.", e
+				})
+			case 238:
+				_ = openURL("https://pawnio.eu/")
+			case 239:
+				async(func() (string, error) {
+					exe, _ := os.Executable()
+					out, e := exec.Command(exe, "pawnio-check").CombinedOutput()
+					if e != nil {
+						return "", fmt.Errorf("%s", strings.TrimSpace(string(out)))
+					}
+					return strings.TrimSpace(string(out)), nil
+				})
 			case 247:
 				mu.Lock()
 				q := integrations
@@ -439,6 +467,39 @@ func platformDashboard() error {
 		case 0x8002:
 			invalidate()
 			return 0
+		case 0x2b:
+			item := (*winDrawItem)(unsafe.Pointer(lp))
+			if item.Type != 4 {
+				return 0
+			}
+			dc := item.DC
+			r := item.Rect
+			oldBrush, _, _ := gdi32.NewProc("SelectObject").Call(dc, cardBrush)
+			pen, _, _ := gdi32.NewProc("GetStockObject").Call(8)
+			oldPen, _, _ := gdi32.NewProc("SelectObject").Call(dc, pen)
+			user32.NewProc("FillRect").Call(dc, uintptr(unsafe.Pointer(&r)), brush)
+			gdi32.NewProc("RoundRect").Call(dc, uintptr(r.Left), uintptr(r.Top), uintptr(r.Right), uintptr(r.Bottom), 18, 18)
+			gdi32.NewProc("SelectObject").Call(dc, oldBrush)
+			gdi32.NewProc("SelectObject").Call(dc, oldPen)
+			oldFont, _, _ := gdi32.NewProc("SelectObject").Call(dc, normal)
+			gdi32.NewProc("SetBkMode").Call(dc, 1)
+			col := foreground
+			if item.ID == uint32(100+pageIndex) || item.State&1 != 0 {
+				col = accent
+			}
+			gdi32.NewProc("SetTextColor").Call(dc, col)
+			buf := make([]uint16, 128)
+			user32.NewProc("GetWindowTextW").Call(item.Window, uintptr(len(buf)), uintptr(unsafe.Pointer(&buf[0])))
+			user32.NewProc("DrawTextW").Call(dc, uintptr(unsafe.Pointer(&buf[0])), ^uintptr(0), uintptr(unsafe.Pointer(&r)), 0x25)
+			if item.State&0x10 != 0 {
+				r.Left += 4
+				r.Top += 4
+				r.Right -= 4
+				r.Bottom -= 4
+				user32.NewProc("DrawFocusRect").Call(dc, uintptr(unsafe.Pointer(&r)))
+			}
+			gdi32.NewProc("SelectObject").Call(dc, oldFont)
+			return 1
 		case 0x135, 0x138, 0x133:
 			gdi32.NewProc("SetTextColor").Call(wp, foreground)
 			gdi32.NewProc("SetBkColor").Call(wp, bg)
@@ -493,7 +554,17 @@ func platformDashboard() error {
 				}
 				draw("Hub resources", 488, 153, 350, 40, titleFont, foreground)
 				draw("CPU   "+value(st.CPU, "%")+"      RAM   "+value(st.RAM, "%"), 488, 212, 365, 30, normal, accent)
-				draw("Disk   "+value(st.Disk, "%")+"      Traffic   "+value(st.Traffic, " KiB/s"), 488, 253, 365, 30, normal, muted)
+				draw(func() string {
+					if st.TemperaturePC {
+						return "PC temp   "
+					}
+					return "CPU temp   "
+				}()+value(func() int {
+					if st.TemperatureCPU <= -1000 {
+						return -1
+					}
+					return st.TemperatureCPU / 10
+				}(), " C")+"      Traffic   "+value(st.Traffic, " KiB/s"), 488, 253, 365, 30, normal, muted)
 				weather := "Weather hidden or unavailable"
 				if st.WeatherLive && time.Since(last) < 10*time.Second {
 					weather = fmt.Sprintf("%.1f C  ·  %s", float64(st.Temperature)/10, weatherDescription(st.WeatherCode))
@@ -504,7 +575,7 @@ func platformDashboard() error {
 				draw(weather, 488, 302, 365, 50, normal, accent)
 				draw(fmt.Sprintf("Countdown: %d:%02d", st.Timer/60, st.Timer%60), 490, 417, 350, 36, normal, foreground)
 			}
-			draw(note, 25, 640, 850, 44, normal, muted)
+			draw(note, 25, 610, 850, 44, normal, muted)
 			user32.NewProc("EndPaint").Call(wnd, uintptr(unsafe.Pointer(&ps)))
 			return 0
 		case 2:
@@ -525,7 +596,7 @@ func platformDashboard() error {
 		return e
 	}
 	var e error
-	hwnd, _, e = user32.NewProc("CreateWindowExW").Call(0, uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(wide("FractureOS — Dashboard"))), 0x02ca0000, 0x80000000, 0x80000000, 922, 740, 0, 0, instance, 0)
+	hwnd, _, e = user32.NewProc("CreateWindowExW").Call(0, uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(wide("FractureOS — Dashboard"))), 0x02ca0000, 0x80000000, 0x80000000, 922, 710, 0, 0, instance, 0)
 	if hwnd == 0 {
 		return e
 	}
@@ -538,15 +609,16 @@ func platformDashboard() error {
 	user32.NewProc("ShowWindow").Call(hwnd, 1)
 	user32.NewProc("UpdateWindow").Call(hwnd)
 	user32.NewProc("SetTimer").Call(hwnd, 1, 3000, 0)
+	initialConfig := c
 	async(func() (string, error) {
-		q, e := integrationGet(c)
+		q, e := integrationGet(initialConfig)
 		if e != nil {
 			return "", e
 		}
 		mu.Lock()
 		integrations = q
 		mu.Unlock()
-		out, e := hubCall(c, "status")
+		out, e := hubCall(initialConfig, "status")
 		if e == nil {
 			var st dashboardStatus
 			e = json.Unmarshal([]byte(out), &st)
