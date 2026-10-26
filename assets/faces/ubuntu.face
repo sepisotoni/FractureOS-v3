@@ -1,0 +1,23 @@
+# FractureOS editable face: Ubuntu
+atlas=digit-atlas-ubuntu.pgm
+hour_color=ffb152
+minute_color=a883ff
+background=000000
+time_format=12
+show_date=0
+show_ampm=0
+colon=0
+date_x=64
+date_y=10
+date_scale=1
+colon_x=157
+colon_y=108
+colon_gap=16
+colon_size=6
+layout=custom
+blink=1
+hour_only=1
+digit0=101,42,55,88
+digit1=164,42,55,88
+digit2=101,130,55,88
+digit3=164,130,55,88

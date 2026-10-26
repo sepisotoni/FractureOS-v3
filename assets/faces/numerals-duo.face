@@ -1,0 +1,23 @@
+# FractureOS editable face: Numerals Duo
+atlas=digit-atlas-numerals.pgm
+hour_color=ff8a24
+minute_color=143058
+background=000000
+time_format=12
+show_date=0
+show_ampm=0
+colon=0
+date_x=64
+date_y=10
+date_scale=1
+colon_x=157
+colon_y=108
+colon_gap=16
+colon_size=6
+layout=custom
+blink=1
+hour_only=1
+digit0=83,38,70,82
+digit1=167,38,70,82
+digit2=83,128,70,82
+digit3=167,128,70,82

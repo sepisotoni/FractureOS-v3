@@ -1,0 +1,23 @@
+# FractureOS editable face: Roboto
+atlas=digit-atlas-roboto.pgm
+hour_color=97f47e
+minute_color=52daac
+background=000000
+time_format=12
+show_date=0
+show_ampm=0
+colon=1
+date_x=64
+date_y=10
+date_scale=1
+colon_x=157
+colon_y=108
+colon_gap=16
+colon_size=6
+layout=custom
+blink=1
+hour_only=1
+digit0=20,76,55,88
+digit1=75,76,55,88
+digit2=190,76,55,88
+digit3=245,76,55,88

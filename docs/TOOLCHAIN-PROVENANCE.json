@@ -1,0 +1,17 @@
+{
+  "sdk": "/home/sepisotoni/projects/LeddaZ-OpenTom",
+  "scope": "provenance of tested local SDK; not a complete hermetic toolchain lock",
+  "files": {
+    "Downloads/toolchain_redhat_gcc-3.3.4_glibc-2.3.2-20060131a.tar.gz": "87bde84ae58e2df8ae6a1ddeb14e9f64da14164dfe709e7f7694bd36f89c37ff",
+    "gcc-3.3.4_glibc-2.3.2/bin/arm-linux-gcc": "dd45b2c6ced9b8af757e7fbcda8ce4cec8d760a5da4ba099234361eff72485ec",
+    "gcc-3.3.4_glibc-2.3.2/arm-linux/sys-root/lib/libc.so.6": "aebf487ac4daf4973c94ef7bc008ef9f08d5c173d1844c7a7ecc9fb5e86671f1",
+    "kernel/include/barcelona/Barc_Gpio.h": "5f852a1fe7e63954289bd29e544ff823d807bdabd07571072489e7b9059b77fa",
+    "kernel/include/barcelona/Barc_pwm.h": "3987b6cf7c99cef1b0b28eb2b670c7fac66473fd681c1c68bd453b559e866210",
+    "kernel/include/barcelona/Barc_Battery.h": "bc7233cdfc5f2d9a7514ee097cd72667d3ff75a72eb058e78e208898debea502",
+    "kernel/include/barcelona/types.h": "cc9f6d30fa25a520a4c2f85534275c7ceae3afda5a97a52af63ccd5d215eee5c",
+    "kernel/include/asm-arm/unistd.h": "833def34fa27f1f2b56cdafb840ddc5bf879c2e914d928d0032e09d81127be6a",
+    "kernel/drivers/barcelona/gpio/gpio.c": "8bdd7e2f4fbd7de0c5159c53590223ce02385ebcb679c9d63ad2e5394da86292",
+    "kernel/drivers/barcelona/pwm/pwm.c": "1684a2c0deab8890cd82983b6fbefb374b46c43ee24cfe09e8f300c7ed9e2993",
+    "kernel/drivers/barcelona/bat/bat.c": "86a45e00ac889cfddf0f1410f9b6a8026dbf4b625bdd85ec4e96c1d812b55ef3"
+  }
+}

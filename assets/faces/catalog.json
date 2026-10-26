@@ -1,0 +1,38 @@
+[
+  {
+    "id": "blue-outline",
+    "name": "Blue Outline"
+  },
+  {
+    "id": "aqua",
+    "name": "Aqua"
+  },
+  {
+    "id": "lavender",
+    "name": "Lavender"
+  },
+  {
+    "id": "sunset",
+    "name": "Sunset"
+  },
+  {
+    "id": "weather-blue",
+    "name": "Weather Blue"
+  },
+  {
+    "id": "numerals-duo",
+    "name": "Numerals Duo"
+  },
+  {
+    "id": "roboto",
+    "name": "Roboto"
+  },
+  {
+    "id": "ubuntu",
+    "name": "Ubuntu"
+  },
+  {
+    "id": "nunito",
+    "name": "Nunito"
+  }
+]

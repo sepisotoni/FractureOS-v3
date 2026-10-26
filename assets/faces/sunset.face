@@ -1,0 +1,23 @@
+# FractureOS editable face: Sunset
+atlas=digit-atlas-solid.pgm
+hour_color=ff7341
+minute_color=ff7dd7
+background=000000
+time_format=12
+show_date=0
+show_ampm=0
+colon=1
+date_x=64
+date_y=10
+date_scale=1
+colon_x=157
+colon_y=100
+colon_gap=33
+colon_size=6
+layout=custom
+blink=1
+hour_only=1
+digit0=8,42,70,156
+digit1=82,42,70,156
+digit2=170,42,70,156
+digit3=244,42,70,156

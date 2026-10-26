@@ -1,0 +1,23 @@
+# FractureOS editable face: Nunito
+atlas=digit-atlas-nunito.pgm
+hour_color=4be1fa
+minute_color=43b9ff
+background=000000
+time_format=12
+show_date=0
+show_ampm=0
+colon=0
+date_x=64
+date_y=10
+date_scale=1
+colon_x=157
+colon_y=108
+colon_gap=16
+colon_size=6
+layout=stacked
+blink=1
+hour_only=1
+digit0=55,0,100,120
+digit1=165,0,100,120
+digit2=55,120,100,120
+digit3=165,120,100,120
