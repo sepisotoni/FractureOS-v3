@@ -106,7 +106,7 @@ class TomTom:
             raise RuntimeError("Remote exit %d: %s\n%s" % (code, command, output[-1500:]))
         return output
 
-    def upload(self, source, destination, bind="192.168.101.114"):
+    def upload(self, source, destination, bind="192.168.101.105"):
         payload = Path(source).read_bytes()
         if len(payload) > 8 * 1024 * 1024:
             raise ValueError("Transfer exceeds 8 MiB staging limit")
@@ -181,7 +181,7 @@ def main():
     put = sub.add_parser("put")
     put.add_argument("source")
     put.add_argument("destination")
-    put.add_argument("--bind", default="192.168.101.114")
+    put.add_argument("--bind", default="192.168.101.105")
     get = sub.add_parser("get")
     get.add_argument("remote")
     get.add_argument("local")

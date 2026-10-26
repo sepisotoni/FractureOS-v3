@@ -33,22 +33,24 @@ import (
 	"time"
 )
 
-const version = "0.1.8"
+const version = "0.1.9"
 
 //go:embed ui.html
 var page string
 
 type Config struct {
-	Device           string `json:"device"`
-	Hub              string `json:"hub"`
-	Listen           string `json:"listen"`
-	Token            string `json:"token"`
-	Fingerprint      string `json:"fingerprint"`
-	HubMetrics       bool   `json:"hub_metrics"`
-	MetricsDisk      string `json:"metrics_disk"`
-	MetricsInterface string `json:"metrics_interface"`
-	MediaEnabled     bool   `json:"media_enabled"`
-	MediaStatus      bool   `json:"media_status"`
+	Device           string             `json:"device"`
+	Hub              string             `json:"hub"`
+	Listen           string             `json:"listen"`
+	Token            string             `json:"token"`
+	Fingerprint      string             `json:"fingerprint"`
+	HubMetrics       bool               `json:"hub_metrics"`
+	MetricsDisk      string             `json:"metrics_disk"`
+	MetricsInterface string             `json:"metrics_interface"`
+	MediaEnabled     bool               `json:"media_enabled"`
+	MediaStatus      bool               `json:"media_status"`
+	Weather          WeatherConfig      `json:"weather"`
+	Notifications    NotificationConfig `json:"notifications"`
 }
 
 func configDir() string {
@@ -59,7 +61,7 @@ func configDir() string {
 	return filepath.Join(p, "fracture-v3")
 }
 func readConfig() (Config, error) {
-	c := Config{Device: "192.168.101.115", Hub: "https://127.0.0.1:47831", Listen: "127.0.0.1:47831"}
+	c := Config{Device: "192.168.101.115", Hub: "https://127.0.0.1:47831", Listen: "127.0.0.1:47831", Weather: defaultWeather()}
 	b, e := os.ReadFile(filepath.Join(configDir(), "config.json"))
 	if errors.Is(e, os.ErrNotExist) {
 		return c, nil
@@ -71,6 +73,9 @@ func readConfig() (Config, error) {
 	return c, e
 }
 func saveConfig(c Config) error {
+	if e := validateIntegrations(c.Weather, c.Notifications); e != nil {
+		return e
+	}
 	if c.MetricsDisk != "" && (!filepath.IsAbs(c.MetricsDisk) || len(c.MetricsDisk) > 512) {
 		return errors.New("metrics disk must be an absolute mount path")
 	}
@@ -134,7 +139,7 @@ func validateCommand(cmd string) error {
 		return e == nil && v >= lo && v <= hi
 	}
 	switch a[0] {
-	case "media-clear", "status", "face-get", "face-reset", "theme-get", "theme-reset":
+	case "weather-clear", "media-clear", "status", "face-get", "face-reset", "theme-get", "theme-reset":
 		if len(a) == 1 {
 			return nil
 		}
@@ -166,6 +171,24 @@ func validateCommand(cmd string) error {
 		if len(a) == 2 {
 			if _, e := strconv.ParseUint(a[1], 10, 32); e == nil {
 				return nil
+			}
+		}
+	case "weather-state":
+		if len(a) == 2 {
+			var code, temp, unusual int
+			if count, e := fmt.Sscanf(a[1], "%d,%d,%d", &code, &temp, &unusual); e == nil && count == 3 && code >= 0 && code <= 99 && temp >= -1000 && temp <= 700 && (unusual == 0 || unusual == 1) && fmt.Sprintf("%d,%d,%d", code, temp, unusual) == a[1] {
+				return nil
+			}
+		}
+	case "feature":
+		if len(a) == 3 && n(2, 0, 2) {
+			switch a[1] {
+			case "weather", "appearance":
+				return nil
+			case "telemetry", "media", "notifications":
+				if n(2, 0, 1) {
+					return nil
+				}
 			}
 		}
 	case "hold-indicator":
@@ -357,6 +380,7 @@ func serve() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	mux := http.NewServeMux()
+	registerIntegrations(mux, b, c.Token)
 	mux.HandleFunc("/api/media", func(w http.ResponseWriter, r *http.Request) {
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+c.Token)) != 1 {
 			http.Error(w, "unauthorized", 401)
@@ -404,6 +428,7 @@ func serve() error {
 		_ = srv.Shutdown(shutdown)
 	}()
 	go hubBackground(ctx, b)
+	go weatherSupervisor(ctx, b)
 	log.Printf("FractureOS hub %s listening on https://%s; device %s", version, c.Listen, c.Device)
 	e = srv.ListenAndServeTLS(filepath.Join(configDir(), "hub.crt"), filepath.Join(configDir(), "hub.key"))
 	if errors.Is(e, http.ErrServerClosed) {
@@ -469,7 +494,7 @@ func hubBackground(ctx context.Context, b *Broker) {
 				continue
 			}
 			status, err := b.call("status")
-			if err != nil || (!strings.Contains(status, `"profile":"desk"`) || !strings.Contains(status, `"menu":0`)) {
+			if err != nil || strings.Contains(status, `"telemetry":0`) || (!strings.Contains(status, `"profile":"desk"`) || !strings.Contains(status, `"menu":0`)) {
 				stopWorker()
 				continue
 			}
@@ -515,6 +540,28 @@ func settings(open bool) error {
 			return
 		}
 		switch r.URL.Path {
+		case "/integrations":
+			if r.Method != "GET" && r.Method != "POST" {
+				http.Error(w, "GET or POST required", 405)
+				return
+			}
+			var payload any = map[string]string{"operation": "get"}
+			if r.Method == "POST" {
+				var q IntegrationSettings
+				r.Body = http.MaxBytesReader(w, r.Body, 4096)
+				if e = json.NewDecoder(r.Body).Decode(&q); e != nil {
+					http.Error(w, "invalid settings", 400)
+					return
+				}
+				q.Operation = "set"
+				payload = q
+			}
+			out, err := hubRequest(c, "/api/integrations", payload)
+			if err != nil {
+				http.Error(w, err.Error(), 502)
+				return
+			}
+			fmt.Fprint(w, out)
 		case "/config":
 			if r.Method == "GET" {
 				c.Token = ""
@@ -602,8 +649,28 @@ func main() {
 		fmt.Println("FractureOS", version)
 	case "serve":
 		e = serve()
+	case "dashboard":
+		e = platformDashboard()
 	case "settings":
-		e = settings(!(len(a) > 1 && a[1] == "--no-open"))
+		if len(a) > 1 && a[1] == "--no-open" {
+			e = settings(false)
+		} else {
+			e = platformDashboard()
+		}
+	case "web":
+		e = settings(true)
+	case "weather-worker":
+		e = weatherWorker()
+	case "notify":
+		if len(a) != 4 {
+			e = errors.New("usage: fracture notify APP TITLE BODY")
+		} else {
+			var c Config
+			c, e = readConfig()
+			if e == nil {
+				_, e = hubRequest(c, "/api/notifications", Notification{App: a[1], Title: a[2], Body: a[3]})
+			}
+		}
 	case "tray":
 		e = platformTray()
 	case "media-worker":
@@ -695,7 +762,7 @@ func configCommand(a []string) error {
 	return saveConfig(c)
 }
 func help() {
-	fmt.Println(`FractureOS 0.1.8
+	fmt.Println(`FractureOS 0.1.9
   fracture status | profile minimal|desk|bedside | theme teal|amber|blue
   fracture theme NAME | theme-get | theme-set KEY VALUE | theme-save NEW_NAME | theme-reset
   fracture face NAME | face-get | face-set KEY VALUE | face-reset

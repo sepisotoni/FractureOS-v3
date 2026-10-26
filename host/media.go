@@ -14,6 +14,7 @@ import (
 )
 
 type mediaDeviceStatus struct {
+	Enabled  *int   `json:"media_enabled"`
 	View     bool   `json:"media_view"`
 	Menu     int    `json:"menu"`
 	Art      int    `json:"media_art_loaded"`

@@ -1,0 +1,24 @@
+# FractureOS editable face: Neon dashboard
+atlas=digit-atlas-nunito.pgm
+hour_color=4be1fa
+minute_color=43b9ff
+background=000000
+time_format=24
+show_date=1
+show_ampm=0
+colon=0
+date_x=129
+date_y=19
+date_scale=1
+colon_x=157
+colon_y=108
+colon_gap=16
+colon_size=6
+layout=horizontal
+blink=1
+hour_only=0
+digit0=101,42,55,88
+digit1=164,42,55,88
+digit2=101,130,55,88
+digit3=164,130,55,88
+show_seconds=0

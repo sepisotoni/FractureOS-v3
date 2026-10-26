@@ -36,12 +36,15 @@ func deviceManagement(_ []string) error {
 	return errors.New("run fracture device install on the Linux machine physically connected to the TomTom")
 }
 func metricsWorker() error {
-	return errors.New("Windows resource collection is not included in 0.1.8; Linux hub metrics are available")
+	return errors.New("Windows resource collection is not included in 0.1.9; Linux hub metrics are available")
 }
 func platformUninstall() error {
 	exe, e := os.Executable()
 	if e != nil {
 		return e
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(exe), "unins000.exe")); err == nil {
+		return exec.Command(filepath.Join(filepath.Dir(exe), "unins000.exe")).Start()
 	}
 	cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(filepath.Dir(exe), "uninstall.ps1"))
 	return cmd.Start()
@@ -101,7 +104,7 @@ func platformTray() error {
 	settingsLaunch := func() {
 		exe, e := os.Executable()
 		if e == nil {
-			cmd := exec.Command(exe, "settings")
+			cmd := exec.Command(exe, "dashboard")
 			if cmd.Start() == nil {
 				go cmd.Wait()
 			}
@@ -120,7 +123,7 @@ func platformTray() error {
 			}
 			if lparam == 0x205 {
 				menu, _, _ := user32.NewProc("CreatePopupMenu").Call()
-				for i, label := range []string{"Settings", "Minimal clock", "Desk clock", "Bedside clock", "Exit"} {
+				for i, label := range []string{"Dashboard & settings", "Minimal clock", "Desk clock", "Bedside clock", "Exit"} {
 					user32.NewProc("AppendMenuW").Call(menu, 0, uintptr(i+1), uintptr(unsafe.Pointer(wide(label))))
 				}
 				var pt point

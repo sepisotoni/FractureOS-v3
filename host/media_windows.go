@@ -522,7 +522,7 @@ func localMediaSupervisor(ctx context.Context) {
 			}
 			raw, e := hubCall(c, "status")
 			var ds mediaDeviceStatus
-			if e != nil || json.Unmarshal([]byte(raw), &ds) != nil || (!ds.View && !(c.MediaStatus && ds.Menu == 0)) {
+			if e != nil || json.Unmarshal([]byte(raw), &ds) != nil || (ds.Enabled != nil && *ds.Enabled == 0) || (!ds.View && !(c.MediaStatus && ds.Menu == 0)) {
 				stop()
 				continue
 			}

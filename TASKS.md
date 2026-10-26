@@ -29,6 +29,18 @@ Checkboxes mean the stated deliverable is complete, not merely discussed. Design
 
 The P-series checkboxes below describe complete target modules. Initial implementations above do not imply those broader acceptance criteria are finished.
 
+## V — Dashboard, weather and compact UI revision
+
+- [ ] V01 Hide missing metrics, show maximum traffic direction, center the date and adapt crowded clocks to horizontal time.
+- [ ] V02 Add on-device face/theme previews, day/night appearance and a compact neon dashboard face.
+- [ ] V03 Add persistent on-device module switches and PC controls.
+- [ ] V04 Add an opt-in hub weather worker, unusual-only settings and compact weather symbols.
+- [ ] V05 Add separate native Windows and web dashboards, with no dashboard process while closed.
+- [ ] V06 Build an Inno Setup installer with uninstallation and publish downloadable builds.
+- [ ] V07 Correct Linux/TomTom LAN address ownership and verify routing.
+- [ ] V08 Add authenticated notification forwarding and application exclusions; record Windows listener consent/identity requirements.
+- [ ] V09 Manually validate on the TomTom, preserve settings and document measured limits.
+
 ## D — Design
 
 - [x] D01 Reconcile requirements, inspected hardware, broken touch input, and physical connectivity. See `docs/ARCHITECTURE.md`.

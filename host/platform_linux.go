@@ -229,3 +229,5 @@ func networkSample(selected string) (map[string][2]uint64, error) {
 }
 
 func localMediaWorker() error { return errors.New("Spotify client sharing runs on Windows") }
+
+func platformDashboard() error { return settings(true) }

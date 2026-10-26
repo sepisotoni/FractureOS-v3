@@ -1,0 +1,62 @@
+name: Windows installers
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+      - name: Compile native Windows apps
+        shell: pwsh
+        run: |
+          $env:CGO_ENABLED='0'; $env:GOOS='windows'
+          foreach ($arch in @('amd64','arm64')) {
+            $env:GOARCH=$arch
+            New-Item -ItemType Directory -Force "build/windows-$arch" | Out-Null
+            go build -trimpath -ldflags '-s -w -H=windowsgui' -o "build/windows-$arch/fracture.exe" ./host
+            if ($LASTEXITCODE) { throw 'Go build failed' }
+          }
+      - name: Compile Inno Setup installers
+        shell: pwsh
+        run: |
+          $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $compiler)) { throw 'Inno Setup 6 is missing from runner' }
+          foreach ($arch in @('amd64','arm64')) {
+            & $compiler "/DArch=$arch" install/fracture.iss
+            if ($LASTEXITCODE) { throw 'Inno Setup failed' }
+          }
+      - name: Exercise installer, native window and uninstaller
+        shell: pwsh
+        run: |
+          $dest = Join-Path $env:RUNNER_TEMP 'FractureOS-acceptance'
+          $installer = Get-ChildItem build/inno/*-amd64-setup.exe | Select-Object -First 1
+          $p = Start-Process $installer.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=`"$dest`"" -Wait -PassThru
+          if ($p.ExitCode) { throw "Installer exit $($p.ExitCode)" }
+          $p = Start-Process "$dest/fracture.exe" -ArgumentList dashboard -PassThru
+          Start-Sleep -Seconds 5
+          $p.Refresh()
+          if ($p.HasExited -or !$p.MainWindowHandle) { throw 'Native dashboard did not open' }
+          "Dashboard working set: $($p.WorkingSet64) bytes; window: $($p.MainWindowHandle)" | Tee-Object build/inno/validation.txt
+          Add-Type -AssemblyName System.Drawing,System.Windows.Forms
+          $screen=[System.Windows.Forms.SystemInformation]::VirtualScreen
+          $image=New-Object System.Drawing.Bitmap($screen.Width,$screen.Height)
+          $graphics=[System.Drawing.Graphics]::FromImage($image)
+          try { $graphics.CopyFromScreen($screen.Left,$screen.Top,0,0,$image.Size); $image.Save("$pwd/build/inno/dashboard.png") } finally { $graphics.Dispose(); $image.Dispose() }
+          [void]$p.CloseMainWindow()
+          if (!$p.WaitForExit(10000)) { throw 'Dashboard did not exit after close' }
+          $u=Start-Process "$dest/unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+          if ($u.ExitCode) { throw "Uninstaller exit $($u.ExitCode)" }
+          if (Test-Path "$dest/fracture.exe") { throw 'Uninstaller left executable behind' }
+      - name: Hash artifacts
+        shell: pwsh
+        run: |
+          Get-ChildItem build/inno/*-setup.exe | ForEach-Object { "$((Get-FileHash $_ -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)" } | Set-Content -Encoding ascii build/inno/WINDOWS-SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installers
+          path: build/inno/
