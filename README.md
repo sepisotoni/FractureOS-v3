@@ -1,17 +1,19 @@
 # FractureOS v3
 
-A quiet, customizable clock for a TomTom ONE (v6), with a C device app and Go Linux hub / Windows tray companion. **v0.1.5 is an initial working release**, running on the inspected TomTom. It uses the existing OpenTom kernel and drivers; installation replaces the application startup, not the bootloader or firmware.
+A quiet, customizable clock for a TomTom ONE (v6), with a C device app and Go Linux hub / Windows tray companion. **v0.1.7 is an initial working release**, running on the inspected TomTom. It uses the existing OpenTom kernel and drivers; installation replaces the application startup, not the bootloader or firmware.
 
-The original nine faces are now editable FractureOS assets. The blue Nunito face has large stacked digits, optional horizontal **HH : MM**, a blinking colon, and an hour-only behavior: **10:00 shows 10 throughout that minute; 10:01 returns to the full time** in either layout. When extra information is visible, the entire face scales into a separate area above it so timers and status cannot cover its digits. The old information sidebar and its application dependencies are absent from the new renderer. Only the selected face's 170 KB digit atlas is resident.
+The original nine faces are now editable FractureOS assets. The blue Nunito face restores its original proportions with a centered date and live seconds, optional larger stacked digits, optional horizontal **HH : MM**, a blinking colon, and an hour-only behavior: **10:00 shows 10 throughout that minute; 10:01 returns to the full time** in either layout. When extra information is visible, the entire face scales into a separate area above it so timers and status cannot cover its digits. The old information sidebar and its application dependencies are absent from the new renderer. Only the selected face's 170 KB digit atlas is resident.
 
-![Blue face layouts, blinking colon and hour-only behavior](docs/images/blue-layouts.png)
+![Current clock, timer and menu](docs/images/current-ui.png)
+
+The interface uses pure-black backgrounds, rounded menu highlights, simple metric/timer symbols and brief 180 ms selection transitions. The owner’s SF Compact font is used locally on their TomTom; public packages include an open Nunito text atlas.
 
 ## Install
 
 On the **Linux machine connected to the TomTom** (Ubuntu and other Linux distributions, x86-64 or ARM64):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/sepisotoni/FractureOS-v3/v0.1.5/install/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/sepisotoni/FractureOS-v3/v0.1.7/install/install.sh | sh
 ```
 
 Then, with the TomTom reachable over its USB network:
@@ -26,12 +28,12 @@ The installer selects the host architecture, verifies the release SHA-256, insta
 On **64-bit Windows**, paste into PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/sepisotoni/FractureOS-v3/v0.1.5/install/install.ps1 | iex
+irm https://raw.githubusercontent.com/sepisotoni/FractureOS-v3/v0.1.7/install/install.ps1 | iex
 ```
 
 A small guided installer installs the tray app and an Installed Apps uninstaller for the current user. Connection and clock configuration are in Settings, not setup. Windows x64 and ARM64 binaries are cross-compiled; **Windows runtime/installer testing is still pending**. macOS, 32-bit PCs and direct installation from a shell on the TomTom are unsupported.
 
-Release archives and checksums: [v0.1.5 downloads](https://github.com/sepisotoni/FractureOS-v3/releases/tag/v0.1.5). You can download and inspect the installer before running it. Checksums verify download integrity; signed release manifests are still on the roadmap.
+Release archives and checksums: [v0.1.7 downloads](https://github.com/sepisotoni/FractureOS-v3/releases/tag/v0.1.7). You can download and inspect the installer before running it. Checksums verify download integrity; signed release manifests are still on the roadmap.
 
 ## Connect Windows to the hub
 
@@ -75,11 +77,11 @@ fracture alarm off
 fracture config set hub_metrics true    # Linux hub, collected only in Desk mode
 ```
 
-Face files and artwork are in [`assets/faces`](assets/faces). See [face format and provenance](docs/FACES.md). User overrides live outside the versioned release and survive updates. Themes edit the launcher, fallback clock and information band. Each theme can optionally recolor imported faces; otherwise those faces keep their own palettes. Settings includes color pickers and save-as for named themes.
+Face files and artwork are in [`assets/faces`](assets/faces). See [face format and provenance](docs/FACES.md). User overrides live outside the versioned release and survive updates. Choose `midnight` for the iOS-inspired pure-black interface. Themes edit the launcher, fallback clock and information band. Each theme can optionally recolor imported faces; otherwise those faces keep their own palettes. Settings includes color pickers and save-as for named themes.
 
 ## What works now
 
-| Component | Available in v0.1.5 |
+| Component | Available in v0.1.7 |
 |---|---|
 | TomTom | Direct framebuffer clock; nine reused faces; editable layout/colors; stacked/horizontal/hour-only modes; switch-operated menu; minimal/desk/bedside; countdown, stopwatch and silent visual daily alarm; persisted settings |
 | Linux | TLS hub, CLI, settings UI, optional CPU/RAM worker that starts only in Desk mode and exits when unused; time sync; device deployment and restoration |

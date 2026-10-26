@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verified deployment of the 0.1.5 application environment, not firmware flashing."""
+"""Verified deployment of the 0.1.7 application environment, not firmware flashing."""
 import argparse
 import datetime
 import hashlib
@@ -14,7 +14,7 @@ from tomtom import TomTom
 
 ROOT = '/mnt/sdcard/fracture-v3'
 START = '/mnt/sdcard/opentom/start.sh'
-VERSION = 'v0.1.5'
+VERSION = 'v0.1.7'
 
 
 def control(device, cmd):
@@ -72,12 +72,14 @@ def main():
             if path.suffix in ('.face', '.pgm'): payloads['faces/'+path.name] = path
         for path in sorted((args.package/'assets/themes').glob('*.theme')):
             payloads['themes/'+path.name] = path
+        for path in sorted((args.package/'assets/ui').glob('*.bin')):
+            payloads['ui/'+path.name] = path
         for path in payloads.values():
             if not path.is_file(): raise RuntimeError('Missing release payload: ' + str(path))
         stage = '/tmp/fracture-install-' + secrets.token_hex(6)
         route = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         route.connect((args.host, 23)); bind = route.getsockname()[0]; route.close()
-        device.checked('mkdir ' + stage + ' ' + stage+'/faces '+stage+'/themes')
+        device.checked('mkdir ' + stage + ' ' + stage+'/faces '+stage+'/themes '+stage+'/ui')
         uploaded = []
         changed = False
         report = {'version': VERSION, 'device': args.host, 'payloads': {}, 'backup': {}}
@@ -115,7 +117,7 @@ def main():
                     digest = device.download(destination+'/'+name, backup/(name.replace('/','_')+'.installed'),probe)
                     if digest != report['payloads'][name]: raise RuntimeError('Installed '+VERSION+' differs; use a new release version')
             else:
-                device.checked('mkdir '+destination+' '+destination+'/faces '+destination+'/themes')
+                device.checked('mkdir '+destination+' '+destination+'/faces '+destination+'/themes '+destination+'/ui')
                 for name in [n for n in payloads if n not in ('boot.sh','control.sh','entry.sh')]:
                     device.checked('cp '+stage+'/'+name+' '+destination+'/'+name)
             device.checked('mkdir -p '+ROOT+'/faces '+ROOT+'/themes')
@@ -124,7 +126,7 @@ def main():
             for name,value in [('device-ip',args.host),('current',VERSION)]:
                 device.checked('echo '+shlex.quote(value)+' > '+ROOT+'/'+name+'.new && sync && mv '+ROOT+'/'+name+'.new '+ROOT+'/'+name)
             offset = int(datetime.datetime.now().astimezone().utcoffset().total_seconds()/60)
-            device.checked('if test ! -f '+ROOT+'/settings.cfg; then echo '+shlex.quote('version=1\noffset='+str(offset)+'\nbrightness=30\nprofile=0\ntheme=0\nalarm_hour=-1\nalarm_minute=0\nlast_alarm_day=-1')+' > '+ROOT+'/settings.cfg; fi')
+            device.checked('if test ! -f '+ROOT+'/settings.cfg; then echo '+shlex.quote('version=1\noffset='+str(offset)+'\nbrightness=30\nprofile=0\ntheme=0\ntheme_name=midnight\nalarm_hour=-1\nalarm_minute=0\nlast_alarm_day=-1')+' > '+ROOT+'/settings.cfg; fi')
             device.checked('cp '+stage+'/entry.sh '+START+'.new && sync && mv '+START+'.new '+START)
             changed = True
             # Preserve foreground parent shells so /etc/rc cannot reach force_reboot.
@@ -164,7 +166,7 @@ def main():
             raise
         finally:
             for path in uploaded: device.checked('rm -f '+path)
-            device.checked('rmdir '+stage+'/faces '+stage+'/themes '+stage)
+            device.checked('rmdir '+stage+'/faces '+stage+'/themes '+stage+'/ui '+stage)
             (backup/'deployment.json').write_text(json.dumps(report,indent=2)+'\n')
 
 

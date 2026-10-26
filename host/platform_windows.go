@@ -35,7 +35,7 @@ func deviceManagement(_ []string) error {
 	return errors.New("run fracture device install on the Linux machine physically connected to the TomTom")
 }
 func metricsWorker() error {
-	return errors.New("Windows resource collection is not included in 0.1.5; Linux hub metrics are available")
+	return errors.New("Windows resource collection is not included in 0.1.7; Linux hub metrics are available")
 }
 func platformUninstall() error {
 	exe, e := os.Executable()

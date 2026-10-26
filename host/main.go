@@ -33,7 +33,7 @@ import (
 	"time"
 )
 
-const version = "0.1.5"
+const version = "0.1.7"
 
 //go:embed ui.html
 var page string
@@ -621,7 +621,7 @@ func configCommand(a []string) error {
 	return saveConfig(c)
 }
 func help() {
-	fmt.Println(`FractureOS 0.1.5
+	fmt.Println(`FractureOS 0.1.7
   fracture status | profile minimal|desk|bedside | theme teal|amber|blue
   fracture theme NAME | theme-get | theme-set KEY VALUE | theme-save NEW_NAME | theme-reset
   fracture face NAME | face-get | face-set KEY VALUE | face-reset

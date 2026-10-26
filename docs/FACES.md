@@ -40,3 +40,9 @@ UI themes are independent `.theme` data files in `assets/themes`. Each contains 
 ![All nine faces with a timer, captured from the TomTom](images/faces-with-timer.png)
 
 ![A custom theme applied to the launcher](images/custom-theme-menu.png)
+
+## Current Nunito presentation
+
+The owner selected the original 55×88 digit rectangles at x=101/164 and y=42/130, with the date centered above them and seconds at the lower right. `show_seconds=1` updates once per second; set it to 0 for minute-only redraws when nothing else needs updates. Large stacked and horizontal layouts remain selectable. The pure-black `midnight` theme supplies rounded menus and symbols without recoloring the face by default.
+
+Menu selection eases over 180 ms at the existing 50 ms input polling cadence, then stops. It does not keep an animation worker or continuous frame loop alive. UI text uses a 45.7 KB pre-rasterized atlas, so no font engine runs on the TomTom. The owner’s private SF Compact atlas remains outside repository/release assets; `assets/ui/default.bin` provides the distributable Nunito fallback.

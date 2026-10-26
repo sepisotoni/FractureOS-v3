@@ -1,12 +1,12 @@
-# v0.1.5 implementation
+# v0.1.7 implementation
 
 This describes the code that exists. ARCHITECTURE.md and MODULES.md describe the broader target design; their full registry, wire protocol, face composition model and signed updater are not implemented yet.
 
 ## Device
 
-`device/src/fracture.c` owns `/dev/fb`, touchscreen events, the Barcelona button-duration snapshot ioctl and PWM brightness. It takes a process lock, exposes a root-only Unix control socket and writes dirty framebuffer rows. `faces.h` parses bounded data-only face files and loads one alpha atlas. The old Nano-X application and information sidebar are not dependencies. The selected face, profile, theme, brightness, UTC offset and visual alarm settings are saved through temporary files and rename. FAT durability across sudden power loss is not guaranteed by this mechanism.
+`device/src/fracture.c` owns `/dev/fb`, touchscreen events, the Barcelona button-duration snapshot ioctl and PWM brightness. It takes a process lock, exposes a root-only Unix control socket and copies the small framebuffer only when an actual redraw is needed, without retaining a second shadow framebuffer. `faces.h` parses bounded data-only face files and loads one alpha atlas. The old Nano-X application and information sidebar are not dependencies. The selected face, profile, theme, brightness, UTC offset and visual alarm settings are saved through temporary files and rename. FAT durability across sudden power loss is not guaranteed by this mechanism.
 
-The minimal face redraws on minute changes or input/configuration. A visible blinking colon, timers, stopwatch and desk view update once per second. A 50 ms poll remains necessary for the custom power-button snapshot driver; this is not interrupt-only idle behavior. Clock/menu/timer functionality is currently compiled together, while the large atlas is allocated only when selected. Optional integrations are absent from this release rather than dormant background services.
+The minimal face redraws on minute changes or input/configuration. Visible seconds, a blinking colon, timers, stopwatch and desk view update once per second. Menu selection transitions run for 180 ms at the existing polling cadence, then stop. A 45.7 KB UI text atlas supplies antialiased mixed-case text without a font engine. A 50 ms poll remains necessary for the custom power-button snapshot driver; this is not interrupt-only idle behavior. Clock/menu/timer functionality is currently compiled together, while the large atlas is allocated only when selected. Optional integrations are absent from this release rather than dormant background services.
 
 Power uses the kernel's non-destructive button-event snapshot rather than stealing the shared hardware status flag. The touch handler uses BTN_TOUCH and pressure only, debounces very short contacts, and recognizes single/double/held presses. Physical long-press power policy and a noisy cracked panel still require user hardware acceptance.
 

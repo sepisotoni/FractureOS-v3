@@ -1,7 +1,7 @@
 /* Data-only face packs. Exactly one 170 KB atlas is resident. No legacy UI. */
 typedef struct { char atlas[64]; unsigned long hour_color,minute_color,background;
  int time_format,show_date,show_ampm,colon,date_x,date_y,date_scale;
- int layout,blink,hour_only;
+ int layout,blink,hour_only,show_seconds;
  int colon_x,colon_y,colon_gap,colon_size; int digit[4][4]; } Face;
 static Face face;
 static unsigned char *face_pixels;
@@ -21,7 +21,7 @@ static int face_field(Face *f,const char *key,const char *v){char *end;unsigned 
  index=key[5]-'0';f->digit[index][0]=x;f->digit[index][1]=y;f->digit[index][2]=w;f->digit[index][3]=h;return 1;}
  if(!strcmp(key,"time_format")){if(strcmp(v,"12")&&strcmp(v,"24"))return 0;f->time_format=atoi(v);return 1;}
  #define FIELD(name,lo,hi) if(!strcmp(key,#name))return face_number(v,lo,hi,&f->name)
- FIELD(blink,0,1);FIELD(hour_only,0,1);FIELD(show_date,0,1);FIELD(show_ampm,0,1);FIELD(colon,0,1);FIELD(date_x,0,319);FIELD(date_y,0,233);FIELD(date_scale,1,4);
+ FIELD(show_seconds,0,1);FIELD(blink,0,1);FIELD(hour_only,0,1);FIELD(show_date,0,1);FIELD(show_ampm,0,1);FIELD(colon,0,1);FIELD(date_x,0,319);FIELD(date_y,0,233);FIELD(date_scale,1,4);
  FIELD(colon_x,0,319);FIELD(colon_y,0,239);FIELD(colon_gap,1,200);FIELD(colon_size,1,20);
  #undef FIELD
  return 0;}
@@ -42,7 +42,7 @@ static int face_load(void){Face next;char path[640];unsigned char *data=NULL;mem
  if(!face_atlas(&next,&data))return 0;free(face_pixels);face_pixels=data;face=next;face_ready=1;return 1;}
 static int face_save(const Face *f){char path[640],tmp[650];FILE *fp;int i,ok;face_path(path,sizeof path,1);snprintf(tmp,sizeof tmp,"%s.new",path);fp=fopen(tmp,"w");if(!fp)return 0;
  fprintf(fp,"atlas=%s\nhour_color=%06lx\nminute_color=%06lx\nbackground=%06lx\ntime_format=%d\nshow_date=%d\nshow_ampm=%d\ncolon=%d\ndate_x=%d\ndate_y=%d\ndate_scale=%d\ncolon_x=%d\ncolon_y=%d\ncolon_gap=%d\ncolon_size=%d\n",f->atlas,f->hour_color,f->minute_color,f->background,f->time_format,f->show_date,f->show_ampm,f->colon,f->date_x,f->date_y,f->date_scale,f->colon_x,f->colon_y,f->colon_gap,f->colon_size);
- fprintf(fp,"layout=%s\nblink=%d\nhour_only=%d\n",f->layout==1?"stacked":f->layout==2?"horizontal":"custom",f->blink,f->hour_only);
+ fprintf(fp,"layout=%s\nblink=%d\nhour_only=%d\n",f->layout==1?"stacked":f->layout==2?"horizontal":"custom",f->blink,f->hour_only);fprintf(fp,"show_seconds=%d\n",f->show_seconds);
  for(i=0;i<4;i++)fprintf(fp,"digit%d=%d,%d,%d,%d\n",i,f->digit[i][0],f->digit[i][1],f->digit[i][2],f->digit[i][3]);ok=fflush(fp)==0&&fsync(fileno(fp))==0;if(fclose(fp))ok=0;if(!ok||rename(tmp,path)){unlink(tmp);return 0;}return 1;}
 static uint16_t face_color(unsigned long c){int scale=cfg.profile==2?45:100;return rgb(((c>>16)&255)*scale/100,((c>>8)&255)*scale/100,(c&255)*scale/100);}
 static void face_draw(const struct tm *t){int hour=t->tm_hour,only=face.hour_only&&t->tm_min==0,values[4],i,x,y;int hour_rects[2][4]={{38,0,120,240},{162,0,120,240}};char date[32];uint16_t bg=face_color(theme.face_colors?theme.background:face.background);rect(0,0,W,H,bg);
@@ -52,6 +52,7 @@ static void face_draw(const struct tm *t){int hour=t->tm_hour,only=face.hour_onl
  pixels[at]=(uint16_t)((((((dst>>11)&31)*inv+((color>>11)&31)*a+127)/255)<<11)|(((((dst>>5)&63)*inv+((color>>5)&63)*a+127)/255)<<5)|(((dst&31)*inv+(color&31)*a+127)/255));}}
  if(face.colon&&!only&&(!face.blink||t->tm_sec%2==0)){rect(face.colon_x,face.colon_y,face.colon_size,face.colon_size,face_color(theme.face_colors?theme.hour_color:face.hour_color));rect(face.colon_x,face.colon_y+face.colon_gap,face.colon_size,face.colon_size,face_color(theme.face_colors?theme.minute_color:face.minute_color));}
  if(face.show_date){strftime(date,sizeof date,"%a %d %b",t);text(face.date_x,face.date_y,date,face.date_scale,face_color(theme.face_colors?theme.minute_color:face.minute_color));}
+ if(face.show_seconds){snprintf(date,sizeof date,"%02d",t->tm_sec);text(293,216,date,1,face_color(theme.face_colors?theme.minute_color:face.minute_color));}
  if(face.show_ampm&&face.time_format==12)text(285,220,t->tm_hour<12?"AM":"PM",1,face_color(theme.face_colors?theme.hour_color:face.hour_color));}
 /* Fit the complete composition above the information band, preserving aspect.
  * Copy one source row before writing: in-place shrink otherwise aliases pixels.
@@ -62,4 +63,4 @@ static void face_fit(int height){uint16_t row[W];int y,x,width=W*height/H,left=(
  rect(0,height,W,H-height,bg);}
 static void face_json(char *reply,size_t cap){int i;size_t used=(size_t)snprintf(reply,cap,"{\"atlas\":\"%s\",\"hour_color\":\"%06lx\",\"minute_color\":\"%06lx\",\"background\":\"%06lx\",\"time_format\":%d,\"show_date\":%d,\"show_ampm\":%d,\"colon\":%d,\"date_x\":%d,\"date_y\":%d,\"date_scale\":%d,\"colon_x\":%d,\"colon_y\":%d,\"colon_gap\":%d,\"colon_size\":%d",face.atlas,face.hour_color,face.minute_color,face.background,face.time_format,face.show_date,face.show_ampm,face.colon,face.date_x,face.date_y,face.date_scale,face.colon_x,face.colon_y,face.colon_gap,face.colon_size);
  if(used<cap)used+=(size_t)snprintf(reply+used,cap-used,",\"layout\":\"%s\",\"blink\":%d,\"hour_only\":%d",face.layout==1?"stacked":face.layout==2?"horizontal":"custom",face.blink,face.hour_only);
- for(i=0;i<4&&used<cap;i++)used+=(size_t)snprintf(reply+used,cap-used,",\"digit%d\":\"%d,%d,%d,%d\"",i,face.digit[i][0],face.digit[i][1],face.digit[i][2],face.digit[i][3]);if(used<cap)snprintf(reply+used,cap-used,"}\n");}
+ for(i=0;i<4&&used<cap;i++)used+=(size_t)snprintf(reply+used,cap-used,",\"digit%d\":\"%d,%d,%d,%d\"",i,face.digit[i][0],face.digit[i][1],face.digit[i][2],face.digit[i][3]);if(used<cap)snprintf(reply+used,cap-used,",\"show_seconds\":%d}\n",face.show_seconds);}

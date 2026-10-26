@@ -1,6 +1,6 @@
 # FractureOS per-user Windows installer; run from Windows PowerShell 5.1+.
 $ErrorActionPreference = 'Stop'
-$version = if ($env:FRACTURE_VERSION) { $env:FRACTURE_VERSION } else { 'v0.1.5' }
+$version = if ($env:FRACTURE_VERSION) { $env:FRACTURE_VERSION } else { 'v0.1.7' }
 if ($version -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Invalid release version' }
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing

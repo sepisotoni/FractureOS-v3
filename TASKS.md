@@ -1,6 +1,6 @@
 # FractureOS v3 task board
 
-Status: v0.1.5 clock and editable legacy faces deployed; initial Linux hub/CLI and Windows tray/installer implemented. Full module roadmap remains open. See [release validation](docs/RELEASE-VALIDATION.md). Updated 2026-10-26.
+Status: v0.1.7 clock and editable legacy faces deployed; initial Linux hub/CLI and Windows tray/installer implemented. Full module roadmap remains open. See [release validation](docs/RELEASE-VALIDATION.md). Updated 2026-10-26.
 
 Checkboxes mean the stated deliverable is complete, not merely discussed. Design tasks and implementation tasks are tracked separately. Update this file as each deliverable lands; add evidence or a limitation alongside completed implementation tasks. Experimental features remain open until demonstrated on the target hardware or explicitly declined by the owner.
 
@@ -9,7 +9,7 @@ Checkboxes mean the stated deliverable is complete, not merely discussed. Design
 - [x] R01 Build C framebuffer clock, switch-operated launcher, profiles, countdown/stopwatch, visual alarm and persistent settings.
 - [x] R02 Reuse nine original face designs as data assets; exclude old sidebar/Nano-X/weather application code; retain font notices and artwork provenance.
 - [x] R03 Load only the selected atlas; add editable colors/rectangles, face reset and host JSON import/export.
-- [x] R04 Add customizable UI themes and optional face recoloring; enlarge the current blue face; add stacked/horizontal layouts, blinking colon and hour-only behavior during minute 00.
+- [x] R04 Add an iOS-inspired pure-black UI, compact text atlas, geometric symbols and brief selection animations; add customizable UI themes and optional face recoloring; restore the original blue face with date/seconds, retain optional large stacked/horizontal layouts, blinking colon and hour-only behavior during minute 00.
 - [x] R05 Run C core/face checks on the real ARM device; verify upload readbacks and capture framebuffer output.
 - [x] R06 Implement TLS/pinned-certificate Go hub, CLI and on-demand settings UI.
 - [x] R07 Implement separate optional Linux metrics worker and native Windows tray; cross-compile both PC architectures.
@@ -104,4 +104,4 @@ The P-series checkboxes below describe complete target modules. Initial implemen
 
 ## Current handoff
 
-The v0.1.5 application runs on the TomTom, with persistent startup and preserved OpenTom recovery. The Linux hub is installed as a user service on the owner's host. Remaining work starts with real Windows acceptance, physical button/noise validation, portable toolchain packaging and the broader module lifecycle/protocol/editor design. The large feature catalog remains a roadmap, not a completed implementation. Use manual target-device checks for follow-up UI changes; do not add Python test harnesses or scheduled test jobs.
+The v0.1.7 application runs on the TomTom, with persistent startup and preserved OpenTom recovery. The Linux hub is installed as a user service on the owner's host. Remaining work starts with real Windows acceptance, physical button/noise validation, portable toolchain packaging and the broader module lifecycle/protocol/editor design. The large feature catalog remains a roadmap, not a completed implementation. Use manual target-device checks for follow-up UI changes; do not add Python test harnesses or scheduled test jobs.
