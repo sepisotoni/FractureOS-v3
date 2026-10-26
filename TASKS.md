@@ -1,6 +1,6 @@
 # FractureOS v3 task board
 
-Status: v0.1.7 clock and editable legacy faces deployed; initial Linux hub/CLI and Windows tray/installer implemented. Full module roadmap remains open. See [release validation](docs/RELEASE-VALIDATION.md). Updated 2026-10-26.
+Status: v0.1.8 clock and editable legacy faces deployed; initial Linux hub/CLI and Windows tray/installer implemented. Full module roadmap remains open. See [release validation](docs/RELEASE-VALIDATION.md). Updated 2026-10-26.
 
 Checkboxes mean the stated deliverable is complete, not merely discussed. Design tasks and implementation tasks are tracked separately. Update this file as each deliverable lands; add evidence or a limitation alongside completed implementation tasks. Experimental features remain open until demonstrated on the target hardware or explicitly declined by the owner.
 
@@ -15,8 +15,17 @@ Checkboxes mean the stated deliverable is complete, not merely discussed. Design
 - [x] R07 Implement separate optional Linux metrics worker and native Windows tray; cross-compile both PC architectures.
 - [x] R08 Build platform-selecting Linux/Windows installers and uninstallers; Linux install/uninstall fixture passed.
 - [x] R09 Manually check all nine faces with extra information, rehearse device restore/reinstall and test the actual TLS hub, collector shutdown and settings endpoints.
-- [ ] R10 Publish repository and release downloads, then test the public installation command.
+- [x] R10 Publish repository and release downloads, then test the public installation command. v0.1.7 public installation completed on the Linux hub.
 - [ ] R11 Validate Windows installer/tray on a real Windows session; no runtime claim from cross-compilation.
+
+## U — Requested UI, input and media revision
+
+- [x] U01 Add separate Timer/custom duration, Stopwatch/pause/lap/reset, Alarm/custom time, Media and Settings pages.
+- [x] U02 Add release-based 1.5s Back, 3s Home, 4.5–7s cancel and 7s+ suspend gestures with optional colored indicator. Owner physically confirmed indicator and Back/Home on preview. Suspend/reboot/shutdown have not been executed during development.
+- [x] U03 Render date/seconds at final readable size and thicken digits by configurable 0–2 pixels; dynamically size status information. Manual device captures recorded.
+- [x] U04 Restore CPU/RAM icons, add disk and download/upload measurements; verify live hub values and lazy worker shutdown on device.
+- [x] U05 Implement a Windows Spotify client bridge without developer credentials; validate device/hub payloads and Windows cross-builds. Real Windows playback/artwork/control acceptance remains separate.
+- [ ] U06 Package, deploy and publish v0.1.8, update controls/install documentation and verify public installation.
 
 The P-series checkboxes below describe complete target modules. Initial implementations above do not imply those broader acceptance criteria are finished.
 
@@ -73,7 +82,7 @@ The P-series checkboxes below describe complete target modules. Initial implemen
 - [ ] P302 Implement calendar summaries, local/imported calendars and scoped notification forwarding (M14).
 - [ ] P303 Implement configured service checks, home automation adapter and action allowlist (M15).
 - [ ] P304 Implement native Windows media sessions for Spotify/other compatible players (M16).
-- [ ] P305 Implement optional account-authorized remote Spotify provider if current API eligibility permits; document any external blocker rather than substituting a mock.
+- [x] P305 Resolve provider choice: owner declined the account/developer API; use the Windows client bridge. No OAuth provider or token-refresh code is included.
 - [ ] P306 Implement on-demand GPS location/time widget with invalid-fix handling (M17).
 - [ ] P307 Implement hub settings access, authenticated remote relay over private network, revocation and stale-command rejection (M08/M09).
 - [ ] P308 Demonstrate remote administration and offline recovery; document extra USB-host requirement for a physically relocated networked TomTom.
@@ -104,4 +113,4 @@ The P-series checkboxes below describe complete target modules. Initial implemen
 
 ## Current handoff
 
-The v0.1.7 application runs on the TomTom, with persistent startup and preserved OpenTom recovery. The Linux hub is installed as a user service on the owner's host. Remaining work starts with real Windows acceptance, physical button/noise validation, portable toolchain packaging and the broader module lifecycle/protocol/editor design. The large feature catalog remains a roadmap, not a completed implementation. Use manual target-device checks for follow-up UI changes; do not add Python test harnesses or scheduled test jobs.
+The v0.1.8 application runs on the TomTom, with persistent startup and preserved OpenTom recovery. The Linux hub is installed as a user service on the owner's host. Remaining work starts with real Windows acceptance, physical button/noise validation, portable toolchain packaging and the broader module lifecycle/protocol/editor design. The large feature catalog remains a roadmap, not a completed implementation. Use manual target-device checks for follow-up UI changes; do not add Python test harnesses or scheduled test jobs.

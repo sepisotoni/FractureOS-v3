@@ -19,6 +19,7 @@
 #include <sys/un.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/reboot.h>
 #include <linux/fb.h>
 #include <linux/input.h>
 #ifdef __arm__
@@ -30,13 +31,13 @@
 #endif
 #endif
 #ifndef FRACTURE_VERSION
-#define FRACTURE_VERSION "0.1.7"
+#define FRACTURE_VERSION "0.1.8"
 #endif
 #define W 320
 #define H 240
 #define SOCK "/tmp/fracture-v3.sock"
-typedef struct {int offset,brightness,profile,theme,alarm_hour,alarm_minute,last_alarm_day;char face[32],theme_name[32];} Settings;
-static Settings cfg={0,30,0,0,-1,0,-1,"nunito","teal"};
+typedef struct {int offset,brightness,profile,theme,alarm_hour,alarm_minute,last_alarm_day;char face[32],theme_name[32];int hold_indicator;} Settings;
+static Settings cfg={0,30,0,0,-1,0,-1,"nunito","teal",1};
 static const char *config_path="/mnt/sdcard/fracture-v3/settings.cfg";
 static const char *assets_path="/mnt/sdcard/fracture-v3/faces";
 static const char *profiles[]={"minimal","desk","bedside"};
@@ -49,11 +50,11 @@ static struct fb_fix_screeninfo fix;
 static struct fb_var_screeninfo var;
 static volatile sig_atomic_t running=1;
 static int menu=0,selected=0,alert=0,touch_down=0,touch_held=0;
-static int cpu=-1,ram=-1,dirty=1,frame_count=0;
-static double timer_end=0,watch_start=0,stats_at=0,touch_at=0,tap_due=0,power_due=0;
+static int cpu=-1,ram=-1,disk_usage=-1,net_down=-1,net_up=-1,dirty=1,frame_count=0;
+static double timer_end=0,watch_start=0,watch_elapsed=0,stats_at=0,touch_at=0,tap_due=0,power_due=0;
 static unsigned int last_button=0;
 static time_t wall_override=0;
-static const char *items[]={"Clock","Desk view","Bedside","Timer / 25 min","Timer / 5 min","Stopwatch","Brightness","Time zone","Daily alarm","Back"};
+
 
 /* Five-column fallback glyphs, available if the UI atlas is missing. */
 static const unsigned char font[][5]={
@@ -89,9 +90,7 @@ static void text(int x,int y,const char *s,int scale,uint16_t color){int i,j,k;
  else if(c=='%'){rect(x,y,scale,scale,color);rect(x+4*scale,y+6*scale,scale,scale,color);for(k=0;k<5;k++)rect(x+k*scale,y+(5-k)*scale,scale,scale,color);}
  }}
 static void center(int y,const char *s,int scale,uint16_t color){text(ui_font?(W-ui_width(s,scale))/2:(W-(int)strlen(s)*6*scale+scale)/2,y,s,scale,color);}
-static void digit(int x,int y,int n,uint16_t color){static const unsigned char segments[]={63,6,91,79,102,109,125,7,127,111};unsigned char b=segments[n];
- if(b&1)rect(x+7,y,36,6,color);if(b&2)rect(x+44,y+7,6,32,color);if(b&4)rect(x+44,y+47,6,32,color);
- if(b&8)rect(x+7,y+80,36,6,color);if(b&16)rect(x,y+47,6,32,color);if(b&32)rect(x,y+7,6,32,color);if(b&64)rect(x+7,y+40,36,6,color);}
+static void text_fit(int x,int y,const char *s,int width,int scale,uint16_t color){char out[160];size_t n;snprintf(out,sizeof out,"%s",s);if(ui_font){while(scale>1&&ui_width(out,scale)>width)scale--;n=strlen(out);while(n&&ui_width(out,scale)>width)out[--n]=0;if(n<strlen(s)&&n>2){out[n-1]='.';out[n-2]='.';}}else{n=strlen(out);while(n&&(int)n*6*scale>width)out[--n]=0;}text(x,y,out,scale,color);}
 
 #include "themes.h"
 #include "faces.h"
@@ -99,7 +98,7 @@ static void localtime_now(struct tm *out){time_t t=(wall_override?wall_override:
 static int save(void){char tmp[512];FILE *f;int ok;
  if(strlen(config_path)>470)return -1;snprintf(tmp,sizeof tmp,"%s.new",config_path);
  f=fopen(tmp,"w");if(!f)return -1;
- fprintf(f,"version=1\noffset=%d\nbrightness=%d\nprofile=%d\ntheme=%d\nalarm_hour=%d\nalarm_minute=%d\nlast_alarm_day=%d\nface=%s\ntheme_name=%s\n",cfg.offset,cfg.brightness,cfg.profile,cfg.theme,cfg.alarm_hour,cfg.alarm_minute,cfg.last_alarm_day,cfg.face,cfg.theme_name);
+ fprintf(f,"version=1\noffset=%d\nbrightness=%d\nprofile=%d\ntheme=%d\nalarm_hour=%d\nalarm_minute=%d\nlast_alarm_day=%d\nface=%s\ntheme_name=%s\nhold_indicator=%d\n",cfg.offset,cfg.brightness,cfg.profile,cfg.theme,cfg.alarm_hour,cfg.alarm_minute,cfg.last_alarm_day,cfg.face,cfg.theme_name,cfg.hold_indicator);
  ok=fflush(f)==0 && fsync(fileno(f))==0;if(fclose(f))ok=0;
  if(!ok || rename(tmp,config_path)){unlink(tmp);return -1;}return 0;}
 static void load(void){char line[128],key[40];int n;FILE *f=fopen(config_path,"r");if(!f)return;
@@ -110,6 +109,7 @@ static void load(void){char line[128],key[40];int n;FILE *f=fopen(config_path,"r
  else if(!strcmp(key,"theme")&&n>=0&&n<3){cfg.theme=n;strcpy(cfg.theme_name,themes[n]);}
  else if(!strcmp(key,"alarm_hour")&&n>=-1&&n<24)cfg.alarm_hour=n;
  else if(!strcmp(key,"alarm_minute")&&n>=0&&n<60)cfg.alarm_minute=n;
+ else if(!strcmp(key,"hold_indicator")&&n>=0&&n<=1)cfg.hold_indicator=n;
  else if(!strcmp(key,"last_alarm_day"))cfg.last_alarm_day=n;}}
  fclose(f);}
 static void brightness(void){
@@ -117,28 +117,18 @@ static void brightness(void){
  if(light>=0)ioctl(light,IOW_BACKLIGHT_UPDATE,cfg.profile==2?5:cfg.brightness);
 #endif
 }
-static void render(void){char s[96];int i,start,details=(timer_end>0||watch_start>0||cfg.profile==1||cfg.alarm_hour>=0);struct tm t;double now=mono();uint16_t bg=theme_color(theme.background),fg=theme_color(theme.foreground),muted=theme_color(theme.muted),accent;
- accent=theme_color(theme.accent);
- if(cfg.profile==2)bg=0;
+#include "media.h"
+#include "navigation.h"
+#include "power.h"
+static void render(void){char s[64];int rows,height;struct tm t;uint16_t bg=theme_color(theme.background),fg=theme_color(theme.foreground),muted=theme_color(theme.muted),accent=theme_color(theme.accent);
  rect(0,0,W,H,bg);localtime_now(&t);
- if(alert){center(50,alert==2?"DAILY ALARM":"TIME IS UP",3,accent);center(130,"TAP TO DISMISS",2,fg);center(200,"SILENT VISUAL ALERT",1,muted);return;}
- if(menu){text(20,8,"Apps",3,fg);start=(selected/5)*5;
- {double progress=menu_anim_start?(now-menu_anim_start)/0.18:1;int y;if(progress>1)progress=1;if(progress<0)progress=0;progress=1-(1-progress)*(1-progress);y=(int)(menu_anim_from+(menu_anim_to-menu_anim_from)*progress);if(!menu_anim_start)y=49+(selected%5)*30-5;rounded(12,y,296,28,11,theme_color(theme.surface));}
- for(i=start;i<start+5&&i<10;i++){int y=49+(i-start)*30;uint16_t surface=i==selected?theme_color(theme.surface):bg;icon(23,y-3,i,accent,surface);text(57,y-4,items[i],2,i==selected?fg:muted);}
- center(219,"Tap to browse / power to select",1,muted);return;}
- if(face_ready&&t.tm_year>=120){face_draw(&t);if(details){face_fit(184);rect(24,192,272,1,theme_color(theme.surface));}goto footer;}
- text(20,18,cfg.profile==2?"BEDSIDE":"FRACTURE",1,accent);
- text(218,18,cfg.profile==1&&now-stats_at<10?"HUB LIVE":"LOCAL CLOCK",1,muted);
- if(t.tm_year<120){center(75,"SET TIME",4,accent);center(125,"CONNECT HUB OR USE CLI",1,fg);}
- else{digit(35,64,t.tm_hour/10,fg);digit(94,64,t.tm_hour%10,fg);rect(153,87,7,7,accent);rect(153,122,7,7,accent);digit(172,64,t.tm_min/10,fg);digit(231,64,t.tm_min%10,fg);}
- strftime(s,sizeof s,"%a  %d %b %Y",&t);center(170,s,2,muted);
- footer:
- if(timer_end>0){rect(0,200,W,40,bg);int remaining=(int)(timer_end-now+0.999);if(remaining<0)remaining=0;snprintf(s,sizeof s,"%02d:%02d",remaining/60,remaining%60);icon(70,205,3,accent,bg);text(105,202,s,2,fg);}
- else if(watch_start>0){rect(0,200,W,40,bg);int elapsed=(int)(now-watch_start);snprintf(s,sizeof s,"%02d:%02d",elapsed/60,elapsed%60);icon(70,205,5,accent,bg);text(105,202,s,2,fg);}
- else if(cfg.profile==1){rect(0,200,W,40,bg);icon(30,205,1,accent,bg);icon(180,205,10,accent,bg);if(now-stats_at<10){snprintf(s,sizeof s,"%d%%",cpu);text(65,202,s,2,fg);snprintf(s,sizeof s,"%d%%",ram);text(215,202,s,2,fg);}else{ text(65,205,"--",2,muted);text(215,205,"--",2,muted);}}
-
- else if(cfg.alarm_hour>=0){rect(0,205,W,35,bg);snprintf(s,sizeof s,"VISUAL ALARM %02d:%02d",cfg.alarm_hour,cfg.alarm_minute);center(211,s,1,accent);}
- else if(!face_ready){snprintf(s,sizeof s,"UTC%c%02d:%02d   POWER: MENU",cfg.offset<0?'-':'+',abs(cfg.offset)/60,abs(cfg.offset)%60);center(211,s,1,muted);}}
+ if(alert){center(50,alert==2?"DAILY ALARM":"TIME IS UP",3,accent);center(130,"TAP TO DISMISS",2,fg);center(200,"SILENT VISUAL ALERT",1,muted);power_draw();return;}
+ if(menu){navigation_draw();power_draw();return;}
+ rows=status_rows();height=H-(rows?rows*27+12:0);
+ if(face_ready&&t.tm_year>=120){if(height==H)face_draw(&t);else face_draw_height(&t,height);}
+ else if(t.tm_year<120){center(65,"SET TIME",4,accent);center(120,"CONNECT HUB OR USE CLI",1,fg);}
+ else{strftime(s,sizeof s,"%H:%M",&t);center(60,s,5,fg);strftime(s,sizeof s,"%a %d %b",&t);center(125,s,2,muted);}
+ if(rows)status_draw(height);power_draw();}
 static int ppm(const char *path){FILE *f=fopen(path,"wb");int i;if(!f)return -1;fprintf(f,"P6\n320 240\n255\n");for(i=0;i<W*H;i++){unsigned char v[3];v[0]=((pixels[i]>>11)&31)*255/31;v[1]=((pixels[i]>>5)&63)*255/63;v[2]=(pixels[i]&31)*255/31;fwrite(v,1,3,f);}return fclose(f);}
 static void present(void){int y;if(!mapped)return;
  /* Small full-frame copies on actual redraws avoid stale dirty-row assumptions
@@ -147,19 +137,20 @@ static void present(void){int y;if(!mapped)return;
  if(fix.line_length==W*2&&var.xoffset==0)memcpy(mapped+var.yoffset*fix.line_length,pixels,sizeof pixels);
  else for(y=0;y<H;y++)memcpy(mapped+(y+var.yoffset)*fix.line_length+var.xoffset*2,pixels+y*W,W*2);frame_count++;}
 
-static void choose(void){Settings old=cfg;switch(selected){case 0:cfg.profile=0;break;case 1:cfg.profile=1;break;case 2:cfg.profile=2;break;case 3:timer_end=mono()+1500;break;case 4:timer_end=mono()+300;break;case 5:watch_start=watch_start?0:mono();break;case 6:cfg.brightness=cfg.brightness<30?30:cfg.brightness<60?60:10;break;case 7:cfg.offset+=60;if(cfg.offset>840)cfg.offset=-720;break;case 8:cfg.alarm_hour=cfg.alarm_hour>=0?-1:7;cfg.alarm_minute=0;break;default:break;}
- if(memcmp(&old,&cfg,sizeof cfg)&&save())cfg=old;brightness();menu=0;dirty=1;}
-static void event(const char *kind){int before=selected,was_menu=menu;dirty=1;if(alert){alert=0;return;}if(!strcmp(kind,"home")||!strcmp(kind,"hold")){menu=0;return;}if(!strcmp(kind,"long")){menu=1;selected=6;menu_anim_from=84;menu_anim_to=74;menu_anim_start=mono();return;}if(!strcmp(kind,"power")||!strcmp(kind,"double")){if(menu)choose();else{menu=1;menu_anim_from=54+(selected%5)*30;menu_anim_to=44+(selected%5)*30;menu_anim_start=mono();}return;}if(!strcmp(kind,"tap")){if(menu)selected=(selected+1)%10;else menu=1;menu_anim_from=was_menu?44+(before%5)*30:54+(selected%5)*30;menu_anim_to=44+(selected%5)*30;menu_anim_start=mono();}}
 static int integer(const char *s,int lo,int hi,int *value){char *end;long n;errno=0;n=strtol(s,&end,10);if(errno||end==s||*end||n<lo||n>hi)return 0;*value=(int)n;return 1;}
 static void command(char *line,char *reply,size_t cap){char *name,*a,*b,*extra;int n,m,i;Settings old=cfg;struct tm t;
  name=strtok(line," \r\n");a=strtok(NULL," \r\n");b=strtok(NULL," \r\n");extra=strtok(NULL," \r\n");snprintf(reply,cap,"ERR invalid command\n");if(!name||extra)return;
- if(!strcmp(name,"status")&&!a){localtime_now(&t);snprintf(reply,cap,"{\"version\":\"%s\",\"profile\":\"%s\",\"theme\":\"%s\",\"face\":\"%s\",\"face_loaded\":%s,\"brightness\":%d,\"offset\":%d,\"alarm_hour\":%d,\"alarm_minute\":%d,\"timer_seconds\":%d,\"menu\":%d,\"selection\":%d,\"frames\":%d,\"time_valid\":%s}\n",FRACTURE_VERSION,profiles[cfg.profile],cfg.theme_name,cfg.face,face_ready?"true":"false",cfg.brightness,cfg.offset,cfg.alarm_hour,cfg.alarm_minute,timer_end>mono()?(int)(timer_end-mono()):0,menu,selected,frame_count,t.tm_year>=120?"true":"false");return;}
+ if(media_command(name,a,b)){dirty=1;snprintf(reply,cap,"OK\n");return;}
+ if(!strcmp(name,"status")&&!a){localtime_now(&t);snprintf(reply,cap,"{\"version\":\"%s\",\"profile\":\"%s\",\"theme\":\"%s\",\"face\":\"%s\",\"face_loaded\":%s,\"brightness\":%d,\"offset\":%d,\"alarm_hour\":%d,\"alarm_minute\":%d,\"timer_seconds\":%d,\"menu\":%d,\"selection\":%d,\"frames\":%d,\"time_valid\":%s,\"hold_live\":%s,\"power_down\":%d,\"stopwatch_seconds\":%d,\"stopwatch_running\":%s,\"media_view\":%s,\"media_art_loaded\":%d,\"media_seq\":%u,\"media_action\":\"%s\",\"media_arg\":%d,\"media_pending\":%s}\n",FRACTURE_VERSION,profiles[cfg.profile],cfg.theme_name,cfg.face,face_ready?"true":"false",cfg.brightness,cfg.offset,cfg.alarm_hour,cfg.alarm_minute,timer_end>mono()?(int)(timer_end-mono()):0,menu,selected,frame_count,t.tm_year>=120?"true":"false",power_regs?"true":"false",power_down,(int)(watch_elapsed+(watch_start?mono()-watch_start:0)),watch_start?"true":"false",menu==PAGE_PLAYER||menu==PAGE_MEDIA_MORE||(menu==PAGE_EDIT&&edit_parent==PAGE_PLAYER)?"true":"false",media_art_loaded,media_sequence,media_action,media_argument,media_sequence!=media_ack&&mono()-media_action_at<10?"true":"false");return;}
  if(!strcmp(name,"capture")&&!a){render();present();snprintf(reply,cap,ppm("/tmp/fracture-v3-screen.ppm")?"ERR capture\n":"OK\n");return;}
  if(!strcmp(name,"theme-get")&&!a){theme_json(reply,cap);return;}
  if(!strcmp(name,"theme-reset")&&!a){char path[640];Theme next=theme;theme_path(path,sizeof path,0);if(!theme_read(path,&next))return;theme_path(path,sizeof path,1);if(unlink(path)&&errno!=ENOENT)return;theme=next;dirty=1;snprintf(reply,cap,"OK\n");return;}
  if(!strcmp(name,"face-get")&&!a){if(face_ready)face_json(reply,cap);return;}
  if(!strcmp(name,"face-reset")&&!a){char path[640];face_path(path,sizeof path,1);if(unlink(path)&&errno!=ENOENT)return;if(!face_load())return;dirty=1;snprintf(reply,cap,"OK\n");return;}
  if(!a)return;
+ if(!strcmp(name,"hold-indicator")&&!b&&integer(a,0,1,&n)){cfg.hold_indicator=n;if(save()){cfg=old;return;}dirty=1;snprintf(reply,cap,"OK\n");return;}
+ if(!strcmp(name,"stopwatch")&&!b){if(!strcmp(a,"toggle"))watch_toggle();else if(!strcmp(a,"reset"))watch_start=watch_elapsed=watch_lap=0;else if(!strcmp(a,"lap"))watch_lap=watch_elapsed+(watch_start?mono()-watch_start:0);else return;dirty=1;snprintf(reply,cap,"OK\n");return;}
+
  if(!strcmp(name,"theme-set")&&b){Theme next=theme;if(!theme_field(&next,a,b))return;if(!theme_save(&next)){snprintf(reply,cap,"ERR theme persistence\n");return;}theme=next;dirty=1;snprintf(reply,cap,"OK\n");return;}
  if(!strcmp(name,"theme-save")&&!b){char path[640];FILE *exists;if(!theme_id(a))return;strcpy(cfg.theme_name,a);theme_path(path,sizeof path,1);exists=fopen(path,"r");if(exists){fclose(exists);cfg=old;snprintf(reply,cap,"ERR theme name already exists\n");return;}if(!theme_save(&theme)||save()){cfg=old;return;}dirty=1;snprintf(reply,cap,"OK\n");return;}
  if(!strcmp(name,"face")&&!b){if(strlen(a)>=sizeof cfg.face||!identifier(a))return;strcpy(cfg.face,a);if(!face_load()){cfg=old;return;}if(save()){cfg=old;face_load();return;}dirty=1;snprintf(reply,cap,"OK\n");return;}
@@ -174,8 +165,9 @@ static void command(char *line,char *reply,size_t cap){char *name,*a,*b,*extra;i
  else if(!strcmp(name,"timer")&&!b&&integer(a,0,86400,&n)){timer_end=n?mono()+n:0;alert=0;}
  else if(!strcmp(name,"alarm")&&!b&&!strcmp(a,"off"))cfg.alarm_hour=-1;
  else if(!strcmp(name,"alarm")&&b&&integer(a,0,23,&n)&&integer(b,0,59,&m)){cfg.alarm_hour=n;cfg.alarm_minute=m;}
+ else if(!strcmp(name,"stats-extra")&&a&&b&&integer(a,-1,100,&n)){char extra;int down,up;if(sscanf(b,"%d,%d%c",&down,&up,&extra)!=2||down< -1||up< -1)return;disk_usage=n;net_down=down;net_up=up;}
  else if(!strcmp(name,"stats")&&b&&integer(a,0,100,&n)&&integer(b,0,100,&m)){cpu=n;ram=m;stats_at=mono();}
- else if(!strcmp(name,"event")&&!b){if(strcmp(a,"tap")&&strcmp(a,"double")&&strcmp(a,"hold")&&strcmp(a,"power")&&strcmp(a,"long")&&strcmp(a,"home"))return;event(a);}
+ else if(!strcmp(name,"event")&&!b){if(strcmp(a,"tap")&&strcmp(a,"double")&&strcmp(a,"hold")&&strcmp(a,"power")&&strcmp(a,"long")&&strcmp(a,"home")&&strcmp(a,"back"))return;event(a);}
  else if(!strcmp(name,"time")&&!b&&integer(a,1700000000,2147483647,&n)){struct timeval tv;tv.tv_sec=n;tv.tv_usec=0;if(settimeofday(&tv,NULL)){snprintf(reply,cap,"ERR time unavailable\n");return;}}
  else return;
  if(memcmp(&old,&cfg,sizeof cfg)&&save()){cfg=old;theme_load();snprintf(reply,cap,"ERR settings persistence\n");return;}brightness();dirty=1;snprintf(reply,cap,"OK\n");}
@@ -192,9 +184,7 @@ static void inputs(double now){struct input_event e;ssize_t n;
  if(down==1&&!touch_down){touch_down=1;touch_at=now;touch_held=0;}else if(down==0&&touch_down){touch_down=0;if(!touch_held&&now-touch_at>=0.06){if(tap_due&&now<tap_due){tap_due=0;event("double");}else tap_due=now+0.32;}}}
  if(touch_down&&!touch_held&&now-touch_at>=0.7){touch_held=1;tap_due=0;event("hold");}
  if(tap_due&&now>=tap_due){tap_due=0;event("tap");}
-#ifdef __arm__
- if(gpio>=0){GPIO_BUTTON_EVENT b;if(ioctl(gpio,IOR_BUTTON_EVENT,&b)==0&&b.sequence!=last_button){last_button=b.sequence;if(b.duration_ms!=0xffffffffUL){if(b.duration_ms>=900){power_due=0;event("long");}else if(b.duration_ms>=60){if(power_due&&now<power_due){power_due=0;event("home");}else power_due=now+0.32;}}}}
-#endif
+ power_poll(now);
  if(power_due&&now>=power_due){power_due=0;event("power");}}
 static int daemon_run(int seconds){struct sockaddr_un addr;struct pollfd p[2];double start=mono(),last_tick=-1;int count,client;char line[256],reply[2048];FILE *pid;struct tm t;
  lockfd=open("/tmp/fracture-v3.lock",O_CREAT|O_RDWR,0600);if(lockfd<0||flock(lockfd,LOCK_EX|LOCK_NB)){fprintf(stderr,"Already running\n");return 1;}
@@ -205,19 +195,19 @@ static int daemon_run(int seconds){struct sockaddr_un addr;struct pollfd p[2];do
  gpio=open("/dev/hwstatus",O_RDONLY|O_NONBLOCK);if(gpio>=0){GPIO_BUTTON_EVENT b;if(!ioctl(gpio,IOR_BUTTON_EVENT,&b))last_button=b.sequence;}
  light=open("/dev/pwm",O_RDONLY|O_NONBLOCK);if(light>=0)old_light=ioctl(light,IOR_BACKLIGHT_CURRENT,0);
 #endif
- brightness();signal(SIGTERM,stop);signal(SIGINT,stop);signal(SIGPIPE,SIG_IGN);pid=fopen("/tmp/fracture-v3.pid","w");if(pid){fprintf(pid,"%ld\n",(long)getpid());fclose(pid);}
+ power_open();brightness();signal(SIGTERM,stop);signal(SIGINT,stop);signal(SIGPIPE,SIG_IGN);pid=fopen("/tmp/fracture-v3.pid","w");if(pid){fprintf(pid,"%ld\n",(long)getpid());fclose(pid);}
  fprintf(stderr,"FractureOS %s running\n",FRACTURE_VERSION);
- while(running){double now=mono();if(seconds>0&&now-start>=seconds)break;inputs(now);if(menu_anim_start){dirty=1;if(now-menu_anim_start>=0.18)menu_anim_start=0;}
+ while(running){double now=mono();if(seconds>0&&now-start>=seconds)break;inputs(now);if(notice_until&&now>=notice_until){notice_until=0;notification[0]=0;dirty=1;}if(media_at&&now-media_at>=20){media_at=0;media_release_art();dirty=1;}if(menu_anim_start){dirty=1;if(now-menu_anim_start>=0.18)menu_anim_start=0;}
  if(timer_end&&now>=timer_end){timer_end=0;alert=1;dirty=1;}
  localtime_now(&t);if(t.tm_year>=120&&cfg.alarm_hour==t.tm_hour&&cfg.alarm_minute==t.tm_min&&cfg.last_alarm_day!=(t.tm_year*366+t.tm_yday)){cfg.last_alarm_day=t.tm_year*366+t.tm_yday;if(!save()){alert=2;dirty=1;}}
- {double tick=(timer_end||watch_start||cfg.profile==1||(face_ready&&!menu&&!alert&&(face.show_seconds||(face.colon&&face.blink&&!(face.hour_only&&t.tm_min==0)))))?(double)time(NULL):(double)(time(NULL)/60);if(tick!=last_tick){dirty=1;last_tick=tick;}}
+ {double tick=(timer_end||watch_start||cfg.profile==1||menu==PAGE_PLAYER||(face_ready&&!menu&&!alert&&(face.show_seconds||(face.colon&&face.blink&&!(face.hour_only&&t.tm_min==0)))))?(double)time(NULL):(double)(time(NULL)/60);if(tick!=last_tick){dirty=1;last_tick=tick;}}
  if(dirty){render();present();dirty=0;}
  p[0].fd=listener;p[0].events=POLLIN;p[0].revents=0;p[1].fd=input;p[1].events=POLLIN;p[1].revents=0;count=poll(p,2,50);if(count>0&&(p[0].revents&POLLIN)){client=accept(listener,NULL,NULL);if(client>=0){struct timeval timeout={1,0};size_t used=0;ssize_t got;setsockopt(client,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof timeout);setsockopt(client,SOL_SOCKET,SO_SNDTIMEO,&timeout,sizeof timeout);
  while(used+1<sizeof line){got=read(client,line+used,1);if(got!=1)break;if(line[used++]=='\n')break;}line[used]=0;if(used&&line[used-1]=='\n'){command(line,reply,sizeof reply);if(write(client,reply,strlen(reply))<0)dirty=1;}close(client);}}}
 #ifdef __arm__
  if(light>=0&&old_light>=0)ioctl(light,IOW_BACKLIGHT_UPDATE,old_light);
 #endif
- if(mapped)munmap(mapped,mapped_size);if(fb>=0)close(fb);if(input>=0)close(input);if(gpio>=0)close(gpio);if(light>=0)close(light);close(listener);unlink(SOCK);unlink("/tmp/fracture-v3.pid");close(lockfd);return 0;}
+ if(power_regs)munmap((void*)power_regs,4096);media_release_art();if(mapped)munmap(mapped,mapped_size);if(fb>=0)close(fb);if(input>=0)close(input);if(gpio>=0)close(gpio);if(light>=0)close(light);close(listener);unlink(SOCK);unlink("/tmp/fracture-v3.pid");close(lockfd);return 0;}
 int main(int argc,char **argv){int i,seconds=0;char asset_directory[640];const char *preview=NULL,*snapshot=NULL,*slash=strrchr(argv[0],'/');
  if(slash){snprintf(asset_directory,sizeof asset_directory,"%.*s/faces",(int)(slash-argv[0]),argv[0]);assets_path=asset_directory;}
  if(argc>1&&!strcmp(argv[1],"ctl")){alarm(5);return control(argc-2,argv+2);}

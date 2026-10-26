@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verified deployment of the 0.1.7 application environment, not firmware flashing."""
+"""Verified deployment of the 0.1.8 application environment, not firmware flashing."""
 import argparse
 import datetime
 import hashlib
@@ -14,7 +14,7 @@ from tomtom import TomTom
 
 ROOT = '/mnt/sdcard/fracture-v3'
 START = '/mnt/sdcard/opentom/start.sh'
-VERSION = 'v0.1.7'
+VERSION = 'v0.1.8'
 
 
 def control(device, cmd):
@@ -63,6 +63,7 @@ def main():
         identity = device.checked('uname -m; uname -r; cat /proc/barcelona/usbname')
         if 'armv5' not in identity or '2.6.13' not in identity or 'ONE (v6)' not in identity:
             raise RuntimeError('This device release supports the validated OpenTom ONE (v6), Linux 2.6.13 only: ' + identity)
+        previous_current = device.command('cat '+ROOT+'/current 2>/dev/null')[1].strip()
         # A new private backup directory on the modern host, outside public files.
         backup = args.evidence or (Path.home() / '.local/share/fracture-v3/backups' / (datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + secrets.token_hex(3)))
         backup.mkdir(parents=True, mode=0o700, exist_ok=False)
@@ -141,7 +142,7 @@ def main():
             # If there is a stopped/restored old v3 supervisor, its PID may now run
             # OpenTom. Start a fresh v3 wrapper only when there is no active clock.
             code,out = device.command('/bin/sh '+ROOT+'/control.sh status')
-            if code == 0 and json.loads(out).get('version') != VERSION[1:]:
+            if code == 0 and (json.loads(out).get('version') != VERSION[1:] or previous_current != VERSION):
                 device.checked('kill $(cat /tmp/fracture-v3.pid)')
             elif code:
                 device.checked('sh '+ROOT+'/boot.sh </dev/null >/tmp/fracture-v3.log 2>&1 &')

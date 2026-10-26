@@ -3,7 +3,7 @@
 import hashlib,json,os,shutil,subprocess,tarfile,zipfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parent.parent
-VERSION='v0.1.7'
+VERSION='v0.1.8'
 OUT=ROOT/'build/release'
 OUT.mkdir(parents=True,exist_ok=True)
 subprocess.run(['sh','tools/build-device.sh'],cwd=ROOT,check=True)

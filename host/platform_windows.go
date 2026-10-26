@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -35,7 +36,7 @@ func deviceManagement(_ []string) error {
 	return errors.New("run fracture device install on the Linux machine physically connected to the TomTom")
 }
 func metricsWorker() error {
-	return errors.New("Windows resource collection is not included in 0.1.7; Linux hub metrics are available")
+	return errors.New("Windows resource collection is not included in 0.1.8; Linux hub metrics are available")
 }
 func platformUninstall() error {
 	exe, e := os.Executable()
@@ -78,6 +79,10 @@ type notify struct {
 }
 
 func platformTray() error {
+	mediaContext, stopMedia := context.WithCancel(context.Background())
+	mediaDone := make(chan struct{})
+	defer func() { stopMedia(); <-mediaDone }()
+	go func() { defer close(mediaDone); localMediaSupervisor(mediaContext) }()
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	mutex, _, last := kernel32.NewProc("CreateMutexW").Call(0, 0, uintptr(unsafe.Pointer(wide("Local\\FractureOS-v3-tray"))))

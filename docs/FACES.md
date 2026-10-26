@@ -20,18 +20,19 @@ A `.face` file is a bounded key=value document referencing one PGM atlas in the 
 | `hour_only` | `1`: during minute 00 show two centered large hour digits; at minute 01 restore the full selected layout |
 | `colon`, `blink` | 0/1; blink changes the colon once per second, hidden for hour-only display |
 | `colon_x`, `colon_y`, `colon_gap`, `colon_size` | Position, vertical spacing and square size |
-| `show_date`, `show_ampm` | 0/1 |
+| `show_date`, `show_ampm`, `show_seconds` | 0/1 |
+| `weight` | 0–2 pixel digit expansion; omitted defaults to 1 |
 | `date_x`, `date_y`, `date_scale` | Position and integer bitmap text scale 1–4 |
 
 Named layout changes intentionally replace the digit positions; later individual rectangle edits customize those positions. Supplied files serialize layout before digit rectangles so saved positions take precedence. `face-reset` removes the current user override and reloads the supplied design. Editing a field validates it before an atomic save; the UI applies changed fields individually, not as one multi-field transaction.
 
-Release assets live in `/mnt/sdcard/fracture-v3/releases/vVERSION/faces`. User overrides live in `/mnt/sdcard/fracture-v3/faces`; selection is in `settings.cfg`. Missing/invalid artwork falls back to the built-in seven-segment clock. Atlas failure during selection preserves the previous working face.
+Release assets live in `/mnt/sdcard/fracture-v3/releases/vVERSION/faces`. User overrides live in `/mnt/sdcard/fracture-v3/faces`; selection is in `settings.cfg`. Missing/invalid artwork falls back to the built-in text clock. Atlas failure during selection preserves the previous working face.
 
 Host Settings supports face selection, explicit layout/behavior controls, field editing and JSON import/export. The JSON contains settings, not embedded bitmap files. New artwork is currently a developer packaging task; uploading arbitrary assets and drag-and-drop widget editing are future work.
 
 ## Extra information and themes
 
-When a countdown, stopwatch, Desk metrics or daily-alarm indicator is visible, the complete face composition fits into the top 184 pixels at its original aspect ratio. A separate information band occupies the bottom of the display. This applies to all nine presets, custom layouts and hour-only mode. The full-screen composition returns when the information is dismissed. Fitting uses one temporary 640-byte scanline on the stack, not another persistent framebuffer.
+The dynamic status bar adds rows for active timers/stopwatch/alarm, two rows of icon-based hub metrics, media and a transient notification. Digit rectangles are projected directly into the remaining clock area at their original aspect ratio. Date and seconds are rendered afterward at a readable text size, never post-scaled with the framebuffer. Compact clocks reserve space above the digits for the date. No second framebuffer is allocated.
 
 UI themes are independent `.theme` data files in `assets/themes`. Each contains `background`, `foreground`, `muted`, `accent`, `surface`, `hour_color`, `minute_color` (six RGB hex digits each), plus `face_colors=0` or `1`. By default faces retain their own palettes; enabling `face_colors` applies theme background/hour/minute colors to them too. Bedside mode dims selected colors.
 

@@ -115,6 +115,8 @@ func metricsWorker() error {
 	if e != nil {
 		return e
 	}
+	previousNet := map[string][2]uint64{}
+	netAt := time.Now()
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -140,6 +142,90 @@ func metricsWorker() error {
 				continue
 			}
 			_, _ = hubCall(c, fmt.Sprintf("stats %d %d", usage, memory))
+			disk := -1
+			mount := c.MetricsDisk
+			if mount == "" {
+				mount = "/"
+			}
+			var fs syscall.Statfs_t
+			if syscall.Statfs(mount, &fs) == nil && fs.Blocks > 0 {
+				disk = int((fs.Blocks - fs.Bfree) * 100 / fs.Blocks)
+			}
+			samples, err := networkSample(c.MetricsInterface)
+			down, up := -1, -1
+			now := time.Now()
+			if err == nil {
+				var rx, tx uint64
+				valid := false
+				for name, n := range samples {
+					if old, ok := previousNet[name]; ok && n[0] >= old[0] && n[1] >= old[1] {
+						rx += n[0] - old[0]
+						tx += n[1] - old[1]
+						valid = true
+					}
+				}
+				if valid {
+					rate := func(v uint64) int {
+						r := float64(v) / 1024 / now.Sub(netAt).Seconds()
+						if r > 2147483647 {
+							r = 2147483647
+						}
+						return int(r)
+					}
+					down = rate(rx)
+					up = rate(tx)
+				}
+			}
+			previousNet = samples
+			netAt = now
+			_, _ = hubCall(c, fmt.Sprintf("stats-extra %d %d,%d", disk, down, up))
 		}
 	}
 }
+
+// Default-route interfaces avoid counting the same bytes again on container
+// bridges and the TomTom USB management link. An explicit interface is optional.
+func networkSample(selected string) (map[string][2]uint64, error) {
+	interfaces := map[string]bool{}
+	if selected != "" {
+		interfaces[selected] = true
+	} else {
+		b, e := os.ReadFile("/proc/net/route")
+		if e != nil {
+			return nil, e
+		}
+		for _, line := range strings.Split(string(b), "\n") {
+			f := strings.Fields(line)
+			if len(f) >= 4 && f[1] == "00000000" {
+				flags, _ := strconv.ParseUint(f[3], 16, 32)
+				if flags&1 != 0 {
+					interfaces[f[0]] = true
+				}
+			}
+		}
+	}
+	b, e := os.ReadFile("/proc/net/dev")
+	if e != nil {
+		return nil, e
+	}
+	out := map[string][2]uint64{}
+	for _, line := range strings.Split(string(b), "\n") {
+		name, rest, ok := strings.Cut(line, ":")
+		name = strings.TrimSpace(name)
+		if !ok || !interfaces[name] {
+			continue
+		}
+		f := strings.Fields(rest)
+		if len(f) < 9 {
+			continue
+		}
+		rx, e1 := strconv.ParseUint(f[0], 10, 64)
+		tx, e2 := strconv.ParseUint(f[8], 10, 64)
+		if e1 == nil && e2 == nil {
+			out[name] = [2]uint64{rx, tx}
+		}
+	}
+	return out, nil
+}
+
+func localMediaWorker() error { return errors.New("Spotify client sharing runs on Windows") }

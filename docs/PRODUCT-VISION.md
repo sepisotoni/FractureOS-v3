@@ -85,7 +85,7 @@ Profiles can be switched manually from the device menu or automatically by sched
 
 ### Media and audio experiments
 
-- Spotify and other compatible Windows players expose status through an optional native Windows media-session worker. Remote account-based Spotify support is a separate official API adapter gated on current access and authorization requirements.
+- Spotify and other compatible Windows players expose status through an optional native Windows media-session worker. The owner chose direct Windows-client integration without Spotify developer credentials; no account-based provider is included.
 - Playback controls may be considered through a supported integration, with only the currently selected media module active.
 - Audio forwarding from Windows to the TomTom is an experiment, not a baseline promise. It needs measured bandwidth, codec, latency, audio output, and reconnect tests before inclusion; the device's age and USB/network path may make it impractical.
 - Keep all media integration disabled until configured and requested by a face or action.

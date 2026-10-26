@@ -1,3 +1,16 @@
+# v0.1.8 validation — 2026-10-26
+
+- Hierarchical menu paths, custom timer editing, stopwatch pause/resume/reset, navigation back/home, player selection and an explicit volume editor were manually exercised on the real TomTom. The owner confirmed the physical colored indicator and 1.5s Back / 3s Home gestures. Longer suspend, reboot and shutdown actions were deliberately not executed; wake/recovery remains unverified.
+- Date and seconds now render at final size, digits default to one pixel thicker, and compact clocks reserve date space. Actual framebuffer captures were inspected for the clock, timer presets/custom editor, stopwatch, media and an expanded status area. All nine faces were exercised with additional status data in this revision.
+- Live hub metrics showed CPU 3%, RAM 54%, root filesystem 39%, and download/upload 4/13 KiB/s in one capture. These are illustrative live samples, not fixed values. The optional collector was present while enabled/Desk-visible and absent four seconds after opening the menu. The user's prior enablement was restored after the check; hub metrics were then enabled for the requested live Desk display.
+- The device app measured **936 KiB RSS** after manual navigation/media checks. The 18,432-byte artwork buffer became resident in the player and was freed on exit. No persistent second framebuffer or device font engine was introduced.
+- `/api/media` returned 401 without authentication and 400 for invalid artwork or timeline bounds. An authenticated, explicitly labeled local fixture traversed the real TLS hub → USB → device path, including artwork. Play and volume requests were queued/acknowledged correctly; selecting volume 35 and incrementing produced a request for 40. This verifies transport and UI, **not Windows Spotify playback**.
+- Settings JavaScript parsed successfully; the settings endpoint rejected a missing session token and redacted saved credentials. Existing Go unit checks and Linux vet passed. The existing C core check was adjusted to the new menu semantics and passed. No new test files or recurring test jobs were created.
+- Linux amd64/arm64 and Windows amd64/arm64 binaries cross-compiled. Windows media uses native WinRT/Core Audio and no Spotify developer API. Four Windows vet diagnostics flag intentional foreign COM/HSTRING/buffer pointer conversions; ownership/bounds were reviewed, but a real Windows session is still needed to validate the ABI, artwork, controls, worker shutdown and volume behavior.
+- Final device deployment verified payloads by SHA-256 readback and preserved the user's current face, theme, brightness and offset. The bootloader/kernel remained unchanged. The Linux v0.1.8 host service was installed and reported active. The public installer verification is recorded after publication.
+
+## Earlier v0.1.7 evidence
+
 # v0.1.7 release validation — 2026-10-26
 
 This is an initial application release on the owner's ONE (v6), not a new kernel or a completed implementation of all planned modules. Evidence backups and raw captures remain in the ignored `artifacts/` directory and the host's private backup directory. Only selected UI screenshots and summaries are published.

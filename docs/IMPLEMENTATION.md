@@ -1,3 +1,11 @@
+# v0.1.8 additions
+
+The C app now uses small header modules for page navigation, read-only button sampling/power actions, and bounded media/status state. CPU/RAM symbols, filesystem usage and default-route network rates share the optional Linux collector. The Windows media worker uses native WinRT COM interfaces on a dedicated MTA thread and Windows Core Audio output-volume stepping. It posts updates to `/api/media` through the same pinned TLS/bearer channel; no Spotify developer API remains. Artwork is a fixed 96×96 RGB565 buffer allocated only on the player screen and freed when leaving it. Media becomes stale after 20 seconds and actions expire after 10 seconds. The Windows tray checks enabled demand every three seconds; active media polling is every two seconds. Disabled sharing makes no media API calls and launches no worker.
+
+The live button indicator uses a read-only GPIO page mapping only after matching model 19 (Casablanca) and CPU 4 (S3C2412). GPF0 input is active low, at physical 0x56000054; its configuration must be input/EINT. No GPIO register is written. Other hardware falls back to completed-release ioctl durations without a live indicator. SDK sources: `tomtomgo-iocasablanca-*.h`, `tomtomgo-type.c`, `regs-gpio.h`. Suspend writes `mem` to `/sys/power/state`; restart/shutdown use the kernel reboot API. These power actions were not executed during validation.
+
+Windows media ABI reference: [Microsoft Windows SDK generated bindings](https://github.com/microsoft/windows-rs/tree/master/crates/libs/windows/src/Windows/Media/Control), [media-session usage](https://devblogs.microsoft.com/oldnewthing/20231108-00/?p=108980), [Core Audio endpoint volume](https://learn.microsoft.com/en-us/windows/win32/api/endpointvolume/nn-endpointvolume-iaudioendpointvolume). The four Windows vet unsafe-pointer diagnostics occur at foreign COM vtable/HSTRING/buffer addresses. Their ownership and bounds were reviewed; cross-compilation cannot establish runtime ABI correctness. A real Windows check remains required.
+
 # v0.1.7 implementation
 
 This describes the code that exists. ARCHITECTURE.md and MODULES.md describe the broader target design; their full registry, wire protocol, face composition model and signed updater are not implemented yet.

@@ -102,11 +102,11 @@ Actions use ID + validated arguments + target + expiry; programs are configured 
 
 ## M16 — Now playing / Spotify
 
-**Owner:** Go Windows media worker, optional independent Go hub Spotify provider. Prefer [Windows Global System Media Transport Controls](https://devblogs.microsoft.com/oldnewthing/20231108-00/?p=108980) for compatible local Spotify and other players: title, artist, state, timeline, artwork and supported play/pause/next/previous controls. It is designed for companion-device scenarios. Downsample artwork on host; interpolate progress locally between timeline events; no constant artwork fetch.
+**Owner:** Go Windows media worker, with authenticated hub forwarding. Prefer [Windows Global System Media Transport Controls](https://devblogs.microsoft.com/oldnewthing/20231108-00/?p=108980) for compatible local Spotify and other players: title, artist, state, timeline, artwork and supported play/pause/next/previous controls. It is designed for companion-device scenarios. Downsample artwork on host; interpolate progress locally between timeline events; no constant artwork fetch.
 
-Remote/account Spotify support uses official Web API authorization only if current access/account rules permit; implement PKCE/token refresh on host and scope only needed features. Verify current rules before implementation; no assumption that development API access or Premium capabilities are universally available. The Web Playback SDK from the original README is not the default path and is not a TomTom decoder.
+The owner explicitly chose the Spotify client on Windows instead of developer/API credentials. No remote-account OAuth provider is planned for this revision. Metadata/control come from Windows media sessions, with no Spotify login stored by FractureOS. Windows default-output volume is separate from Spotify playback controls.
 
-**Acceptance:** real Windows Spotify session reports metadata, controls reflect supported capabilities, player exit clears state, switching sources cancels prior subscription, disabling removes worker/token refresh. API refusal is reported as unavailable; do not bypass content protection. Media status requires no device audio streaming.
+**Acceptance:** real Windows Spotify session reports metadata, controls reflect supported capabilities, player exit clears state, switching sources cancels prior subscription, disabling removes the worker. Unsupported client controls is reported as unavailable; do not bypass content protection. Media status requires no device audio streaming.
 
 ## M17 — GPS / travel information
 

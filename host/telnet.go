@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -134,4 +136,56 @@ func deviceCommand(address, command string) (string, error) {
 	out, err := t.command(cmd.String())
 	_, _ = c.Write([]byte("exit\r\n"))
 	return out, err
+}
+
+// Artwork is a fixed 18 KiB RGB565 image, served once over the trusted USB hop.
+// Nothing supplied by Spotify is interpolated into the shell command.
+func uploadMediaArt(address string, data []byte) error {
+	if len(data) != 18432 {
+		return fmt.Errorf("invalid artwork size")
+	}
+	c, err := net.DialTimeout("tcp", net.JoinHostPort(address, "23"), 3*time.Second)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	_ = c.SetDeadline(time.Now().Add(12 * time.Second))
+	t := telnet{c: c}
+	if _, err = t.readUntil(regexp.MustCompile(`login: *$`)); err != nil {
+		return err
+	}
+	if _, err = c.Write([]byte("root\r\n")); err != nil {
+		return err
+	}
+	if _, err = t.readUntil(regexp.MustCompile(`(?m)^# *$`)); err != nil {
+		return err
+	}
+	if _, err = t.command("stty -echo; PS1=''; PS2=''"); err != nil {
+		return err
+	}
+	local := c.LocalAddr().(*net.TCPAddr).IP.String()
+	ln, err := net.Listen("tcp", net.JoinHostPort(local, "0"))
+	if err != nil {
+		return err
+	}
+	key, err := randomToken()
+	if err != nil {
+		ln.Close()
+		return err
+	}
+	srv := &http.Server{ReadHeaderTimeout: 2 * time.Second, WriteTimeout: 5 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		peer, _, _ := net.SplitHostPort(r.RemoteAddr)
+		if peer != address || r.URL.Path != "/"+key || r.Method != "GET" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+		_, _ = w.Write(data)
+	})}
+	defer srv.Close()
+	go func() { _ = srv.Serve(ln) }()
+	_, err = t.command("wget -q -O /tmp/fracture-media.rgb.new 'http://" + ln.Addr().String() + "/" + key + "' && mv /tmp/fracture-media.rgb.new /tmp/fracture-media.rgb")
+	_, _ = c.Write([]byte("exit\r\n"))
+	return err
 }

@@ -33,18 +33,22 @@ import (
 	"time"
 )
 
-const version = "0.1.7"
+const version = "0.1.8"
 
 //go:embed ui.html
 var page string
 
 type Config struct {
-	Device      string `json:"device"`
-	Hub         string `json:"hub"`
-	Listen      string `json:"listen"`
-	Token       string `json:"token"`
-	Fingerprint string `json:"fingerprint"`
-	HubMetrics  bool   `json:"hub_metrics"`
+	Device           string `json:"device"`
+	Hub              string `json:"hub"`
+	Listen           string `json:"listen"`
+	Token            string `json:"token"`
+	Fingerprint      string `json:"fingerprint"`
+	HubMetrics       bool   `json:"hub_metrics"`
+	MetricsDisk      string `json:"metrics_disk"`
+	MetricsInterface string `json:"metrics_interface"`
+	MediaEnabled     bool   `json:"media_enabled"`
+	MediaStatus      bool   `json:"media_status"`
 }
 
 func configDir() string {
@@ -67,6 +71,12 @@ func readConfig() (Config, error) {
 	return c, e
 }
 func saveConfig(c Config) error {
+	if c.MetricsDisk != "" && (!filepath.IsAbs(c.MetricsDisk) || len(c.MetricsDisk) > 512) {
+		return errors.New("metrics disk must be an absolute mount path")
+	}
+	if len(c.MetricsInterface) > 32 || (c.MetricsInterface != "" && !regexp.MustCompile(`^[a-zA-Z0-9_.:-]+$`).MatchString(c.MetricsInterface)) {
+		return errors.New("invalid network interface")
+	}
 	if net.ParseIP(c.Device) == nil {
 		return errors.New("device must be an IP address")
 	}
@@ -113,7 +123,7 @@ func randomToken() (string, error) {
 func fatal(e error) { fmt.Fprintln(os.Stderr, "FractureOS:", e); os.Exit(1) }
 func validateCommand(cmd string) error {
 	a := strings.Fields(cmd)
-	if len(a) == 0 || len(cmd) > 128 {
+	if len(a) == 0 || len(cmd) > 240 {
 		return errors.New("invalid command")
 	}
 	n := func(i, lo, hi int) bool {
@@ -124,7 +134,7 @@ func validateCommand(cmd string) error {
 		return e == nil && v >= lo && v <= hi
 	}
 	switch a[0] {
-	case "status", "face-get", "face-reset", "theme-get", "theme-reset":
+	case "media-clear", "status", "face-get", "face-reset", "theme-get", "theme-reset":
 		if len(a) == 1 {
 			return nil
 		}
@@ -134,6 +144,36 @@ func validateCommand(cmd string) error {
 		}
 	case "face-set", "theme-set":
 		if len(a) == 3 && regexp.MustCompile(`^[a-z][a-z0-9_]*$`).MatchString(a[1]) && regexp.MustCompile(`^[a-z0-9,._-]+$`).MatchString(a[2]) && !strings.Contains(a[2], "..") {
+			return nil
+		}
+	case "media-text":
+		if len(a) == 3 && (a[1] == "title" || a[1] == "artist" || a[1] == "message") && mediaTextValid(a[2]) {
+			return nil
+		}
+	case "notice":
+		if len(a) == 2 && mediaTextValid(a[1]) {
+			return nil
+		}
+	case "media-state":
+		if len(a) == 2 && regexp.MustCompile(`^[0-9,-]{1,80}$`).MatchString(a[1]) {
+			return nil
+		}
+	case "media-art":
+		if len(a) == 2 && (a[1] == "load" || a[1] == "clear") {
+			return nil
+		}
+	case "media-ack":
+		if len(a) == 2 {
+			if _, e := strconv.ParseUint(a[1], 10, 32); e == nil {
+				return nil
+			}
+		}
+	case "hold-indicator":
+		if len(a) == 2 && n(1, 0, 1) {
+			return nil
+		}
+	case "stopwatch":
+		if len(a) == 2 && (a[1] == "toggle" || a[1] == "reset" || a[1] == "lap") {
 			return nil
 		}
 	case "profile":
@@ -159,6 +199,10 @@ func validateCommand(cmd string) error {
 		if len(a) == 3 && n(1, 0, 23) && n(2, 0, 59) {
 			return nil
 		}
+	case "stats-extra":
+		if len(a) == 3 && n(1, -1, 100) && regexp.MustCompile(`^-?[0-9]{1,10},-?[0-9]{1,10}$`).MatchString(a[2]) {
+			return nil
+		}
 	case "stats":
 		if len(a) == 3 && n(1, 0, 100) && n(2, 0, 100) {
 			return nil
@@ -169,7 +213,7 @@ func validateCommand(cmd string) error {
 		}
 	case "event":
 		if len(a) == 2 {
-			for _, v := range []string{"tap", "double", "hold", "power", "long", "home"} {
+			for _, v := range []string{"tap", "double", "hold", "power", "long", "home", "back"} {
 				if a[1] == v {
 					return nil
 				}
@@ -228,11 +272,14 @@ func identity(c *Config) error {
 	return saveConfig(*c)
 }
 func hubCall(c Config, cmd string) (string, error) {
-	if !strings.HasPrefix(c.Hub, "https://") {
-		return "", errors.New("hub requires https://")
-	}
 	if e := validateCommand(cmd); e != nil {
 		return "", e
+	}
+	return hubRequest(c, "/api/command", map[string]string{"command": cmd})
+}
+func hubRequest(c Config, path string, payload any) (string, error) {
+	if !strings.HasPrefix(c.Hub, "https://") {
+		return "", errors.New("hub requires https://")
 	}
 	if c.Token == "" || c.Fingerprint == "" {
 		return "", errors.New("configure hub token and certificate fingerprint in Settings")
@@ -254,8 +301,8 @@ func hubCall(c Config, cmd string) (string, error) {
 	}}}
 	defer transport.CloseIdleConnections()
 	client := http.Client{Transport: transport, Timeout: 12 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return errors.New("hub redirects refused") }}
-	body, _ := json.Marshal(map[string]string{"command": cmd})
-	req, e := http.NewRequest("POST", strings.TrimRight(c.Hub, "/")+"/api/command", bytes.NewReader(body))
+	body, _ := json.Marshal(payload)
+	req, e := http.NewRequest("POST", strings.TrimRight(c.Hub, "/")+path, bytes.NewReader(body))
 	if e != nil {
 		return "", e
 	}
@@ -310,6 +357,13 @@ func serve() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/media", func(w http.ResponseWriter, r *http.Request) {
+		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+c.Token)) != 1 {
+			http.Error(w, "unauthorized", 401)
+			return
+		}
+		mediaAPI(b, w, r)
+	})
 	mux.HandleFunc("/api/command", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+c.Token)) != 1 {
@@ -552,6 +606,8 @@ func main() {
 		e = settings(!(len(a) > 1 && a[1] == "--no-open"))
 	case "tray":
 		e = platformTray()
+	case "media-worker":
+		e = localMediaWorker()
 	case "metrics-worker":
 		e = metricsWorker()
 	case "uninstall":
@@ -609,6 +665,24 @@ func configCommand(a []string) error {
 		c.Token = a[2]
 	case "fingerprint":
 		c.Fingerprint = a[2]
+	case "media_enabled":
+		c.MediaEnabled, e = strconv.ParseBool(a[2])
+		if e != nil {
+			return e
+		}
+	case "media_status":
+		c.MediaStatus, e = strconv.ParseBool(a[2])
+		if e != nil {
+			return e
+		}
+	case "metrics_disk":
+		c.MetricsDisk = a[2]
+	case "metrics_interface":
+		if a[2] == "auto" {
+			c.MetricsInterface = ""
+		} else {
+			c.MetricsInterface = a[2]
+		}
 	case "hub_metrics":
 		v, e := strconv.ParseBool(a[2])
 		if e != nil {
@@ -621,7 +695,7 @@ func configCommand(a []string) error {
 	return saveConfig(c)
 }
 func help() {
-	fmt.Println(`FractureOS 0.1.7
+	fmt.Println(`FractureOS 0.1.8
   fracture status | profile minimal|desk|bedside | theme teal|amber|blue
   fracture theme NAME | theme-get | theme-set KEY VALUE | theme-save NEW_NAME | theme-reset
   fracture face NAME | face-get | face-set KEY VALUE | face-reset
