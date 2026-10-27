@@ -16,7 +16,7 @@ Checkboxes mean the stated deliverable is complete, not merely discussed. Design
 - [x] R08 Build platform-selecting Linux/Windows installers and uninstallers; Linux install/uninstall fixture passed.
 - [x] R09 Manually check all nine faces with extra information, rehearse device restore/reinstall and test the actual TLS hub, collector shutdown and settings endpoints.
 - [x] R10 Publish repository and release downloads, then test the public installation command. v0.1.7 public installation completed on the Linux hub.
-- [ ] R11 Validate Windows installer/tray on a real Windows session; no runtime claim from cross-compilation.
+- [x] R11 Validate Windows installer/tray on a real Windows session. Windows x64 runner passed native UI, tray close, in-place update/reopen and uninstall. Owner-specific playback/PawnIO hardware acceptance remains separate.
 
 ## U — Requested UI, input and media revision
 

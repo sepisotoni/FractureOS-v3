@@ -5,7 +5,7 @@ Owner unplugged the TomTom on 2026-10-27 and explicitly deferred applying change
 ## Ready locally
 
 - ARM binary, Go host builds and Linux/Windows release packages in `build/release`.
-- Accepted Windows x64/ARM64 Inno artifacts in `artifacts/windows-v0110-accepted`. Windows run 40454190738 passed native settings, staged update/reopen, retained configuration, tray close and uninstall. ARM64 was built only.
+- Accepted Windows x64/ARM64 Inno artifacts in `artifacts/windows-v0110-accepted`. Windows run 40456618712 passed native settings, staged update/reopen, retained configuration, tray close and uninstall. ARM64 was built only.
 - Real-device preview captures under `artifacts/manual-v0110`: mixed dock, activity strip, notifications with artwork, supplied lyrics, current/hourly/week weather, media symbols and clock.
 - Tests passed; final app overlays/media timeout exemptions have only host checks since unplugging. Actual Windows UAC/PawnIO sensor data still requires the owner's PC.
 
