@@ -3,6 +3,7 @@ package main
 // Native Win32/GDI dashboard. This is an on-demand process: no embedded browser,
 // WebView runtime, UI polling in the tray, or retained dashboard after closing.
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -33,6 +34,9 @@ type winPaint struct {
 	Reserved           [32]byte
 }
 type dashboardStatus struct {
+	Menu           int    `json:"menu"`
+	NoticeSeconds  int    `json:"notification_seconds"`
+	MenuTimeout    int    `json:"menu_timeout"`
 	TemperaturePC  bool   `json:"cpu_temp_pc"`
 	TemperatureCPU int    `json:"cpu_temp_tenths"`
 	Version        string `json:"version"`
@@ -62,6 +66,7 @@ func platformDashboard() error {
 	defer runtime.UnlockOSThread()
 	user32.NewProc("SetProcessDPIAware").Call()
 	instance, _, _ := kernel32.NewProc("GetModuleHandleW").Call(0)
+	brandIcon := appIcon(instance)
 	color := func(r, g, b uintptr) uintptr { return r | g<<8 | b<<16 }
 	bg := color(9, 13, 20)
 	surface := color(22, 31, 44)
@@ -197,8 +202,8 @@ func platformDashboard() error {
 		}
 		children = nil
 		fields = map[int]uintptr{}
-		for i, s := range []string{"Dashboard", "Clock & faces", "Connection", "Weather", "Notifications"} {
-			button(100+i, s, 20+i*176, 76, 168)
+		for i, s := range []string{"Dashboard", "Clock & faces", "Connection", "Weather", "Notifications", "Updates"} {
+			button(100+i, s, 20+i*146, 76, 138)
 		}
 		mu.Lock()
 		st := state
@@ -229,6 +234,10 @@ func platformDashboard() error {
 			combo(222, appearance, appearance[a], 590, 172, 270)
 			label("Brightness (1-100)", 36, 230)
 			edit(223, strconv.Itoa(st.Brightness), 36, 260, 180, false)
+			label("Menu timeout (s)", 590, 230)
+			edit(228, strconv.Itoa(st.MenuTimeout), 590, 260, 120, false)
+			label("Notify (s)", 730, 230)
+			edit(229, strconv.Itoa(st.NoticeSeconds), 730, 260, 120, false)
 			label("UTC offset (minutes)", 340, 230)
 			edit(224, strconv.Itoa(st.Offset), 340, 260, 210, false)
 			check(225, "Telemetry on the TomTom", st.Telemetry != 0, 36, 330)
@@ -249,7 +258,8 @@ func platformDashboard() error {
 			check(236, "Use this PC's CPU temperature (optional PawnIO driver)", c.WindowsTemperature, 36, 508)
 			button(237, "Get sensor modules", 36, 550, 220)
 			button(238, "Install PawnIO", 280, 550, 180)
-			button(239, "Check sensor", 480, 550, 180)
+			button(239, "Check sensor", 470, 550, 170)
+			button(261, "Authorize sensor", 650, 550, 210)
 		case 3:
 			check(240, "Enable weather on the Linux hub", q.Weather.Enabled, 36, 135)
 			label("Latitude", 36, 180)
@@ -278,9 +288,19 @@ func platformDashboard() error {
 			label("Excluded applications (one exact app name per line)", 36, 190)
 			control("EDIT", strings.Join(q.Notifications.Excluded, "\r\n"), 251, 36, 225, 824, 170, 0x10000|0x800000|0x200000|4|0x40|0x1000)
 			check(252, "Allow notifications on the TomTom", st.Notifications != 0, 36, 420)
+			label("Display seconds", 300, 435)
+			edit(254, strconv.Itoa(st.NoticeSeconds), 300, 470, 150, false)
 			button(253, "Save notifications", 36, 470, 230)
 			label("Forward using fracture notify APP TITLE BODY, or the authenticated API.", 36, 530)
 			label("Silent. Automatic Windows toast capture is not included in this build.", 36, 564)
+		case 5:
+			label("Installed app: "+version, 36, 140)
+			label("Connected TomTom: "+st.Version, 36, 180)
+			label("Download the latest release and update this app, keeping your settings.", 36, 240)
+			button(270, "Check for updates", 36, 302, 240)
+			button(271, "Update FractureOS", 302, 302, 250)
+			label("The app closes during installation and reopens when it is ready.", 36, 370)
+			label("On Linux, open the web settings on the hub to update that installation.", 36, 410)
 		}
 		invalidate()
 	}
@@ -300,7 +320,7 @@ func platformDashboard() error {
 			if wp>>16 != 0 {
 				return 0
 			}
-			if id >= 100 && id <= 104 {
+			if id >= 100 && id <= 105 {
 				pageIndex = id - 100
 				buildPage()
 				return 0
@@ -336,7 +356,7 @@ func platformDashboard() error {
 					}
 					return 0
 				}
-				commands := []string{"face " + get(220), "theme " + get(221), "brightness " + get(223), "offset " + get(224), fmt.Sprintf("feature appearance %d", appearance), fmt.Sprintf("feature telemetry %d", bit(checked(225))), fmt.Sprintf("feature media %d", bit(checked(226)))}
+				commands := []string{"face " + get(220), "theme " + get(221), "brightness " + get(223), "offset " + get(224), fmt.Sprintf("feature appearance %d", appearance), fmt.Sprintf("feature telemetry %d", bit(checked(225))), fmt.Sprintf("feature media %d", bit(checked(226))), "ui-timeout menu " + get(228), "ui-timeout notification " + get(229)}
 				async(func() (string, error) {
 					conf, e := readConfig()
 					if e != nil {
@@ -378,7 +398,34 @@ func platformDashboard() error {
 				})
 			case 238:
 				_ = openURL("https://pawnio.eu/")
+			case 261:
+				c.WindowsTemperature = true
+				user32.NewProc("SendMessageW").Call(fields[236], 0xf1, 1, 0)
+				async(func() (string, error) {
+					e := authorizeSensor()
+					return "Approve the sensor helper in Windows, then use Check sensor. The app stays open.", e
+				})
+			case 270:
+				async(func() (string, error) {
+					offer, e := checkUpdate(context.Background())
+					if e != nil {
+						return "", e
+					}
+					if offer.Available {
+						return "Available: " + offer.Version + ". Click Update FractureOS to install.", nil
+					}
+					return "Already up to date (" + version + ")", nil
+				})
+			case 271:
+				async(func() (string, error) { return installUpdate(context.Background()) })
 			case 239:
+				if authorizedSensorRunning() {
+					mu.Lock()
+					message = sensorStatusText()
+					mu.Unlock()
+					invalidate()
+					return 0
+				}
 				async(func() (string, error) {
 					exe, _ := os.Executable()
 					out, e := exec.Command(exe, "pawnio-check").CombinedOutput()
@@ -427,6 +474,7 @@ func platformDashboard() error {
 					return "Weather saved", nil
 				})
 			case 253:
+				notificationDuration := get(254)
 				mu.Lock()
 				q := integrations
 				mu.Unlock()
@@ -455,6 +503,9 @@ func platformDashboard() error {
 					mu.Lock()
 					integrations = q
 					mu.Unlock()
+					if _, e = hubCall(conf, "ui-timeout notification "+notificationDuration); e != nil {
+						return "", e
+					}
 					return "Notification settings saved", nil
 				})
 			}
@@ -490,7 +541,7 @@ func platformDashboard() error {
 			gdi32.NewProc("SetTextColor").Call(dc, col)
 			buf := make([]uint16, 128)
 			user32.NewProc("GetWindowTextW").Call(item.Window, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
-			user32.NewProc("DrawTextW").Call(dc, uintptr(unsafe.Pointer(&buf[0])), ^uintptr(0), uintptr(unsafe.Pointer(&r)), 0x25)
+			user32.NewProc("DrawTextW").Call(dc, uintptr(unsafe.Pointer(&buf[0])), ^uintptr(0), uintptr(unsafe.Pointer(&r)), 0x825)
 			if item.State&0x10 != 0 {
 				r.Left += 4
 				r.Top += 4
@@ -528,7 +579,8 @@ func platformDashboard() error {
 				gdi32.NewProc("SelectObject").Call(dc, old)
 				gdi32.NewProc("SelectObject").Call(dc, oldPen)
 			}
-			draw("FractureOS", 25, 20, 450, 48, titleFont, foreground)
+			user32.NewProc("DrawIconEx").Call(dc, 25, 24, brandIcon, 32, 32, 0, 0, 3)
+			draw("FractureOS", 72, 20, 450, 48, titleFont, foreground)
 			draw("Your desk, at a glance", 575, 31, 300, 28, normal, muted)
 			mu.Lock()
 			st := state
@@ -591,7 +643,7 @@ func platformDashboard() error {
 	})
 	cursor, _, _ := user32.NewProc("LoadCursorW").Call(0, 32512)
 	name := wide("FractureOSNativeDashboard")
-	wc := wndclass{Proc: callback, Instance: instance, Cursor: cursor, Background: brush, Name: name}
+	wc := wndclass{Proc: callback, Instance: instance, Icon: brandIcon, Cursor: cursor, Background: brush, Name: name}
 	if atom, _, e := user32.NewProc("RegisterClassW").Call(uintptr(unsafe.Pointer(&wc))); atom == 0 {
 		return e
 	}

@@ -11,19 +11,23 @@ import (
 	_ "image/png"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type mediaDeviceStatus struct {
-	Enabled  *int   `json:"media_enabled"`
-	View     bool   `json:"media_view"`
-	Menu     int    `json:"menu"`
-	Art      int    `json:"media_art_loaded"`
-	Pending  bool   `json:"media_pending"`
-	Sequence uint   `json:"media_seq"`
-	Action   string `json:"media_action"`
-	Argument int    `json:"media_arg"`
+	LyricsView bool   `json:"lyrics_view"`
+	LyricsPage int    `json:"lyrics_page"`
+	Enabled    *int   `json:"media_enabled"`
+	View       bool   `json:"media_view"`
+	Menu       int    `json:"menu"`
+	Art        int    `json:"media_art_loaded"`
+	Pending    bool   `json:"media_pending"`
+	Sequence   uint   `json:"media_seq"`
+	Action     string `json:"media_action"`
+	Argument   int    `json:"media_arg"`
 }
 type mediaSnapshot struct {
+	Album      string `json:"album"`
 	Title      string `json:"title"`
 	Artist     string `json:"artist"`
 	Message    string `json:"message"`
@@ -85,7 +89,7 @@ func mediaAPI(b *Broker, w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 32*1024)
 	var s mediaSnapshot
-	if json.NewDecoder(r.Body).Decode(&s) != nil || s.Position < 0 || s.Duration < 0 || s.Duration > 86400 || s.Position > s.Duration || s.Volume < -1 || s.Volume > 100 || len(s.Title) > 512 || len(s.Artist) > 512 || len(s.Message) > 512 || (len(s.Artwork) != 0 && len(s.Artwork) != 18432) {
+	if json.NewDecoder(r.Body).Decode(&s) != nil || s.Position < 0 || s.Duration < 0 || s.Duration > 86400 || s.Position > s.Duration || s.Volume < -1 || s.Volume > 100 || len(s.Title) > 512 || len(s.Artist) > 512 || len(s.Album) > 512 || len(s.Message) > 512 || (len(s.Artwork) != 0 && len(s.Artwork) != 18432) {
 		http.Error(w, "invalid media update", 400)
 		return
 	}
@@ -121,9 +125,22 @@ func mediaAPI(b *Broker, w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	b.mediaMu.Lock()
+	if s.Clear {
+		b.mediaLatest = lyricsSession{}
+		b.providedLyrics = nil
+	} else {
+		if b.mediaLatest.Title != s.Title || b.mediaLatest.Artist != s.Artist {
+			b.providedLyrics = nil
+		}
+		b.mediaLatest = lyricsSession{Title: s.Title, Artist: s.Artist, Album: s.Album, Position: s.Position, Duration: s.Duration, Playing: s.Playing}
+		b.mediaReceived = time.Now()
+	}
+	b.mediaMu.Unlock()
 	fmt.Fprint(w, `{"updated":true}`)
 }
-func thumbnailRGB(data []byte) ([]byte, error) {
+func thumbnailRGB(data []byte) ([]byte, error) { return thumbnailRGBSize(data, 96) }
+func thumbnailRGBSize(data []byte, size int) ([]byte, error) {
 	if len(data) > 2*1024*1024 {
 		return nil, errors.New("thumbnail too large")
 	}
@@ -135,12 +152,12 @@ func thumbnailRGB(data []byte) ([]byte, error) {
 	if e != nil {
 		return nil, e
 	}
-	out := make([]byte, 18432)
-	for y := 0; y < 96; y++ {
-		for x := 0; x < 96; x++ {
-			r, g, b, _ := im.At(im.Bounds().Min.X+x*cfg.Width/96, im.Bounds().Min.Y+y*cfg.Height/96).RGBA()
+	out := make([]byte, size*size*2)
+	for y := 0; y < size; y++ {
+		for x := 0; x < size; x++ {
+			r, g, b, _ := im.At(im.Bounds().Min.X+x*cfg.Width/size, im.Bounds().Min.Y+y*cfg.Height/size).RGBA()
 			v := uint16((r>>11)<<11 | (g>>10)<<5 | (b >> 11))
-			at := (y*96 + x) * 2
+			at := (y*size + x) * 2
 			out[at] = byte(v)
 			out[at+1] = byte(v >> 8)
 		}

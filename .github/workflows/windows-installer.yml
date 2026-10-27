@@ -11,6 +11,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.27.3'
+      - name: Build application icon and manifest resources
+        shell: pwsh
+        run: |
+          go install github.com/tc-hib/go-winres@v0.3.3
+          Push-Location host
+          go-winres make --arch amd64,arm64 --file-version 0.1.10.0 --product-version 0.1.10.0
+          if ($LASTEXITCODE) { throw 'Windows resources failed' }
+          Pop-Location
       - name: Compile native Windows apps
         shell: pwsh
         run: |
@@ -45,6 +53,7 @@ jobs:
           using System;
           using System.Runtime.InteropServices;
           public static class FractureWindow {
+            [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string c, string n);
             [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr h, int id);
             [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW")] public static extern IntPtr SetText(IntPtr h, uint m, IntPtr w, string s);
             [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
@@ -58,7 +67,7 @@ jobs:
           [void][FractureWindow]::SendMessage($p.MainWindowHandle,0x111,[IntPtr]235,[IntPtr]::Zero)
           $saved=Get-Content "$env:APPDATA/fracture-v3/config.json" -Raw | ConvertFrom-Json
           if ($saved.hub -ne 'https://127.0.0.1:47832') { throw "Native connection settings did not persist: $($saved.hub)" }
-          foreach ($tab in @(101,102,103,104,100)) {
+          foreach ($tab in @(101,102,103,104,105,100)) {
             [void][FractureWindow]::SendMessage($p.MainWindowHandle,0x111,[IntPtr]$tab,[IntPtr]::Zero)
             Start-Sleep -Milliseconds 300
             $p.Refresh(); if ($p.HasExited) { throw "Dashboard crashed on tab $tab" }
@@ -69,8 +78,21 @@ jobs:
           $image=New-Object System.Drawing.Bitmap($screen.Width,$screen.Height)
           $graphics=[System.Drawing.Graphics]::FromImage($image)
           try { $graphics.CopyFromScreen($screen.Left,$screen.Top,0,0,$image.Size); $image.Save("$pwd/build/inno/dashboard.png") } finally { $graphics.Dispose(); $image.Dispose() }
-          [void]$p.CloseMainWindow()
-          if (!$p.WaitForExit(10000)) { throw 'Dashboard did not exit after close' }
+          # Exercise the same staged helper used by the Update button.
+          $helper=Join-Path $env:RUNNER_TEMP 'fracture-updater.exe'
+          Copy-Item "$dest/fracture.exe" $helper
+          $update=Start-Process $helper -ArgumentList 'apply-update',"`"$($installer.FullName)`"","`"$dest`"","`"$dest/fracture.exe`"" -PassThru
+          if (!$update.WaitForExit(60000) -or $update.ExitCode) { throw 'Update helper failed' }
+          Start-Sleep -Seconds 4
+          $new=Get-Process fracture | Where-Object { $_.Path -eq "$dest/fracture.exe" }
+          if (@($new).Count -lt 2) { throw 'Updater did not reopen dashboard and tray' }
+          $saved=Get-Content "$env:APPDATA/fracture-v3/config.json" -Raw | ConvertFrom-Json
+          if ($saved.hub -ne 'https://127.0.0.1:47832') { throw 'Update lost connection settings' }
+          foreach ($proc in $new) { if ($proc.MainWindowHandle) { [void]$proc.CloseMainWindow() } }
+          $tray=[FractureWindow]::FindWindow('FractureOSv3Tray',$null)
+          if ($tray) { [void][FractureWindow]::SendMessage($tray,0x10,[IntPtr]::Zero,[IntPtr]::Zero) }
+          foreach ($proc in $new) { if (!$proc.WaitForExit(10000)) { throw 'Updated app did not close' } }
+          'In-place update preserved settings and reopened dashboard/tray' | Add-Content build/inno/validation.txt
           $u=Start-Process "$dest/unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
           if ($u.ExitCode) { throw "Uninstaller exit $($u.ExitCode)" }
           if (Test-Path "$dest/fracture.exe") { throw 'Uninstaller left executable behind' }

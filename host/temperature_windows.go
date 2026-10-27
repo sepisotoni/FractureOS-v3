@@ -37,6 +37,9 @@ type pawnSensor struct {
 }
 
 func openPawnSensor() (*pawnSensor, error) {
+	return openPawnSensorAt(filepath.Join(configDir(), "pawnio"))
+}
+func openPawnSensorAt(moduleDir string) (*pawnSensor, error) {
 	if runtime.GOARCH != "amd64" {
 		return nil, errors.New("PawnIO temperature currently supports Windows x64")
 	}
@@ -48,13 +51,19 @@ func openPawnSensor() (*pawnSensor, error) {
 	} else if vendor != "GenuineIntel" {
 		return nil, errors.New("unsupported CPU temperature provider")
 	}
-	blob, e := os.ReadFile(filepath.Join(configDir(), "pawnio", module))
+	blob, e := os.ReadFile(filepath.Join(moduleDir, module))
 	if e != nil || len(blob) == 0 || len(blob) > 65536 {
 		return nil, errors.New("download the signed sensor modules from Settings first")
 	}
-	handle, e := syscall.CreateFile(wide(`\\?\GLOBALROOT\Device\PawnIO`), syscall.GENERIC_READ|syscall.GENERIC_WRITE, syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE, nil, syscall.OPEN_EXISTING, syscall.FILE_ATTRIBUTE_NORMAL, 0)
+	if e = validateSensorModule(module, blob); e != nil {
+		return nil, e
+	}
+	handle, e := syscall.CreateFile(wide(`\\?\GLOBALROOT\Device\PawnIO`), syscall.GENERIC_READ|syscall.GENERIC_WRITE, syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE|syscall.FILE_SHARE_DELETE, nil, syscall.OPEN_EXISTING, syscall.FILE_ATTRIBUTE_NORMAL, 0)
 	if e != nil {
-		return nil, fmt.Errorf("install the official signed PawnIO driver and check access: %w", e)
+		if errors.Is(e, syscall.ERROR_ACCESS_DENIED) {
+			return nil, errors.New("PawnIO access denied. In Connection, choose Authorize sensor to approve only the temperature helper")
+		}
+		return nil, fmt.Errorf("PawnIO is unavailable; check the installed driver: %w", e)
 	}
 	var written uint32
 	e = syscall.DeviceIoControl(handle, 41394<<16|0x821<<2, &blob[0], uint32(len(blob)), nil, 0, &written, nil)
@@ -145,6 +154,9 @@ func windowsTemperatureWorker(check bool) error {
 	if e != nil {
 		return e
 	}
+	if !check && authorizedSensorRunning() {
+		return nil
+	}
 	sensor, e := openPawnSensor()
 	if e != nil {
 		return e
@@ -201,7 +213,7 @@ func windowsTemperatureSupervisor(ctx context.Context) {
 			retry = time.Now().Add(time.Minute)
 		case <-timer.C:
 			c, e := readConfig()
-			if e != nil || !c.WindowsTemperature {
+			if e != nil || !c.WindowsTemperature || authorizedSensorRunning() {
 				stop()
 				continue
 			}

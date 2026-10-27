@@ -1,0 +1,4 @@
+{
+ "RT_GROUP_ICON":{"APP":{"0000":"../branding/fracture.ico"}},
+ "RT_MANIFEST":{"#1":{"0409":{"description":"FractureOS","minimum-os":"win10","execution-level":"as invoker","dpi-awareness":"system"}}}
+}

@@ -33,12 +33,13 @@ import (
 	"time"
 )
 
-const version = "0.1.9"
+const version = "0.1.10"
 
 //go:embed ui.html
 var page string
 
 type Config struct {
+	LyricsEnabled      bool               `json:"lyrics_enabled"`
 	WindowsTemperature bool               `json:"windows_temperature"`
 	Device             string             `json:"device"`
 	Hub                string             `json:"hub"`
@@ -62,7 +63,7 @@ func configDir() string {
 	return filepath.Join(p, "fracture-v3")
 }
 func readConfig() (Config, error) {
-	c := Config{Device: "192.168.101.115", Hub: "https://127.0.0.1:47831", Listen: "127.0.0.1:47831", Weather: defaultWeather()}
+	c := Config{Device: "192.168.101.115", Hub: "https://127.0.0.1:47831", Listen: "127.0.0.1:47831", Weather: defaultWeather(), LyricsEnabled: true}
 	b, e := os.ReadFile(filepath.Join(configDir(), "config.json"))
 	if errors.Is(e, os.ErrNotExist) {
 		return c, nil
@@ -140,7 +141,7 @@ func validateCommand(cmd string) error {
 		return e == nil && v >= lo && v <= hi
 	}
 	switch a[0] {
-	case "weather-clear", "media-clear", "status", "face-get", "face-reset", "theme-get", "theme-reset":
+	case "forecast-reload", "weather-clear", "media-clear", "status", "face-get", "face-reset", "theme-get", "theme-reset":
 		if len(a) == 1 {
 			return nil
 		}
@@ -150,6 +151,30 @@ func validateCommand(cmd string) error {
 		}
 	case "face-set", "theme-set":
 		if len(a) == 3 && regexp.MustCompile(`^[a-z][a-z0-9_]*$`).MatchString(a[1]) && regexp.MustCompile(`^[a-z0-9,._-]+$`).MatchString(a[2]) && !strings.Contains(a[2], "..") {
+			return nil
+		}
+	case "ui-timeout":
+		if len(a) == 3 && ((a[1] == "menu" && n(2, 0, 600)) || (a[1] == "notification" && n(2, 1, 120))) {
+			return nil
+		}
+	case "notice-text":
+		if len(a) == 3 && (a[1] == "app" || a[1] == "title" || a[1] == "body") && mediaTextValid(a[2]) {
+			return nil
+		}
+	case "notice-art":
+		if len(a) == 2 && (a[1] == "load" || a[1] == "clear") {
+			return nil
+		}
+	case "notice-show":
+		if len(a) == 2 && n(1, 0, 120) {
+			return nil
+		}
+	case "media-lyrics":
+		if len(a) == 3 && (a[1] == "previous" || a[1] == "current" || a[1] == "next" || a[1] == "message") && mediaTextValid(a[2]) {
+			return nil
+		}
+	case "lyrics-state":
+		if len(a) == 2 && n(1, 0, 1) {
 			return nil
 		}
 	case "media-text":
@@ -357,6 +382,10 @@ type Broker struct {
 	cached             string
 	cachedAt           time.Time
 	temperaturePCUntil time.Time
+	mediaMu            sync.Mutex
+	mediaLatest        lyricsSession
+	mediaReceived      time.Time
+	providedLyrics     *lyricsRecord
 }
 
 func (b *Broker) call(cmd string) (string, error) {
@@ -402,6 +431,8 @@ func serve() error {
 	defer cancel()
 	mux := http.NewServeMux()
 	registerIntegrations(mux, b, c.Token)
+	registerLyrics(mux, b, c.Token)
+	registerForecast(mux, b, c.Token)
 	mux.HandleFunc("/api/media", func(w http.ResponseWriter, r *http.Request) {
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+c.Token)) != 1 {
 			http.Error(w, "unauthorized", 401)
@@ -450,6 +481,7 @@ func serve() error {
 	}()
 	go hubBackground(ctx, b)
 	go weatherSupervisor(ctx, b)
+	go lyricsSupervisor(ctx, b)
 	log.Printf("FractureOS hub %s listening on https://%s; device %s", version, c.Listen, c.Device)
 	e = srv.ListenAndServeTLS(filepath.Join(configDir(), "hub.crt"), filepath.Join(configDir(), "hub.key"))
 	if errors.Is(e, http.ErrServerClosed) {
@@ -544,6 +576,16 @@ func settings(open bool) error {
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if r.URL.Path == "/favicon.ico" {
+			w.Header().Set("Content-Type", "image/x-icon")
+			_, _ = w.Write(brandICO)
+			return
+		}
+		if r.URL.Path == "/fracture.svg" {
+			w.Header().Set("Content-Type", "image/svg+xml")
+			_, _ = w.Write(brandSVG)
+			return
+		}
 		if r.URL.Path == "/" {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			fmt.Fprint(w, page)
@@ -562,6 +604,36 @@ func settings(open bool) error {
 			return
 		}
 		switch r.URL.Path {
+		case "/update":
+			if r.Method != "POST" {
+				http.Error(w, "POST required", 405)
+				return
+			}
+			var q struct {
+				Action string `json:"action"`
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, 256)
+			if json.NewDecoder(r.Body).Decode(&q) != nil {
+				http.Error(w, "invalid update request", 400)
+				return
+			}
+			if q.Action == "check" {
+				offer, err := checkUpdate(r.Context())
+				if err != nil {
+					http.Error(w, err.Error(), 502)
+					return
+				}
+				_ = json.NewEncoder(w).Encode(offer)
+			} else if q.Action == "install" {
+				result, err := installUpdate(r.Context())
+				if err != nil {
+					http.Error(w, err.Error(), 502)
+					return
+				}
+				fmt.Fprint(w, result)
+			} else {
+				http.Error(w, "unknown update action", 400)
+			}
 		case "/integrations":
 			if r.Method != "GET" && r.Method != "POST" {
 				http.Error(w, "GET or POST required", 405)
@@ -635,7 +707,7 @@ func settings(open bool) error {
 			http.NotFound(w, r)
 		}
 	})
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second}
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 120 * time.Second}
 	go func() {
 		for range time.Tick(30 * time.Second) {
 			lastMu.Lock()
@@ -685,12 +757,30 @@ func main() {
 		}
 	case "web":
 		e = settings(true)
+	case "apply-update":
+		e = applyUpdate(a[1:])
+	case "update":
+		var result string
+		result, e = installUpdate(context.Background())
+		if e == nil {
+			fmt.Println(result)
+		}
+	case "temperature-authorize":
+		e = authorizedTemperatureWorker()
+	case "temperature-helper":
+		if len(a) != 4 {
+			e = errors.New("invalid sensor helper arguments")
+		} else {
+			e = sensorHelper(a[1], a[2], a[3])
+		}
 	case "temperature-worker":
 		e = windowsTemperatureWorker(false)
 	case "pawnio-check":
 		e = windowsTemperatureWorker(true)
 	case "pawnio-modules":
 		e = installPawnModules()
+	case "lyrics-worker":
+		e = lyricsWorker()
 	case "weather-worker":
 		e = weatherWorker()
 	case "notify":
@@ -827,7 +917,7 @@ func configCommand(a []string) error {
 	return saveConfig(c)
 }
 func help() {
-	fmt.Println(`FractureOS 0.1.9
+	fmt.Println(`FractureOS 0.1.10
   fracture status | profile minimal|desk|bedside | theme teal|amber|blue
   fracture theme NAME | theme-get | theme-set KEY VALUE | theme-save NEW_NAME | theme-reset
   fracture face NAME | face-get | face-set KEY VALUE | face-reset

@@ -100,7 +100,7 @@ func platformTray() error {
 		return nil
 	}
 	instance, _, _ := kernel32.NewProc("GetModuleHandleW").Call(0)
-	icon, _, _ := user32.NewProc("LoadIconW").Call(0, 32512)
+	icon := appIcon(instance)
 	var data notify
 	notifyProc := shell32.NewProc("Shell_NotifyIconW")
 	taskbar, _, _ := user32.NewProc("RegisterWindowMessageW").Call(uintptr(unsafe.Pointer(wide("TaskbarCreated"))))

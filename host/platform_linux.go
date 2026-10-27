@@ -272,3 +272,8 @@ func cpuTemperature() int {
 func windowsTemperatureWorker(check bool) error {
 	return errors.New("PawnIO temperature collection runs on Windows x64")
 }
+
+func authorizedTemperatureWorker() error { return errors.New("Sensor authorization runs on Windows") }
+func sensorHelper(endpoint, token, modules string) error {
+	return errors.New("Sensor helper runs on Windows")
+}

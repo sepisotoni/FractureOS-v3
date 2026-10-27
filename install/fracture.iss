@@ -1,6 +1,6 @@
 ; Build with Inno Setup 6.3+ on Windows. No configuration wizard: use app Settings.
 #ifndef AppVersion
-#define AppVersion "0.1.9"
+#define AppVersion "0.1.10"
 #endif
 #ifndef Arch
 #define Arch "amd64"
@@ -16,6 +16,7 @@ DefaultGroupName=FractureOS
 PrivilegesRequired=lowest
 DisableProgramGroupPage=yes
 WizardStyle=modern
+SetupIconFile=..\assets\branding\fracture.ico
 UninstallDisplayIcon={app}\fracture.exe
 OutputDir=..\build\inno
 OutputBaseFilename=fracture-v{#AppVersion}-windows-{#Arch}-setup

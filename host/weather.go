@@ -80,10 +80,11 @@ func weatherSupervisor(ctx context.Context, b *Broker) {
 			if needed {
 				out, err := b.call("status")
 				var s struct {
-					Menu    int `json:"menu"`
-					Weather int `json:"weather"`
+					Menu        int  `json:"menu"`
+					Weather     int  `json:"weather"`
+					WeatherView bool `json:"weather_view"`
 				}
-				needed = err == nil && json.Unmarshal([]byte(out), &s) == nil && s.Menu == 0 && s.Weather > 0
+				needed = err == nil && json.Unmarshal([]byte(out), &s) == nil && (s.Menu == 0 || s.WeatherView) && s.Weather > 0
 			}
 			if !needed {
 				stop()
@@ -116,17 +117,21 @@ func weatherSupervisor(ctx context.Context, b *Broker) {
 }
 
 type weatherCurrent struct {
-	Time int64    `json:"time"`
-	Temp *float64 `json:"temperature_2m"`
-	Code *int     `json:"weather_code"`
-	Gust *float64 `json:"wind_gusts_10m"`
+	Forecast *weatherForecast `json:"forecast,omitempty"`
+	Time     int64            `json:"time"`
+	Temp     *float64         `json:"temperature_2m"`
+	Code     *int             `json:"weather_code"`
+	Gust     *float64         `json:"wind_gusts_10m"`
 }
 
 func fetchWeather(ctx context.Context, w WeatherConfig) (weatherCurrent, error) {
 	var body struct {
 		Current weatherCurrent `json:"current"`
+		Hourly  forecastArrays `json:"hourly"`
+		Daily   forecastArrays `json:"daily"`
+		Offset  int            `json:"utc_offset_seconds"`
 	}
-	q := url.Values{"latitude": {strconv.FormatFloat(w.Latitude, 'f', 4, 64)}, "longitude": {strconv.FormatFloat(w.Longitude, 'f', 4, 64)}, "current": {"temperature_2m,weather_code,wind_gusts_10m"}, "timeformat": {"unixtime"}, "forecast_days": {"1"}}
+	q := url.Values{"latitude": {strconv.FormatFloat(w.Latitude, 'f', 4, 64)}, "longitude": {strconv.FormatFloat(w.Longitude, 'f', 4, 64)}, "current": {"temperature_2m,weather_code,wind_gusts_10m"}, "timeformat": {"unixtime"}, "forecast_days": {"7"}, "forecast_hours": {"24"}, "timezone": {"auto"}, "hourly": {"temperature_2m,weather_code,precipitation_probability"}, "daily": {"temperature_2m_min,temperature_2m_max,weather_code,precipitation_probability_max"}}
 	req, e := http.NewRequestWithContext(ctx, "GET", "https://api.open-meteo.com/v1/forecast?"+q.Encode(), nil)
 	if e != nil {
 		return body.Current, e
@@ -156,6 +161,11 @@ func fetchWeather(ctx context.Context, w WeatherConfig) (weatherCurrent, error) 
 	if v.Temp == nil || v.Code == nil || v.Gust == nil || *v.Temp < -100 || *v.Temp > 70 || *v.Code < 0 || *v.Code > 99 || *v.Gust < 0 || *v.Gust > 500 || time.Since(time.Unix(v.Time, 0)) > 90*time.Minute || time.Until(time.Unix(v.Time, 0)) > 10*time.Minute {
 		return v, errors.New("missing, invalid or stale weather")
 	}
+	forecast, err := buildForecast(body.Hourly, body.Daily, body.Offset)
+	if err != nil {
+		return v, err
+	}
+	v.Forecast = forecast
 	return v, nil
 }
 func weatherWorker() error {
@@ -181,7 +191,7 @@ func weatherWorker() error {
 				Config  WeatherConfig
 				Current weatherCurrent
 			}
-			if data, err := os.ReadFile(filepathCache()); err == nil && len(data) < 4096 && json.Unmarshal(data, &cache) == nil && cache.Config == c.Weather && time.Since(cache.At) < 15*time.Minute && time.Since(cache.At) >= 0 && cache.Current.Temp != nil && cache.Current.Code != nil && cache.Current.Gust != nil {
+			if data, err := os.ReadFile(filepathCache()); err == nil && len(data) < 8192 && json.Unmarshal(data, &cache) == nil && cache.Config == c.Weather && time.Since(cache.At) < 15*time.Minute && time.Since(cache.At) >= 0 && cache.Current.Forecast != nil && cache.Current.Temp != nil && cache.Current.Code != nil && cache.Current.Gust != nil {
 				current = cache.Current
 				fetched = cache.At
 			}
@@ -210,6 +220,15 @@ func weatherWorker() error {
 				flag = 1
 			}
 			_, _ = hubCall(c, fmt.Sprintf("weather-state %d,%d,%d", code, int(math.Round(*current.Temp*10)), flag))
+			if current.Forecast != nil {
+				raw, err := hubCall(c, "status")
+				var status struct {
+					Saved int64 `json:"forecast_saved_at"`
+				}
+				if err == nil && json.Unmarshal([]byte(raw), &status) == nil && status.Saved < current.Forecast.Saved {
+					_, _ = hubRequest(c, "/api/forecast", current.Forecast)
+				}
+			}
 		} else {
 			_, _ = hubCall(c, "weather-clear")
 		}

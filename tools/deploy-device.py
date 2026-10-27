@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verified deployment of the 0.1.9 application environment, not firmware flashing."""
+"""Verified deployment of the 0.1.10 application environment, not firmware flashing."""
 import argparse
 import datetime
 import hashlib
@@ -14,7 +14,7 @@ from tomtom import TomTom
 
 ROOT = '/mnt/sdcard/fracture-v3'
 START = '/mnt/sdcard/opentom/start.sh'
-VERSION = 'v0.1.9'
+VERSION = 'v0.1.10'
 
 
 def control(device, cmd):
@@ -24,6 +24,7 @@ def control(device, cmd):
 def restore(device):
     device.checked('test -s ' + ROOT + '/stock-start.sh')
     device.checked('cp ' + ROOT + '/stock-start.sh ' + START + '.restore && sync && mv ' + START + '.restore ' + START)
+    device.checked('if test -f '+ROOT+'/tomtom.ico.original; then cp '+ROOT+'/tomtom.ico.original /mnt/sdcard/tomtom.ico; fi')
     device.checked('touch ' + ROOT + '/disabled')
     device.checked('if test -f /tmp/fracture-v3.pid; then kill $(cat /tmp/fracture-v3.pid); fi')
     # During a live takeover, stopped original shells retain zombie children.
@@ -68,7 +69,7 @@ def main():
         backup = args.evidence or (Path.home() / '.local/share/fracture-v3/backups' / (datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + secrets.token_hex(3)))
         backup.mkdir(parents=True, mode=0o700, exist_ok=False)
         payloads = {'fracture-device': args.package/'build/fracture-device', 'platform-probe': args.package/'build/platform-probe',
-                    'boot.sh': args.package/'device/scripts/boot.sh', 'control.sh': args.package/'device/scripts/control.sh', 'entry.sh': args.package/'device/scripts/entry.sh'}
+                    'tomtom.ico': args.package/'assets/branding/fracture.ico', 'boot.sh': args.package/'device/scripts/boot.sh', 'control.sh': args.package/'device/scripts/control.sh', 'entry.sh': args.package/'device/scripts/entry.sh'}
         for path in sorted((args.package/'assets/faces').glob('*')):
             if path.suffix in ('.face', '.pgm'): payloads['faces/'+path.name] = path
         for path in sorted((args.package/'assets/themes').glob('*.theme')):
@@ -96,7 +97,7 @@ def main():
                 digest = device.download(stage+'/'+name, backup/(name.replace('/','_')+'.readback'), probe)
                 if digest != hashlib.sha256(path.read_bytes()).hexdigest(): raise RuntimeError('Transfer verification failed: '+name)
                 report['payloads'][name] = digest
-            for remote,local in [(START,'start.sh.before'),('/mnt/sdcard/ttsystem','ttsystem.before'),('/etc/rc','init.before')]:
+            for remote,local in [(START,'start.sh.before'),('/mnt/sdcard/ttsystem','ttsystem.before'),('/etc/rc','init.before'),('/mnt/sdcard/tomtom.ico','tomtom.ico.before')]:
                 report['backup'][remote] = device.download(remote, backup/local, probe)
             if 'FRACTURE_V3_BOOT_ENTRY' not in (backup/'start.sh.before').read_text():
                 device.checked('mkdir -p '+ROOT+'/releases')
@@ -155,6 +156,10 @@ def main():
                 time.sleep(0.5)
             else: raise RuntimeError('Clock did not become healthy')
             if report['status']['version'] != VERSION[1:]: raise RuntimeError('Unexpected running version')
+            device.checked('if test ! -f '+ROOT+'/tomtom.ico.original; then cp /mnt/sdcard/tomtom.ico '+ROOT+'/tomtom.ico.original; fi')
+            device.checked('cp '+destination+'/tomtom.ico /mnt/sdcard/tomtom.ico.new && sync && mv /mnt/sdcard/tomtom.ico.new /mnt/sdcard/tomtom.ico')
+            digest=device.download('/mnt/sdcard/tomtom.ico',backup/'tomtom.ico.installed',probe)
+            if digest != report['payloads']['tomtom.ico']: raise RuntimeError('TomTom icon verification failed')
             device.checked('sync')
             report['installed'] = True
             print('FractureOS '+VERSION+' is running. Startup backed up at '+ROOT+'/stock-start.sh')

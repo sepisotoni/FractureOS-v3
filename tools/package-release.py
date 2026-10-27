@@ -3,10 +3,11 @@
 import hashlib,json,os,shutil,subprocess,tarfile,zipfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parent.parent
-VERSION='v0.1.9'
+VERSION='v0.1.10'
 OUT=ROOT/'build/release'
 OUT.mkdir(parents=True,exist_ok=True)
 subprocess.run(['sh','tools/build-device.sh'],cwd=ROOT,check=True)
+subprocess.run(['sh','tools/build-windows-resources.sh'],cwd=ROOT,check=True)
 packages=[]
 for system in ('linux','windows'):
  for arch in ('amd64','arm64'):
@@ -24,6 +25,7 @@ for system in ('linux','windows'):
    shutil.copytree(ROOT/'assets/faces',staging/'assets/faces',dirs_exist_ok=True)
    shutil.copytree(ROOT/'assets/themes',staging/'assets/themes',dirs_exist_ok=True)
    shutil.copytree(ROOT/'assets/ui',staging/'assets/ui',dirs_exist_ok=True)
+   shutil.copytree(ROOT/'assets/branding',staging/'assets/branding',dirs_exist_ok=True)
    package=OUT/(name+'.tar.gz')
    with tarfile.open(package,'w:gz') as archive:
     for child in sorted(staging.iterdir()):archive.add(child,arcname=child.name)
