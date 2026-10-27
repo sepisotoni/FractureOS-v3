@@ -1,1 +1,4 @@
-ACTION=="add", SUBSYSTEM=="net", ENV{ID_PATH}=="pci-0000:00:14.0-usb-0:10:1.0", ENV{ID_VENDOR_ID}=="0525", ENV{ID_MODEL_ID}=="a4a1", TAG+="systemd", ENV{SYSTEMD_WANTS}+="fracture-tomtom-lan@%k.service"
+# ID_NET_NAME is the final name selected by 80-net-setup-link.rules. %k still
+# names the pre-rename interface during a real add event. Keep the request on
+# the follow-up move event too, which otherwise replaces the udev properties.
+ACTION=="add|move", SUBSYSTEM=="net", ENV{ID_PATH}=="pci-0000:00:14.0-usb-0:10:1.0", ENV{ID_VENDOR_ID}=="0525", ENV{ID_MODEL_ID}=="a4a1", ENV{ID_NET_NAME}!="", TAG+="systemd", ENV{SYSTEMD_WANTS}+="fracture-tomtom-lan@$env{ID_NET_NAME}.service"
