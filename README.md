@@ -4,7 +4,7 @@ A quiet, customizable clock for a TomTom ONE (v6), with a C device app and Go Li
 
 The original nine faces are now editable FractureOS assets. The blue Nunito face restores its original proportions with a centered date and live seconds, optional larger stacked digits, optional horizontal **HH : MM**, a blinking colon, and an hour-only behavior: **10:00 shows 10 throughout that minute; 10:01 returns to the full time** in either layout. The clock geometry adapts to a compact bottom dock; date and seconds are drawn at their final text size instead of shrinking a completed image. Digits have a configurable 0–2 pixel weight (default 1). The old information sidebar and its application dependencies are absent from the new renderer. Only the selected face's 170 KB digit atlas is resident.
 
-![Clock with CPU temperature](docs/images/temperature-clock.png)
+![Notification card covering the clock dock](docs/images/notification-card.png)
 
 The interface uses pure-black backgrounds, rounded menu highlights, simple metric/timer symbols and brief 180 ms selection transitions. The owner’s SF Compact font is used locally on their TomTom; public packages include an open Nunito text atlas.
 
@@ -123,6 +123,8 @@ Weather runs on the Linux hub, never as an HTTP client on the TomTom. Enable it 
 Open-Meteo current conditions are fetched every 15 minutes while the clock is visible. A small cache prevents refetching when opening/closing menus. The worker exits when disabled, when the device is disconnected, or when weather has no visible clock consumer. Normal conditions stay hidden in unusual-only mode. Thunderstorms, heavy/freezing rain, heavy snow, temperatures at/above 35°C or at/below 0°C, and gusts at/above 60 km/h count as unusual; temperature/wind thresholds are editable. The alternative is **Always**. Stale/missing readings disappear. Weather occupies one small icon/text row; no weather bitmap pack is installed on the TomTom.
 
 Open **Apps → Weather** for current cached conditions. Choose **Hourly** or **7 days**. Tap advances the selected entry and scrolls through four entries at a time; Power switches hourly/week views; hold Power 1.5 seconds to go back. The cache stores 24 hours and seven days, with temperature, weather symbols and available rain probability. Its age is shown, including offline. The device reads its tiny SD cache only while Weather is open, and releases the forecast array when leaving.
+
+![Stored hourly forecast](docs/images/weather-hourly.png) ![Stored seven-day forecast](docs/images/weather-weekly.png)
 
 Data: [Open-Meteo](https://open-meteo.com/) under CC BY 4.0; [API documentation](https://open-meteo.com/en/docs). These are modeled current conditions, not an official emergency warning service. The free endpoint is intended for non-commercial use.
 

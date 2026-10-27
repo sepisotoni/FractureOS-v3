@@ -85,7 +85,9 @@ jobs:
           # Exercise the same staged helper used by the Update button.
           $helper=Join-Path $env:RUNNER_TEMP 'fracture-updater.exe'
           Copy-Item "$dest/fracture.exe" $helper
-          $update=Start-Process $helper -ArgumentList 'apply-update',"`"$($installer.FullName)`"","`"$dest`"","`"$dest/fracture.exe`"" -PassThru
+          $stagedInstaller=Join-Path $env:RUNNER_TEMP $installer.Name
+          Copy-Item $installer.FullName $stagedInstaller
+          $update=Start-Process $helper -ArgumentList 'apply-update',"`"$stagedInstaller`"","`"$dest`"","`"$dest/fracture.exe`"" -PassThru
           if (!$update.WaitForExit(60000) -or $update.ExitCode) { throw 'Update helper failed' }
           Start-Sleep -Seconds 4
           $new=Get-Process fracture | Where-Object { $_.Path -eq (Join-Path $dest "fracture.exe") }

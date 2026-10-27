@@ -49,7 +49,7 @@ The P-series checkboxes below describe complete target modules. Initial implemen
 - [x] W03 Add configurable 30-second menu inactivity timeout with preview cancellation.
 - [x] W04 Draw Spotify and transport/volume/more icons; add player clock.
 - [x] W05 Add bounded on-demand synchronized/plain lyrics lookup and authenticated lyrics webhook.
-- [x] W06 Correct PawnIO access handling and add an explicitly approved elevated sensor helper.
+- [ ] W06 Correct PawnIO access handling and add an explicitly approved elevated sensor helper. Flow and pinned-module checks implemented and Windows builds passed; actual UAC/temperature acceptance on the owner’s installed driver is pending.
 - [ ] W07 Create one FractureOS vector logo, app/tray/installer resources and web favicon; replace backed-up TomTom icon.
 - [x] W09 Add on-demand cached hourly/7-day Weather app.
 - [x] W10 Add verified one-click app updates in native/web dashboards.
