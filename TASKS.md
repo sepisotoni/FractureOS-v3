@@ -1,6 +1,6 @@
 # FractureOS v3 task board
 
-Status: v0.1.10 is built; preview dock/weather/lyrics/notification checks passed on the TomTom, and Windows installation/update/reopen/uninstall passed. Final device activation and root icon replacement are deferred while the owner has unplugged it. Full module roadmap remains open. See [release validation](docs/RELEASE-VALIDATION.md). Updated 2026-10-27.
+Status: v0.1.10 is installed on the TomTom and Linux hub; final device/icon readbacks, stored forecasts and media/menu lifecycles passed. Windows installation/update/reopen/uninstall passed on the runner; owner-PC PawnIO acceptance remains open. Full module roadmap remains open. See [release validation](docs/RELEASE-VALIDATION.md). Updated 2026-10-27.
 
 Checkboxes mean the stated deliverable is complete, not merely discussed. Design tasks and implementation tasks are tracked separately. Update this file as each deliverable lands; add evidence or a limitation alongside completed implementation tasks. Experimental features remain open until demonstrated on the target hardware or explicitly declined by the owner.
 
@@ -50,10 +50,10 @@ The P-series checkboxes below describe complete target modules. Initial implemen
 - [x] W04 Draw Spotify and transport/volume/more icons; add player clock.
 - [x] W05 Add bounded on-demand synchronized/plain lyrics lookup and authenticated lyrics webhook.
 - [ ] W06 Correct PawnIO access handling and add an explicitly approved elevated sensor helper. Flow and pinned-module checks implemented and Windows builds passed; actual UAC/temperature acceptance on the owner’s installed driver is pending.
-- [ ] W07 Create one FractureOS vector logo, app/tray/installer resources and web favicon; replace backed-up TomTom icon.
+- [x] W07 Create one FractureOS vector logo, app/tray/installer resources and web favicon; replace backed-up TomTom icon. Final root icon SHA-256 verified after reconnection.
 - [x] W09 Add on-demand cached hourly/7-day Weather app.
 - [x] W10 Add verified one-click app updates in native/web dashboards.
-- [ ] W08 Manually inspect real-device layouts/lifecycles, build Windows installers, deploy and publish. Device UI/cache/webhook checks and Windows updater acceptance passed; final device activation/icon replacement deferred at owner request while unplugged.
+- [x] W08 Manually inspect real-device layouts/lifecycles, build Windows installers, deploy and publish. Final v0.1.10 activated after reconnection with settings preserved; matching Linux hub installed. Windows updater acceptance passed; W06 tracks actual sensor hardware separately.
 
 ## D — Design
 

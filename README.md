@@ -1,6 +1,6 @@
 # FractureOS v3
 
-A quiet, customizable clock for a TomTom ONE (v6), with a C device app and Go Linux hub / Windows tray companion. **v0.1.10 is built and its preview was checked on the TomTom. Final device activation and volume-icon replacement are pending reconnection, at the owner’s request.** It uses the existing OpenTom kernel and drivers; installation replaces the application startup, not the bootloader or firmware.
+A quiet, customizable clock for a TomTom ONE (v6), with a C device app and Go Linux hub / Windows tray companion. **v0.1.10 is installed and checked on the TomTom, with the matching Linux hub and shared volume icon.** It uses the existing OpenTom kernel and drivers; installation replaces the application startup, not the bootloader or firmware.
 
 The original nine faces are now editable FractureOS assets. The blue Nunito face restores its original proportions with a centered date and live seconds, optional larger stacked digits, optional horizontal **HH : MM**, a blinking colon, and an hour-only behavior: **10:00 shows 10 throughout that minute; 10:01 returns to the full time** in either layout. The clock geometry adapts to a compact bottom dock; date and seconds are drawn at their final text size instead of shrinking a completed image. Digits have a configurable 0–2 pixel weight (default 1). The old information sidebar and its application dependencies are absent from the new renderer. Only the selected face's 170 KB digit atlas is resident.
 
@@ -55,10 +55,10 @@ For remote access use a private network/VPN to the Linux hub; no public relay or
 - Notifications cover that area with a rounded gray card and optional artwork. Default display time is **10 seconds**. Tap to dismiss. Set duration in Notifications on PC, or **Settings → Notification time** on the TomTom.
 - Navigation menus return to the clock after **30 seconds** without input. Set **Settings → Menu timeout** (0 disables it), or use Clock & faces on Windows. Active player and lyrics views stay open until you leave them.
 - The player uses the Spotify mark and transport/volume/more symbols, with the time at the top right. More → Lyrics opens synchronized or plain lyrics.
-- Weather has stored hourly and seven-day views. A new FractureOS logo is used by the executable, tray, installer and web favicon. The deployer backs up and replaces the device’s `tomtom.ico` when final activation is allowed.
+- Weather has stored hourly and seven-day views. A new FractureOS logo is used by the executable, tray, installer and web favicon. The deployer backs up and replaces the device’s `tomtom.ico`.
 - **Updates → Update FractureOS** checks GitHub, downloads the matching package, verifies its checksum, and updates the app. Windows closes and reopens its dashboard/tray; settings survive. The web dashboard offers the same action for its local host. Device deployment remains a separate action on the USB hub.
 
-The owner unplugged the TomTom while the final payload was staging. Activation had not begun. The preview already inspected on the device remains the last observed running build; final activation, final overlay refinements and the root icon replacement await reconnection. No further device access is attempted during that interval.
+After reconnection, the final build and volume icon passed SHA-256 readback checks. Stored forecasts displayed with the hub stopped; active player/lyrics views stayed open beyond the menu timeout. Existing owner settings were preserved. See [release validation](docs/RELEASE-VALIDATION.md) for evidence and remaining Windows hardware checks.
 
 ## Use and customize
 

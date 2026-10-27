@@ -3,9 +3,16 @@
 # Installed only by explicit host administration, never by the generic installer.
 set -eu
 lan=enp1s0
-usb=enx9abda0e24f81
+usb=${2:?Usage: tomtom-lan.sh start|stop USB_INTERFACE}
+case "$usb" in ''|*[!a-zA-Z0-9_.-]*) echo 'Invalid USB interface' >&2; exit 1;; esac
 case "${1:-}" in
  start)
+  # The gadget MAC (and hence its enx name) changes after reconnecting.
+  # Restrict this host-specific mapping to the known TomTom USB port/device.
+  properties=$(udevadm info -q property "/sys/class/net/$usb")
+  echo "$properties" | grep -qx 'ID_PATH=pci-0000:00:14.0-usb-0:10:1.0'
+  echo "$properties" | grep -qx 'ID_VENDOR_ID=0525'
+  echo "$properties" | grep -qx 'ID_MODEL_ID=a4a1'
   ip link show "$usb" >/dev/null
   ip addr replace 192.168.101.105/32 dev "$usb"
   ip route replace 192.168.101.115/32 dev "$usb" src 192.168.101.105
@@ -33,5 +40,5 @@ case "${1:-}" in
   ip neigh del proxy 192.168.101.114 dev "$lan" 2>/dev/null || true
   ip route del 192.168.101.114/32 dev "$usb" 2>/dev/null || true
   ;;
- *) echo 'Usage: tomtom-lan.sh start|stop' >&2; exit 2;;
+ *) echo 'Usage: tomtom-lan.sh start|stop USB_INTERFACE' >&2; exit 2;;
 esac
