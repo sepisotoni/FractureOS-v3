@@ -1,12 +1,10 @@
-# Device application completed — v0.1.10
+# Current installation — v0.1.11
 
-The owner reconnected the TomTom and authorized continuation on 2026-10-27. The pending final application is complete; do not redeploy the old preview.
+The owner's requested v0.1.11 changes are installed on the TomTom; matching Linux production hub is active. There is no pending device application. Do not redeploy either old preview.
 
-- Current device slot: `/mnt/sdcard/fracture-v3/releases/v0.1.10`. All payloads and the volume `tomtom.ico` passed SHA-256 readbacks. Original startup and icon backups remain available.
-- Matching production Linux host v0.1.10 is installed and `fracture-v3.service` is active at `.105:47831`. The transient preview hub is inactive.
-- Fresh owner settings were preserved byte-for-byte: Desk, Amber, Nunito, brightness 100, UTC offset 120, alarm off, unusual-only weather, notifications/media/telemetry enabled, notification duration 10 seconds and menu timeout 15 seconds. Read fresh state before future work; these are observations, not values to restore automatically.
-- Stored Weather overview/hourly/weekly views were inspected with the hub stopped. Final player/lyrics timeout exemptions, ordinary menu return, rounded notification overlays/expiry/dismissal, and normal live clock were checked. App memory measured 940 KiB RSS.
-- Interrupted `/tmp/fracture-install-27dc244b5581` staging was cleaned using explicit payload paths. Successful retry evidence is in ignored `artifacts/deploy-v0110-reconnected`; screenshots/state are in `artifacts/reconnect-v0110`. Captures with real media metadata remain private.
-- USB reconnection changed the gadget interface name. The host mapping now selects the known USB port and starts a matching service instance; `.114` reaches the TomTom again. See NETWORK.md. A further physical replug remains an acceptance check.
-
-Remaining hardware acceptance: W06 actual Windows UAC/PawnIO temperature reading, ARM64 Windows runtime, suspend/wake/reboot/shutdown and long-duration operation. Those are not prerequisites for repeating the completed device deployment.
+- Device slot `/mnt/sdcard/fracture-v3/releases/v0.1.11`; every payload and root icon verified by SHA-256. Backups and report: ignored `artifacts/deploy-v0111-final`.
+- Production host launcher points to `~/.local/share/fracture-v3/releases/v0.1.11`. One hub listener at `.105:47831`; transient preview hub stopped. `.114` remains the TomTom LAN alias and `.115` the USB address.
+- Latest observed owner settings: Desk, Amber, Nunito, brightness 100, UTC offset 120, alarm off, telemetry **off**, unusual-only weather, notifications/media on, notification duration 10 seconds, menu timeout 15 seconds. Read fresh state before future changes; do not restore these values automatically.
+- Checks/evidence: `artifacts/manual-v0111` and docs/RELEASE-VALIDATION.md. Includes timed lyric boundary/pause/seek and live Windows-position webhook checks, telemetry grace, Quick settings/Clock navigation, startup animation and exact C home-preview pixels. Temporary lyric overrides were cleared and telemetry preference restored.
+- Accepted Windows build/run: 40499752919 at source `27eb8a3fa2e5c0fcd41b122373cbde69f8e9263c`; local artifacts `artifacts/windows-v0111-accepted`. Both architectures built; only x64 executed. New Windows app is needed for millisecond media samples and the local preview.
+- Remaining: owner-PC visual preview/PawnIO acceptance, ARM64 runtime, full cold boot/power/suspend tests, earlier bootloader/kernel logo replacement and long-duration operation. The application startup animation is implemented; firmware graphics were not replaced.

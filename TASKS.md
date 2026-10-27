@@ -1,6 +1,6 @@
 # FractureOS v3 task board
 
-Status: v0.1.10 is installed on the TomTom and Linux hub; final device/icon readbacks, stored forecasts and media/menu lifecycles passed. Windows installation/update/reopen/uninstall passed on the runner; owner-PC PawnIO acceptance remains open. Full module roadmap remains open. See [release validation](docs/RELEASE-VALIDATION.md). Updated 2026-10-27.
+Status: v0.1.11 is installed on the TomTom and matching Linux hub. Timed lyrics, grouped Clock/Quick settings, telemetry grace and exact shared home rendering passed manual checks; Windows x64 installer/update and renderer checks passed. Windows sensor hardware and earlier firmware-logo replacement remain open. See [release validation](docs/RELEASE-VALIDATION.md). Updated 2026-10-27.
 
 Checkboxes mean the stated deliverable is complete, not merely discussed. Design tasks and implementation tasks are tracked separately. Update this file as each deliverable lands; add evidence or a limitation alongside completed implementation tasks. Experimental features remain open until demonstrated on the target hardware or explicitly declined by the owner.
 
@@ -143,9 +143,9 @@ The v0.1.9 application runs on the TomTom, with persistent startup and preserved
 
 ## X — v0.1.11 playback, navigation and local preview
 
-- [ ] X01 Buffer timed lyrics on-device, track subsecond playback and seeks/pauses; use song title in header and Spotify in Media.
-- [ ] X02 Batch telemetry and keep the last valid readings through a five-second delivery grace period.
-- [ ] X03 Power opens Apps; touch opens Quick settings with real battery/link information. Group timer, stopwatch and alarms inside Clock; add Home.
-- [ ] X04 Refine the curved purple/blue F; add a lightweight Fracture → FractureOS startup animation and inspect the earlier boot-logo mechanism.
-- [ ] X05 Render the home preview locally on Windows using the shared C renderer and synchronized face/theme/font/model data; unload it when hidden.
-- [ ] X06 Check on TomTom and Windows, preserve settings, package/install and publish v0.1.11 with explicit hardware limits.
+- [x] X01 Buffer timed lyrics on-device, track subsecond playback and seeks/pauses; use song title in header and Spotify in Media.
+- [x] X02 Batch telemetry and keep the last valid readings through a five-second delivery grace period.
+- [x] X03 Power opens Apps; touch opens Quick settings with real battery/link information. Group timer, stopwatch and alarms inside Clock; add Home.
+- [x] X04 Refine the curved purple/blue F; add a lightweight Fracture → FractureOS startup animation and inspect the earlier boot-logo mechanism. Application animation checked; earlier firmware graphics remain unchanged.
+- [x] X05 Render the home preview locally on Windows using the shared C renderer and synchronized face/theme/font/model data; unload it when hidden.
+- [x] X06 Check on TomTom and Windows, preserve settings, package/install and publish v0.1.11 with explicit hardware limits.

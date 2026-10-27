@@ -1,6 +1,6 @@
 # FractureOS v3
 
-A quiet, customizable clock for a TomTom ONE (v6), with a C device app and Go Linux hub / Windows tray companion. **v0.1.10 is installed and checked on the TomTom, with the matching Linux hub and shared volume icon.** It uses the existing OpenTom kernel and drivers; installation replaces the application startup, not the bootloader or firmware.
+A quiet, customizable clock for a TomTom ONE (v6), with a C device app and Go Linux hub / Windows tray companion. **v0.1.11 adds timed lyrics, Quick settings, grouped Clock tools and a locally rendered Windows home preview.** It uses the existing OpenTom kernel and drivers; installation replaces the application startup, not the bootloader or firmware.
 
 The original nine faces are now editable FractureOS assets. The blue Nunito face restores its original proportions with a centered date and live seconds, optional larger stacked digits, optional horizontal **HH : MM**, a blinking colon, and an hour-only behavior: **10:00 shows 10 throughout that minute; 10:01 returns to the full time** in either layout. The clock geometry adapts to a compact bottom dock; date and seconds are drawn at their final text size instead of shrinking a completed image. Digits have a configurable 0–2 pixel weight (default 1). The old information sidebar and its application dependencies are absent from the new renderer. Only the selected face's 170 KB digit atlas is resident.
 
@@ -13,7 +13,7 @@ The interface uses pure-black backgrounds, rounded menu highlights, simple metri
 On the **Linux machine connected to the TomTom** (Ubuntu and other Linux distributions, x86-64 or ARM64):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/sepisotoni/FractureOS-v3/v0.1.10/install/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/sepisotoni/FractureOS-v3/v0.1.11/install/install.sh | sh
 ```
 
 Then, with the TomTom reachable over its USB network:
@@ -28,12 +28,12 @@ The installer selects the host architecture, verifies the release SHA-256, insta
 On **64-bit Windows**, paste into PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/sepisotoni/FractureOS-v3/v0.1.10/install/install.ps1 | iex
+irm https://raw.githubusercontent.com/sepisotoni/FractureOS-v3/v0.1.11/install/install.ps1 | iex
 ```
 
 An **Inno Setup `.exe` installer** installs the native dashboard, tray and uninstaller for the current user. Connection and clock configuration live in app Settings. x64 installation, native window/tab navigation, settings persistence, closing and uninstallation were exercised on a Windows runner. ARM64 is cross-built; real Spotify/PawnIO hardware acceptance is still pending. macOS, 32-bit PCs and direct installation from a shell on the TomTom are unsupported.
 
-Release archives and checksums: [v0.1.10 downloads](https://github.com/sepisotoni/FractureOS-v3/releases/tag/v0.1.10). You can download and inspect the installer before running it. Checksums verify download integrity; signed release manifests are still on the roadmap.
+Release archives and checksums: [v0.1.11 downloads](https://github.com/sepisotoni/FractureOS-v3/releases/tag/v0.1.11). You can download and inspect the installer before running it. Checksums verify download integrity; signed release manifests are still on the roadmap.
 
 ## Connect Windows to the hub
 
@@ -49,6 +49,15 @@ In Windows **Settings → Hub connection**, enter `https://192.168.101.105:47831
 
 For remote access use a private network/VPN to the Linux hub; no public relay or automatic tunnel setup is included. The TomTom itself has no verified Wi-Fi. It works offline as a bedside clock while powered; network features at a different location require a USB-capable host there. The legacy root Telnet transport is for the trusted device link, not an Internet-facing interface.
 
+## New in v0.1.11
+
+- **Power → Apps. Tap the home screen → Quick settings**, with real charging state and hub connection status, plus brightness/theme/settings shortcuts.
+- Apps are **Home, Clock, Media, Weather and Settings**. Clock contains Timer, Stopwatch and Alarm. Media names its client **Spotify**; the lyric header shows the song title.
+- Synchronized lyrics use a small rolling timestamped buffer on the TomTom, following its local playback clock between network updates. Pauses and seeks move the selected line. Update the Windows companion too for millisecond position samples and album-aware lookups. Untimed lyrics remain manually paged.
+- Hub telemetry is delivered in one update. Last valid values survive a five-second grace period after the expected two-second sample interval (seven seconds total). Brief status failures also receive a grace period before stopping the collector. Disabling telemetry still hides it immediately.
+- The Windows Dashboard draws a **320×240 home preview locally using the same C renderer** as the TomTom. Face geometry, theme, private UI font and selected atlas synchronize by content hash; subsequent requests carry the small live model. It never repeatedly captures the device's screen. Preview buffers and DLL unload when changing tabs, minimizing or closing the dashboard.
+- The rounded **F is purple above and blue below**. A short, silent Fracture → FractureOS animation runs when the application first starts after boot. Earlier bootloader/kernel graphics are unchanged; replacing those would require separate boot-image work.
+
 ## New in v0.1.10
 
 - Timers, stopwatch and alarm share one measured bottom strip. The four telemetry readings keep their two-by-two layout and move into a narrower left panel when media/weather needs the right side.
@@ -62,7 +71,7 @@ After reconnection, the final build and volume icon passed SHA-256 readback chec
 
 ## Use and customize
 
-The launcher has **Clock, Timer, Stopwatch, Alarm, Media, Weather and Settings**. Timer and Alarm offer presets and custom values. Stopwatch has start/pause/resume, a last-lap reading and reset. Tap anywhere to browse; double-tap or a short power press selects. In a number editor, tap adds, double-tap subtracts and power applies. No touchscreen coordinates are used.
+The launcher has **Home, Clock, Media, Weather and Settings**; **Clock** contains Timer, Stopwatch and Alarm. Timer and Alarm offer presets and custom values. Stopwatch has start/pause/resume, a last-lap reading and reset. From the home face, a short Power press opens Apps and a tap opens Quick settings. Inside menus, tap to browse; double-tap or a short power press selects. In a number editor, tap adds, double-tap subtracts and power applies. No touchscreen coordinates are used.
 
 Power gestures act **on release**: below 1.5s selects; 1.5–3s goes back one page; 3–4.5s returns to the clock; 4.5–7s cancels; 7s or longer requests suspend. The optional indicator is green → blue → purple, disappears in the cancel range, then shows “Release to sleep.” A double power press also returns home. Touch hold goes back one page. Settings → Power contains confirmation screens for suspend, restart and shutdown, with Cancel selected first. The owner physically verified the indicator and Back/Home; suspend/wake and reboot/shutdown have not been exercised here.
 
@@ -136,7 +145,7 @@ The Go worker uses the documented device IO-control interface directly, so no mo
 
 ### Lyrics
 
-Open **Media → player → More → Lyrics**. The hub uses the Windows bridge’s track metadata to request LRCLIB lyrics only while that page is visible. Synced lyrics follow playback; plain lyrics use tap for the next page and double-tap for the previous page. Lookup availability/timing varies by track. Previous/current/next lines alone travel to the TomTom; the full song stays on the hub. A bounded cache holds at most eight songs for seven days. Disable lookups in PC settings if desired.
+Open **Media → Spotify → More → Lyrics**. The hub uses the Windows bridge’s track metadata to request LRCLIB lyrics only while that page is visible. Synced lyrics follow playback; plain lyrics use tap for the next page and double-tap for the previous page. Lookup availability/timing varies by track. A rolling buffer of at most 12 timestamped lines travels to the TomTom; it allocates about 1 KiB only while Lyrics is open (about 2 KiB briefly while replacing a window). The full song stays on the hub. A bounded cache holds at most eight songs for seven days. Disable lookups in PC settings if desired.
 
 A client can also supply lyrics through authenticated `POST /api/lyrics`:
 
@@ -162,20 +171,20 @@ Linux/hub: **192.168.101.105**. TomTom USB: **192.168.101.115**. TomTom LAN alia
 
 ## What works now
 
-| Component | Available in v0.1.10 |
+| Component | Available in v0.1.11 |
 |---|---|
 | TomTom | Direct framebuffer clock; nine reused faces plus neon; face/theme previews; weather summary; feature switches; editable layout/colors; stacked/horizontal/hour-only modes; switch-operated menu; minimal/desk/bedside; countdown, stopwatch and silent visual daily alarm; persisted settings |
 | Linux | TLS hub, CLI, settings UI, optional CPU/RAM/temperature/network worker that starts only in Desk mode and exits when unused; time sync; weather worker; notification webhook; device deployment and restoration |
-| Windows | Native tray, separate native dashboard/settings and web dashboard; Inno installer/uninstaller checked on Windows x64; optional PawnIO worker (hardware verification pending) |
+| Windows | Native tray, separate native dashboard/settings with locally rendered home preview, and web dashboard; Inno installer/uninstaller checked on Windows x64; optional PawnIO worker (hardware verification pending) |
 | Installation | Prebuilt Linux x86-64/ARM64 and Windows x64/ARM64 archives; checksum verification; versioned device payloads; original startup/icon backup; recovery to OpenTom |
 
-This is not all 23 planned modules. Real Windows media/PawnIO acceptance, automatic Windows toast capture, audio forwarding, mirroring/true monitor extension, calendar, automatic Windows notifications, Windows metrics/activity switching, arbitrary widget composition, GPS, signed automatic updates and a general module loader remain on the [task board](TASKS.md). Core clock/menu/timer code is currently one small binary; Linux metrics/weather and Windows media/temperature run in separate processes only when enabled and requested. Full dynamic unloading of every core feature is not implemented.
+This is not all 23 planned modules. Full Windows playback-control/PawnIO acceptance, automatic Windows toast capture, audio forwarding, mirroring/true monitor extension, calendar, automatic Windows notifications, Windows metrics/activity switching, arbitrary widget composition, GPS, signed automatic updates and a general module loader remain on the [task board](TASKS.md). Core clock/menu/timer code is currently one small binary; Linux metrics/weather and Windows media/temperature run in separate processes only when enabled and requested. Full dynamic unloading of every core feature is not implemented.
 
 Alarms require the device to remain powered and running; no sound or suspend wakeup is implemented. Timers and stopwatch state do not survive restart. Time uses a configured UTC offset; RTC retention and automatic DST are not validated. Brightness settings are persisted; the PWM driver allows only one opener, and effective brightness writes need a dedicated measurement rather than a second concurrent probe.
 
 ## Update, restore, uninstall
 
-Rerun the version-pinned host installer for a newer release, then `fracture device install` on Linux. The deployer verifies each uploaded file by reading it back, backs up boot/startup files privately on the host, and installs into a new device release directory. It never silently overwrites a different executable under the same version. Failed activation returns to the saved OpenTom startup. This is a manual application update system; power-loss-safe journals and signed automatic updates are future work.
+Rerun the version-pinned host installer for a newer release, then `fracture device install` on Linux. The deployer verifies each uploaded file by reading it back, backs up boot/startup files privately on the host, and installs into a new device release directory. It never silently overwrites a different executable under the same version. Failed activation returns to the saved OpenTom startup. The native and web dashboards also offer user-initiated app updates; deploying the device remains a separate Linux action. Power-loss-safe journals and signed automatic updates are future work.
 
 ```sh
 fracture device restore    # restore and start the saved OpenTom environment
