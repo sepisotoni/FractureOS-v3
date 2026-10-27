@@ -109,12 +109,11 @@ func mediaAPI(b *Broker, w http.ResponseWriter, r *http.Request) {
 	if s.ClearArt {
 		commands = append(commands, "media-art clear")
 	}
-	for _, cmd := range commands {
-		if _, e := b.call(cmd); e != nil {
-			http.Error(w, "device update failed", 502)
-			return
-		}
+	if e := b.batch(commands); e != nil {
+		http.Error(w, "device update failed", 502)
+		return
 	}
+
 	if len(s.Artwork) > 0 {
 		if e := uploadMediaArt(b.device, s.Artwork); e != nil {
 			http.Error(w, "artwork transfer failed", 502)

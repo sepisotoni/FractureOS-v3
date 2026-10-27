@@ -242,6 +242,7 @@ func platformDashboard() error {
 			edit(224, strconv.Itoa(st.Offset), 340, 260, 210, false)
 			check(225, "Telemetry on the TomTom", st.Telemetry != 0, 36, 330)
 			check(226, "Media on the TomTom", st.Media != 0, 36, 368)
+			check(262, "Look up lyrics when the Lyrics page is open", q.LyricsEnabled == nil || *q.LyricsEnabled, 36, 397)
 			button(227, "Apply to TomTom", 36, 430, 220)
 			label("Preview faces directly: TomTom Settings > Faces. Hold Power to cancel.", 36, 490)
 		case 2:
@@ -356,6 +357,7 @@ func platformDashboard() error {
 					}
 					return 0
 				}
+				allowLyrics := checked(262)
 				commands := []string{"face " + get(220), "theme " + get(221), "brightness " + get(223), "offset " + get(224), fmt.Sprintf("feature appearance %d", appearance), fmt.Sprintf("feature telemetry %d", bit(checked(225))), fmt.Sprintf("feature media %d", bit(checked(226))), "ui-timeout menu " + get(228), "ui-timeout notification " + get(229)}
 				async(func() (string, error) {
 					conf, e := readConfig()
@@ -366,6 +368,14 @@ func platformDashboard() error {
 						if _, e = hubCall(conf, cmd); e != nil {
 							return "", e
 						}
+					}
+					q, e := integrationGet(conf)
+					if e != nil {
+						return "", e
+					}
+					q.LyricsEnabled = &allowLyrics
+					if e = integrationSave(conf, q); e != nil {
+						return "", e
 					}
 					return "Clock updated", nil
 				})

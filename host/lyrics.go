@@ -151,11 +151,9 @@ func registerLyrics(mux *http.ServeMux, b *Broker, token string) {
 		if q.Plain {
 			plain = 1
 		}
-		for _, cmd := range []string{"media-lyrics previous " + asciiHex(q.Previous), "media-lyrics current " + asciiHex(q.Current), "media-lyrics next " + asciiHex(q.Next), "media-lyrics message " + asciiHex(q.Message), fmt.Sprintf("lyrics-state %d", plain)} {
-			if _, e = b.call(cmd); e != nil {
-				http.Error(w, "lyrics delivery failed", 502)
-				return
-			}
+		if e = b.batch([]string{"media-lyrics previous " + asciiHex(q.Previous), "media-lyrics current " + asciiHex(q.Current), "media-lyrics next " + asciiHex(q.Next), "media-lyrics message " + asciiHex(q.Message), fmt.Sprintf("lyrics-state %d", plain)}); e != nil {
+			http.Error(w, "lyrics delivery failed", 502)
+			return
 		}
 		fmt.Fprint(w, "OK")
 	})

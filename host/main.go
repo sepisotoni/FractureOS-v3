@@ -418,6 +418,13 @@ func (b *Broker) call(cmd string) (string, error) {
 	}
 	return out, e
 }
+func (b *Broker) batch(commands []string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	_, err := deviceCommands(b.device, commands)
+	b.cachedAt = time.Time{}
+	return err
+}
 func serve() error {
 	c, e := readConfig()
 	if e != nil {

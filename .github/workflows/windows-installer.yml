@@ -84,7 +84,7 @@ jobs:
           $update=Start-Process $helper -ArgumentList 'apply-update',"`"$($installer.FullName)`"","`"$dest`"","`"$dest/fracture.exe`"" -PassThru
           if (!$update.WaitForExit(60000) -or $update.ExitCode) { throw 'Update helper failed' }
           Start-Sleep -Seconds 4
-          $new=Get-Process fracture | Where-Object { $_.Path -eq "$dest/fracture.exe" }
+          $new=Get-Process fracture | Where-Object { $_.Path -eq (Join-Path $dest "fracture.exe") }
           if (@($new).Count -lt 2) { throw 'Updater did not reopen dashboard and tray' }
           $saved=Get-Content "$env:APPDATA/fracture-v3/config.json" -Raw | ConvertFrom-Json
           if ($saved.hub -ne 'https://127.0.0.1:47832') { throw 'Update lost connection settings' }

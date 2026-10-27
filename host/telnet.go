@@ -103,8 +103,16 @@ func (t *telnet) command(command string) (string, error) {
 	return body, nil
 }
 func deviceCommand(address, command string) (string, error) {
-	if err := validateCommand(command); err != nil {
-		return "", err
+	return deviceCommands(address, []string{command})
+}
+func deviceCommands(address string, commands []string) (string, error) {
+	if len(commands) == 0 || len(commands) > 16 {
+		return "", fmt.Errorf("invalid command batch")
+	}
+	for _, command := range commands {
+		if err := validateCommand(command); err != nil {
+			return "", err
+		}
 	}
 	c, err := net.DialTimeout("tcp", net.JoinHostPort(address, "23"), 3*time.Second)
 	if err != nil {
@@ -126,13 +134,18 @@ func deviceCommand(address, command string) (string, error) {
 		return "", err
 	}
 	var cmd bytes.Buffer
-	cmd.WriteString("/bin/sh /mnt/sdcard/fracture-v3/control.sh")
-	// Validator limits values; still quote each argument independently.
-	for _, arg := range strings.Fields(command) {
-		cmd.WriteString(" '")
-		cmd.WriteString(strings.ReplaceAll(arg, "'", "'\\''"))
-		cmd.WriteByte('\'')
+	for index, command := range commands {
+		if index > 0 {
+			cmd.WriteString(" && ")
+		}
+		cmd.WriteString("/bin/sh /mnt/sdcard/fracture-v3/control.sh")
+		for _, arg := range strings.Fields(command) {
+			cmd.WriteString(" '")
+			cmd.WriteString(strings.ReplaceAll(arg, "'", "'\\''"))
+			cmd.WriteByte('\'')
+		}
 	}
+
 	out, err := t.command(cmd.String())
 	_, _ = c.Write([]byte("exit\r\n"))
 	return out, err

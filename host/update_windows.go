@@ -68,6 +68,14 @@ func applyUpdate(args []string) (result error) {
 			}
 		}
 		if result != nil {
+			for _, mode := range []string{"tray", "dashboard"} {
+				if _, e := os.Stat(args[2]); e == nil {
+					cmd := exec.Command(args[2], mode)
+					if cmd.Start() == nil {
+						go cmd.Wait()
+					}
+				}
+			}
 			user32.NewProc("MessageBoxW").Call(0, uintptr(unsafe.Pointer(wide("Update failed: "+result.Error()))), uintptr(unsafe.Pointer(wide("FractureOS update"))), 0x10)
 		}
 	}()

@@ -135,28 +135,20 @@ func registerIntegrations(mux *http.ServeMux, b *Broker, token string) {
 				return
 			}
 		}
-		_, _ = b.call("notice -")
-		for _, cmd := range []string{"notice-text app " + asciiHex(q.App), "notice-text title " + asciiHex(q.Title), "notice-text body " + asciiHex(q.Body)} {
-			if _, e = b.call(cmd); e != nil {
-				http.Error(w, "notification delivery failed", 502)
-				return
-			}
-		}
+		commands := []string{"notice -", "notice-text app " + asciiHex(q.App), "notice-text title " + asciiHex(q.Title), "notice-text body " + asciiHex(q.Body)}
 		if len(image) > 0 {
 			if e = uploadDeviceArt(b.device, image, true); e != nil {
 				http.Error(w, "notification artwork transfer failed", 502)
 				return
 			}
-			if _, e = b.call("notice-art load"); e != nil {
-				http.Error(w, "notification artwork rejected", 502)
-				return
-			}
+			commands = append(commands, "notice-art load")
 		}
-		out, e := b.call(fmt.Sprintf("notice-show %d", q.Seconds))
-		if e != nil {
+		commands = append(commands, fmt.Sprintf("notice-show %d", q.Seconds))
+		if e = b.batch(commands); e != nil {
 			http.Error(w, "notification delivery failed", 502)
 			return
 		}
+		out := "OK"
 
 		lastNotice = time.Now()
 		fmt.Fprint(w, out)

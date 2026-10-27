@@ -38,7 +38,7 @@ static int media_command(const char *name,const char *a,const char *b){int p,pos
 static void duration_text(char *s,size_t cap,int seconds){if(seconds<0)seconds=0;if(seconds>=3600)snprintf(s,cap,"%d:%02d:%02d",seconds/3600,seconds/60%60,seconds%60);else snprintf(s,cap,"%02d:%02d",seconds/60,seconds%60);}
 static int metrics_live(void){return cfg.telemetry&&stats_at>0&&mono()-stats_at<10;}
 static int temperature_live(void){return cfg.telemetry&&temp_at>0&&mono()-temp_at<10&&cpu_temp>=-500;}
-static int metric_count(void){return cfg.profile==1&&metrics_live()?(cpu>=0)+(ram>=0)+temperature_live()+(net_down>=0||net_up>=0):0;}
+static int metric_count(void){return cfg.profile==1?((metrics_live()?((cpu>=0)+(ram>=0)+(net_down>=0||net_up>=0)):0)+temperature_live()):0;}
 /* A bottom dock shares horizontal space. Activity never becomes a stack. */
 static int activity_count(void){return (timer_end>0)+(watch_start>0||watch_elapsed>0)+(cfg.alarm_hour>=0);}
 static int dock_extras(void){return (media_live()&&media_title[0])||weather_visible();}
@@ -57,7 +57,7 @@ static void notice_draw(int top){int x,y,tx=24,tw=272;uint16_t bg=appearance_day
  text_fit(tx,top+10,notice_app[0]?notice_app:"Notification",tw,1,muted);text_fit(tx,top+30,notice_title,tw,1,fg);text_lines(tx,top+50,notice_body,tw,2,1,fg);}
 static void status_draw(int top){int values[4],icons[4]={1,10,16,15},i,slot=0,metrics=metric_count(),extras=dock_extras(),panel=metrics&&extras?186:W,dh=dock_height(),y=H-dh-3;char value[32];uint16_t fg=theme_color(theme.foreground),accent=theme_color(theme.accent),bg=theme_color(theme.background);
  if(notice_live()){notice_draw(top);return;}rect(12,top,296,1,theme_color(theme.surface));if(activity_count())activity_draw(top+5);
- if(metrics){values[0]=cpu;values[1]=ram;values[2]=temperature_live()?cpu_temp:-1000;values[3]=net_down>net_up?net_down:net_up;
+ if(metrics){values[0]=metrics_live()?cpu:-1;values[1]=metrics_live()?ram:-1;values[2]=temperature_live()?cpu_temp:-1000;values[3]=metrics_live()?(net_down>net_up?net_down:net_up):-1;
  for(i=0;i<4;i++)if(values[i]>=0||(i==2&&temperature_live())){int cell=panel/2,x=10+(slot%2)*cell,yy=y+(dh-48)/2+(slot/2)*25;icon(x,yy,icons[i],accent,bg);if(i==3){if(values[i]>=1024)snprintf(value,sizeof value,"%d.%dM",values[i]/1024,(values[i]%1024)*10/1024);else snprintf(value,sizeof value,"%dK/s",values[i]);}else if(i==2)snprintf(value,sizeof value,"%s%dC",temp_pc?"P ":"",values[i]/10);else snprintf(value,sizeof value,"%d%%",values[i]);text_fit(x+27,yy+2,value,cell-31,1,fg);slot++;}}
  if(extras){int left=metrics?panel+8:14,width=metrics?W-left-8:W-28,row=y+4;int music=media_live()&&media_title[0];if(!metrics&&music&&weather_visible())width=166;if(metrics)rounded(panel,y+2,1,dh-5,0,theme_color(theme.surface));
  if(music){spotify_mark(left,row+1,17);text_fit(left+23,row,media_title,width-23,1,fg);text_fit(left,row+20,media_artist,width,1,theme_color(theme.muted));row+=weather_visible()?43:40;}
@@ -66,8 +66,8 @@ static void status_draw(int top){int values[4],icons[4]={1,10,16,15},i,slot=0,me
 static void media_draw(void){int x,y,progress;char s[40];struct tm t;uint16_t fg=theme_color(theme.foreground),muted=theme_color(theme.muted),accent=theme_color(theme.accent),bg=theme_color(theme.background);
  spotify_mark(17,6,26);localtime_now(&t);strftime(s,sizeof s,"%H:%M",&t);text(W-16-measured(s),10,s,1,fg);
  if(media_art)for(y=0;y<96;y++)for(x=0;x<96;x++)pixels[(44+y)*W+16+x]=media_art[y*96+x];else{rounded(16,44,96,96,14,theme_color(theme.surface));media_symbol(45,74,36,SYM_SPOTIFY,accent,bg);}
- text_lines(126,44,media_live()&&media_title[0]?media_title:"No active track",180,2,2,fg);text_fit(126,96,media_artist,180,1,muted);if(strcmp(media_message,"Spotify on Windows"))text_fit(126,118,media_message,180,1,muted);
- progress=media_progress+(media_live()&&media_playing?(int)(mono()-media_at):0);if(progress>media_duration)progress=media_duration;rounded(16,151,288,3,1,theme_color(theme.surface));if(media_duration>0)rect(16,151,288*progress/media_duration,3,accent);duration_text(s,sizeof s,progress);text(16,158,s,1,muted);duration_text(s,sizeof s,media_duration);text(W-16-measured(s),158,s,1,muted);
+ text_lines(126,44,media_live()&&media_title[0]?media_title:"No active track",180,2,2,fg);if(media_live())text_fit(126,96,media_artist,180,1,muted);if(strcmp(media_message,"Spotify on Windows"))text_fit(126,118,media_message,180,1,muted);
+ progress=media_live()?media_progress+(media_playing?(int)(mono()-media_at):0):0;if(progress>media_duration)progress=media_duration;rounded(16,151,288,3,1,theme_color(theme.surface));if(media_duration>0)rect(16,151,288*progress/media_duration,3,accent);duration_text(s,sizeof s,progress);text(16,158,s,1,muted);duration_text(s,sizeof s,media_live()?media_duration:0);text(W-16-measured(s),158,s,1,muted);
  {int symbols[5]={SYM_PREV,media_playing?SYM_PAUSE:SYM_PLAY,SYM_NEXT,SYM_VOLUME,SYM_MORE};for(x=0;x<5;x++){uint16_t c=x==selected?fg:muted;rounded(12+x*60,184,55,31,11,x==selected?theme_color(theme.surface):bg);media_symbol(28+x*60,188,24,symbols[x],c,x==selected?theme_color(theme.surface):bg);}}
  {const char *labels[]={"Previous",media_playing?"Pause":"Play","Next","Volume","More"};center(221,labels[selected],1,muted);}}
 static void lyrics_draw(void){struct tm t;char s[16];uint16_t fg=theme_color(theme.foreground),muted=theme_color(theme.muted);spotify_mark(16,8,24);text(50,10,"Lyrics",2,fg);localtime_now(&t);strftime(s,sizeof s,"%H:%M",&t);text(W-16-measured(s),12,s,1,fg);text_fit(16,47,media_title,288,1,muted);
