@@ -1,3 +1,19 @@
+# v0.1.10 build validation — 2026-10-27
+
+**Final device activation is deferred at the owner's request.** The final transfer stopped during payload staging before activation, when the TomTom was unplugged. No final root `tomtom.ico` replacement or final-overlay hardware check is claimed. Preview work on the actual device had already completed the checks below; source and installers are ready for reconnection.
+
+- Actual device captures: compact four-stat dock beside current media/weather; timer/stopwatch/alarm on one strip; Spotify/transport icons and player clock; cached Weather overview, 24-hour and 7-day lists; rounded notification card with a FractureOS artwork thumbnail; supplied synchronized lyrics. Evidence is in ignored `artifacts/manual-v0110`. Screenshots containing real listening metadata are retained privately rather than published.
+- Open-Meteo supplied real current/hourly/daily data. The compact FWE1 cache uploaded and parsed on-device, and the cache age appeared in all forecast views. Provider-disabled/offline views continue to read stored data; physical offline viewing after unplug is a remaining check.
+- Notification artwork endpoint accepted delivery; ten-second default card expiry was observed. Configured menu timeout was manually shortened to two seconds, observed returning to the clock, then restored to 30 seconds. Final source exempts active player/lyrics pages and adds content-view overlays; these final refinements await device reconnection.
+- The authenticated lyrics webhook accepted original preview LRC, and the device rendered the changing lines. Its supplied override was cleared afterward. The LRCLIB endpoint returned valid synchronized data during a separate connectivity check; this does not establish coverage for every song.
+- Windows x64/ARM64 binaries and Inno installers built with embedded FractureOS icon/manifest. [Windows run 40454190738](https://github.com/sepisotoni/FractureOS-v3/actions/runs/40454190738) passed installation, native settings persistence, all six tabs, staged self-update, automatic dashboard/tray reopen, retained settings, close and uninstallation. Dashboard working set was **22,056,960 bytes (21.0 MiB)** in the offline runner. ARM64 runtime remains untested.
+- PawnIO now distinguishes access denial from a missing driver and offers an explicitly approved separate sensor helper. Module hashes are pinned and only temperature data is returned to its authenticated loopback receiver. Actual sensor access/UAC on the owner's installed driver still requires Windows hardware acceptance.
+- Web logo/favicon hashes match the exported FractureOS asset; authenticated update checking returned the correct current version without attempting a downgrade. JavaScript syntax and existing Go/C checks passed. No Python test files or scheduled validation jobs were added.
+- The final stripped ARM binary is about 69 KiB; one selected digit atlas remains 170,000 bytes. Notification artwork is allocated only for the card's lifetime; the forecast struct is allocated only in Weather. A final memory measurement with these refinements is pending reconnection.
+- The interrupted deploy exposed a cleanup-reporting gap: cleanup errors after USB loss could hide the transfer error. The deployer now always records deferred cleanup and activation status. This fix is prepared locally; it has not been retried on the disconnected device.
+
+## Previous release records
+
 # v0.1.9 validation — 2026-10-26
 
 - Built with the existing ARMv5 GCC 3.3.4/glibc 2.3.2 SDK and pinned Go 1.27.3. The stripped device binary is **60,168 bytes**. Exactly one 170,000-byte face atlas remains selected; weather uses small numeric state and drawn symbols, with no new bitmap pack.

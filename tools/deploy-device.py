@@ -171,8 +171,14 @@ def main():
                 restore(device)
             raise
         finally:
-            for path in uploaded: device.checked('rm -f '+path)
-            device.checked('rmdir '+stage+'/faces '+stage+'/themes '+stage+'/ui '+stage)
+            # A USB disconnect must not hide the original error or lose recovery evidence.
+            report['activation_changed'] = changed
+            try:
+                for path in uploaded: device.checked('rm -f '+path)
+                device.checked('rmdir '+stage+'/faces '+stage+'/themes '+stage+'/ui '+stage)
+            except Exception as cleanup_error:
+                report['cleanup_deferred'] = {'stage': stage, 'files': uploaded, 'error': str(cleanup_error)}
+                print('Temporary staging cleanup deferred until the device is reachable.')
             (backup/'deployment.json').write_text(json.dumps(report,indent=2)+'\n')
 
 

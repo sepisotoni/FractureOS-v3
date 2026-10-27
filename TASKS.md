@@ -1,6 +1,6 @@
 # FractureOS v3 task board
 
-Status: v0.1.9 deployed with weather, CPU temperature, face/theme previews and native/web dashboards; Inno installers validated on Windows x64 and v0.1.9 downloads published. Full module roadmap remains open. See [release validation](docs/RELEASE-VALIDATION.md). Updated 2026-10-26.
+Status: v0.1.10 is built; preview dock/weather/lyrics/notification checks passed on the TomTom, and Windows installation/update/reopen/uninstall passed. Final device activation and root icon replacement are deferred while the owner has unplugged it. Full module roadmap remains open. See [release validation](docs/RELEASE-VALIDATION.md). Updated 2026-10-27.
 
 Checkboxes mean the stated deliverable is complete, not merely discussed. Design tasks and implementation tasks are tracked separately. Update this file as each deliverable lands; add evidence or a limitation alongside completed implementation tasks. Experimental features remain open until demonstrated on the target hardware or explicitly declined by the owner.
 
@@ -53,7 +53,7 @@ The P-series checkboxes below describe complete target modules. Initial implemen
 - [ ] W07 Create one FractureOS vector logo, app/tray/installer resources and web favicon; replace backed-up TomTom icon.
 - [x] W09 Add on-demand cached hourly/7-day Weather app.
 - [x] W10 Add verified one-click app updates in native/web dashboards.
-- [ ] W08 Manually inspect real-device layouts/lifecycles, build Windows installers, deploy and publish.
+- [ ] W08 Manually inspect real-device layouts/lifecycles, build Windows installers, deploy and publish. Device UI/cache/webhook checks and Windows updater acceptance passed; final device activation/icon replacement deferred at owner request while unplugged.
 
 ## D — Design
 

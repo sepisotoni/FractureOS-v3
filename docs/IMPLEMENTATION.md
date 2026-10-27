@@ -1,3 +1,19 @@
+# v0.1.10 additions
+
+The device renderer uses a bottom dock instead of adding a row per information source. A measured activity strip holds timers/stopwatch/alarm; the two-by-two metrics panel narrows when media/weather needs the right panel. Notification cards replace the dock for a configurable lifetime (10 seconds by default), with a bounded optional 48×48 RGB565 image, released on expiry/dismissal. Menu inactivity defaults to 30 seconds; active player/lyrics views remain open. All input remains independent of touch coordinates.
+
+Weather adds a lazily allocated forecast browser. The hub requests 24 hourly records and seven daily records, bounds/checks the response, and atomically stores a compact FWE1 text cache on the device. A saved-at field avoids re-uploading unchanged data when reopening menus. The SD cache can be viewed offline with an explicit age; the array is freed when leaving Weather. This adds no HTTP or image decoder to the legacy device.
+
+Lyrics run in a separate hub worker only while requested. Windows media snapshots retain bounded title/artist/duration state; the worker looks up LRCLIB or a supplied authenticated override, parses timestamped/plain lyrics, and sends only the three displayed lines. The PC cache is bounded to eight entries. Track identity checks reject stale updates. Multiple display commands now share a validated Telnet batch, reducing connection churn during notifications/media/lyric updates.
+
+PawnIO authorization elevates only a signed-module temperature helper through ShellExecuteEx/runas after an explicit app action. The regular worker owns a temporary loopback receiver protected by a random token. The privileged helper receives a module-directory path and that endpoint/token, not hub credentials; module contents must match pinned hashes, and the only hardware requests are the fixed temperature reads. Idle hardware handles are released; the helper exits when its receiver closes or after the idle grace period. Actual UAC/sensor acceptance is pending on the owner's Windows PC.
+
+Windows app updates select a newer numeric release tag, bound downloads, verify the named asset's SHA-256, stage a distinct updater executable, close the old installation, run its Inno installer and reopen dashboard/tray. Settings are retained; no update check runs unless requested. The Linux web action uses the versioned per-user installer. FractureOS application updates do not automatically activate a device payload. Authenticode signing and signed release manifests remain future work.
+
+The vector FractureOS mark is the source for shared ICO/PNG/SVG exports. The executable, tray, window, Inno installer and webpage use that mark. Windows resources are built with pinned go-winres v0.3.3, a build-only dependency; the app continues using the Go standard library. Device deployment prepares a backup/replacement of the TomTom volume icon. That replacement and final activation await reconnection.
+
+## Previous implementation records
+
 # v0.1.9 additions
 
 The Windows dashboard is a separate Go/Win32/GDI process with native controls, rounded owner-drawn buttons and a timer that polls only its visible Dashboard tab. It closes completely when dismissed; the tray supervises optional media/temperature workers. The independent web dashboard uses the same command/status and integration configuration endpoints. Neither frontend adds a browser runtime to the executable.
