@@ -45,14 +45,14 @@ The P-series checkboxes below describe complete target modules. Initial implemen
 ## W — Adaptive dock, media controls and branding
 
 - [x] W01 Pack timers/stopwatch/alarm into one measured strip; dock telemetry beside media/weather.
-- [ ] W02 Add rounded notification overlay, optional artwork and configurable 10-second lifetime.
+- [x] W02 Add rounded notification overlay, optional artwork and configurable 10-second lifetime.
 - [x] W03 Add configurable 30-second menu inactivity timeout with preview cancellation.
 - [x] W04 Draw Spotify and transport/volume/more icons; add player clock.
-- [ ] W05 Add bounded on-demand synchronized/plain lyrics lookup and authenticated lyrics webhook.
-- [ ] W06 Correct PawnIO access handling and add an explicitly approved elevated sensor helper.
-- [x] W07 Create one FractureOS vector logo, app/tray/installer resources and web favicon; replace backed-up TomTom icon.
+- [x] W05 Add bounded on-demand synchronized/plain lyrics lookup and authenticated lyrics webhook.
+- [x] W06 Correct PawnIO access handling and add an explicitly approved elevated sensor helper.
+- [ ] W07 Create one FractureOS vector logo, app/tray/installer resources and web favicon; replace backed-up TomTom icon.
 - [x] W09 Add on-demand cached hourly/7-day Weather app.
-- [ ] W10 Add verified one-click app updates in native/web dashboards.
+- [x] W10 Add verified one-click app updates in native/web dashboards.
 - [ ] W08 Manually inspect real-device layouts/lifecycles, build Windows installers, deploy and publish.
 
 ## D — Design

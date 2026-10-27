@@ -2,6 +2,7 @@
 enum {PAGE_CLOCK, PAGE_APPS, PAGE_TIMER, PAGE_TIMER_CUSTOM, PAGE_WATCH, PAGE_ALARM,
  PAGE_ALARM_CUSTOM, PAGE_SETTINGS, PAGE_MODES, PAGE_POWER, PAGE_CONFIRM, PAGE_MEDIA,
  PAGE_PLAYER, PAGE_MEDIA_MORE, PAGE_EDIT, PAGE_INFO, PAGE_FACES, PAGE_THEMES, PAGE_FEATURES,PAGE_LYRICS,PAGE_WEATHER,PAGE_WEATHER_HOURS,PAGE_WEATHER_DAYS};
+static int notice_overlay_allowed(void){return menu==PAGE_CLOCK||menu==PAGE_PLAYER||menu==PAGE_LYRICS||menu>=PAGE_WEATHER;}
 static int saved_selection[23],edit_parent,info_parent,edit_field,edit_value,edit_min,edit_max,edit_step;
 static int custom_timer[3]={0,25,0},custom_alarm[2]={7,0},pending_power;
 static double watch_lap;
@@ -43,7 +44,7 @@ static void choose(void){Settings old=cfg;switch(menu){
  case PAGE_INFO:page_back();break;
  default:page_open(PAGE_APPS);break;}
  if(!preview_face[0]&&!preview_theme[0])settings_commit(old);}
-static void event(const char *kind){int before=selected;dirty=1;menu_activity=mono();if(notice_live()&&!menu){notice_until=0;notice_release_art();return;}if(alert){alert=0;return;}if(!strcmp(kind,"home")){preview_cancel();page_open(PAGE_CLOCK);return;}if(!strcmp(kind,"hold")||!strcmp(kind,"long")||!strcmp(kind,"back")){page_back();return;}
+static void event(const char *kind){int before=selected;dirty=1;menu_activity=mono();if(notice_live()&&notice_overlay_allowed()){notice_until=0;notice_release_art();return;}if(alert){alert=0;return;}if(!strcmp(kind,"home")){preview_cancel();page_open(PAGE_CLOCK);return;}if(!strcmp(kind,"hold")||!strcmp(kind,"long")||!strcmp(kind,"back")){page_back();return;}
  if(menu==PAGE_LYRICS&&lyrics_plain&&(!strcmp(kind,"tap")||!strcmp(kind,"double"))){lyrics_page+=!strcmp(kind,"tap")?1:-1;if(lyrics_page<0)lyrics_page=0;if(lyrics_page>600)lyrics_page=600;return;}
  if(menu==PAGE_EDIT&&(!strcmp(kind,"tap")||!strcmp(kind,"double"))){edit_value+=!strcmp(kind,"tap")?edit_step:-edit_step;if(edit_value>edit_max)edit_value=edit_min;if(edit_value<edit_min)edit_value=edit_max;return;}
  if(!strcmp(kind,"power")||!strcmp(kind,"double")){if(menu)choose();else page_open(PAGE_APPS);return;}

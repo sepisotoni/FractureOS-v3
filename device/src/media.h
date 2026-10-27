@@ -5,6 +5,7 @@ static uint16_t *notice_art;
 static char lyrics_line[3][81],lyrics_message[81]="Open lyrics to look up this track";
 static int lyrics_plain,lyrics_page;
 static int notice_live(void);
+static int notice_overlay_allowed(void);
 static void notice_release_art(void){free(notice_art);notice_art=NULL;}
 
 static double media_at,notice_until,media_action_at;
@@ -52,7 +53,7 @@ static void activity_draw(int top){char labels[3][24];int kinds[3],count=0,i,tot
  for(i=0;i<count;i++){widths[i]=27+measured(labels[i]);total+=widths[i];}gap=count>1?(W-24-total)/(count-1):0;if(gap<8)gap=8;x=count==1?(W-total)/2:12;
  for(i=0;i<count;i++){icon(x,top,kinds[i],theme_color(theme.accent),theme_color(theme.background));text_fit(x+27,top+2,labels[i],widths[i]-25,1,theme_color(theme.foreground));x+=widths[i]+gap;}}
 static void notice_draw(int top){int x,y,tx=24,tw=272;uint16_t bg=appearance_day?rgb(225,228,232):rgb(34,37,42),fg=theme_color(theme.foreground),muted=theme_color(theme.muted);rounded(8,top+3,304,H-top-7,15,bg);
- if(notice_art){for(y=0;y<48;y++)for(x=0;x<48;x++)pixels[(top+22+y)*W+20+x]=notice_art[y*48+x];tx=80;tw=218;}else{rounded(20,top+13,20,20,6,theme_color(theme.surface));icon(19,top+11,8,theme_color(theme.accent),bg);tx=48;tw=246;}
+ if(notice_art){for(y=0;y<48;y++)for(x=0;x<48;x++){int dx=x<9?9-x:x>38?x-38:0,dy=y<9?9-y:y>38?y-38:0;if(dx*dx+dy*dy<=81)pixels[(top+22+y)*W+20+x]=notice_art[y*48+x];}tx=80;tw=218;}else{rounded(20,top+13,20,20,6,theme_color(theme.surface));icon(19,top+11,8,theme_color(theme.accent),bg);tx=48;tw=246;}
  if(notification[0]){text_lines(tx,top+15,notification,tw,3,1,fg);return;}
  text_fit(tx,top+10,notice_app[0]?notice_app:"Notification",tw,1,muted);text_fit(tx,top+30,notice_title,tw,1,fg);text_lines(tx,top+50,notice_body,tw,2,1,fg);}
 static void status_draw(int top){int values[4],icons[4]={1,10,16,15},i,slot=0,metrics=metric_count(),extras=dock_extras(),panel=metrics&&extras?186:W,dh=dock_height(),y=H-dh-3;char value[32];uint16_t fg=theme_color(theme.foreground),accent=theme_color(theme.accent),bg=theme_color(theme.background);

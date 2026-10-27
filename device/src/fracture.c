@@ -138,7 +138,7 @@ static void render(void){char s[64];int height;struct tm t;uint16_t bg=theme_col
  rect(0,0,W,H,bg);localtime_now(&t);
  appearance_apply(t.tm_hour);bg=theme_color(theme.background);fg=theme_color(theme.foreground);muted=theme_color(theme.muted);accent=theme_color(theme.accent);rect(0,0,W,H,bg);
  if(alert){center(50,alert==2?"DAILY ALARM":"TIME IS UP",3,accent);center(130,"TAP TO DISMISS",2,fg);center(200,"SILENT VISUAL ALERT",1,muted);power_draw();return;}
- if(menu){navigation_draw();power_draw();return;}
+ if(menu){navigation_draw();if(notice_live()&&notice_overlay_allowed())notice_draw(H-96);power_draw();return;}
  height=H-status_height();
  if(face_ready&&t.tm_year>=120){if(height==H)face_draw(&t);else face_draw_height(&t,height);}
  else if(t.tm_year<120){center(65,"SET TIME",4,accent);center(120,"CONNECT HUB OR USE CLI",1,fg);}
@@ -218,7 +218,7 @@ static int daemon_run(int seconds){struct sockaddr_un addr;struct pollfd p[2];do
 #endif
  power_open();brightness();signal(SIGTERM,stop);signal(SIGINT,stop);signal(SIGPIPE,SIG_IGN);pid=fopen("/tmp/fracture-v3.pid","w");if(pid){fprintf(pid,"%ld\n",(long)getpid());fclose(pid);}
  fprintf(stderr,"FractureOS %s running\n",FRACTURE_VERSION);
- while(running){double now=mono();if(seconds>0&&now-start>=seconds)break;inputs(now);if(menu&&cfg.menu_timeout&&menu_activity>0&&now-menu_activity>=cfg.menu_timeout&&!power_down&&!touch_down){preview_cancel();page_open(PAGE_CLOCK);}if(link_at&&now-link_at>=15){link_at=0;dirty=1;}if(weather_at&&now-weather_at>=1800){weather_at=0;dirty=1;}if(stats_at&&now-stats_at>=10){stats_at=0;dirty=1;}if(notice_until&&now>=notice_until){notice_until=0;notification[0]=0;notice_release_art();dirty=1;}if(media_at&&now-media_at>=20){media_at=0;media_release_art();dirty=1;}if(menu_anim_start){dirty=1;if(now-menu_anim_start>=0.18)menu_anim_start=0;}
+ while(running){double now=mono();if(seconds>0&&now-start>=seconds)break;inputs(now);if(menu&&menu!=PAGE_PLAYER&&menu!=PAGE_LYRICS&&cfg.menu_timeout&&menu_activity>0&&now-menu_activity>=cfg.menu_timeout&&!power_down&&!touch_down){preview_cancel();page_open(PAGE_CLOCK);}if(link_at&&now-link_at>=15){link_at=0;dirty=1;}if(weather_at&&now-weather_at>=1800){weather_at=0;dirty=1;}if(stats_at&&now-stats_at>=10){stats_at=0;dirty=1;}if(notice_until&&now>=notice_until){notice_until=0;notification[0]=0;notice_release_art();dirty=1;}if(media_at&&now-media_at>=20){media_at=0;media_release_art();dirty=1;}if(menu_anim_start){dirty=1;if(now-menu_anim_start>=0.18)menu_anim_start=0;}
  if(timer_end&&now>=timer_end){timer_end=0;alert=1;dirty=1;}
  localtime_now(&t);if(t.tm_year>=120&&cfg.alarm_hour==t.tm_hour&&cfg.alarm_minute==t.tm_min&&cfg.last_alarm_day!=(t.tm_year*366+t.tm_yday)){cfg.last_alarm_day=t.tm_year*366+t.tm_yday;if(!save()){alert=2;dirty=1;}}
  {double tick=(timer_end||watch_start||cfg.profile==1||menu==PAGE_PLAYER||(face_ready&&!menu&&!alert&&(face.show_seconds||(face.colon&&face.blink&&!(face.hour_only&&t.tm_min==0)))))?(double)time(NULL):(double)(time(NULL)/60);if(tick!=last_tick){dirty=1;last_tick=tick;}}
