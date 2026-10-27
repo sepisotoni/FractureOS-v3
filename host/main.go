@@ -353,7 +353,11 @@ func hubRequest(c Config, path string, payload any) (string, error) {
 		return nil
 	}}}
 	defer transport.CloseIdleConnections()
-	client := http.Client{Transport: transport, Timeout: 12 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return errors.New("hub redirects refused") }}
+	requestTimeout := 12 * time.Second
+	if path != "/api/command" {
+		requestTimeout = 35 * time.Second
+	}
+	client := http.Client{Transport: transport, Timeout: requestTimeout, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return errors.New("hub redirects refused") }}
 	body, _ := json.Marshal(payload)
 	req, e := http.NewRequest("POST", strings.TrimRight(c.Hub, "/")+path, bytes.NewReader(body))
 	if e != nil {
@@ -479,7 +483,7 @@ func serve() error {
 		w.Header().Set("Content-Type", "text/plain")
 		fmt.Fprintln(w, out)
 	})
-	srv := &http.Server{Addr: c.Listen, Handler: mux, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 30 * time.Second, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13}}
+	srv := &http.Server{Addr: c.Listen, Handler: mux, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 45 * time.Second, IdleTimeout: 30 * time.Second, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13}}
 	go func() {
 		<-ctx.Done()
 		shutdown, c := context.WithTimeout(context.Background(), 3*time.Second)

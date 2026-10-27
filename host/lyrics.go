@@ -122,6 +122,13 @@ func registerLyrics(mux *http.ServeMux, b *Broker, token string) {
 			http.Error(w, "track changed", 409)
 			return
 		}
+		if q.Operation == "clear-provided" {
+			b.mediaMu.Lock()
+			b.providedLyrics = nil
+			b.mediaMu.Unlock()
+			fmt.Fprint(w, "OK")
+			return
+		}
 		if !s.Enabled {
 			http.Error(w, "lyrics disabled in hub settings", 403)
 			return
@@ -380,7 +387,8 @@ func lyricsWorker() error {
 		if !s.View || !s.Enabled {
 			return nil
 		}
-		if next := lyricsKey(s); next != key || s.Provided != nil && (provided == nil || *provided != *s.Provided) {
+		providedChanged := (s.Provided == nil) != (provided == nil) || (s.Provided != nil && provided != nil && *provided != *s.Provided)
+		if next := lyricsKey(s); next != key || providedChanged {
 			key = next
 			lastUpdate = ""
 			message = ""

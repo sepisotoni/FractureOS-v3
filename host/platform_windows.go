@@ -153,6 +153,9 @@ func platformTray() error {
 				}
 				return 0
 			}
+		case 0x10:
+			user32.NewProc("DestroyWindow").Call(hwnd)
+			return 0
 		case 2:
 			notifyProc.Call(2, uintptr(unsafe.Pointer(&data)))
 			user32.NewProc("PostQuitMessage").Call(0)
