@@ -141,9 +141,6 @@ func metricsWorker() error {
 			if e != nil {
 				continue
 			}
-			_, _ = hubCall(c, fmt.Sprintf("stats %d %d", usage, memory))
-			_, _ = hubCall(c, fmt.Sprintf("stats-temp %d hub", cpuTemperature()))
-			disk := -1 // Disk was replaced by CPU temperature on the clock.
 
 			samples, err := networkSample(c.MetricsInterface)
 			down, up := -1, -1
@@ -172,7 +169,7 @@ func metricsWorker() error {
 			}
 			previousNet = samples
 			netAt = now
-			_, _ = hubCall(c, fmt.Sprintf("stats-extra %d %d,%d", disk, down, up))
+			_, _ = hubCall(c, fmt.Sprintf("stats-bundle %d,%d,%d,%d,%d hub", usage, memory, cpuTemperature(), down, up))
 		}
 	}
 }

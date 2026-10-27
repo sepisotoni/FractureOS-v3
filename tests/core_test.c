@@ -11,7 +11,7 @@ int main(void){char path[]="/tmp/fracture-core-test-XXXXXX",line[128],reply[2048
  strcpy(line,"timer 0");command(line,reply,sizeof reply);assert(timer_end==0);
  strcpy(line,"event power");command(line,reply,sizeof reply);assert(menu==1);
  strcpy(line,"event tap");command(line,reply,sizeof reply);assert(selected==1);
- strcpy(line,"event power");command(line,reply,sizeof reply);assert(menu==PAGE_TIMER);
+ strcpy(line,"event power");command(line,reply,sizeof reply);assert(menu==PAGE_CLOCK_TOOLS);
  strcpy(line,"event long");command(line,reply,sizeof reply);assert(menu==PAGE_APPS);
  strcpy(line,"event home");command(line,reply,sizeof reply);assert(menu==0);
  strcpy(line,"alarm 25 0");command(line,reply,sizeof reply);assert(!strncmp(reply,"ERR",3));assert(cfg.alarm_hour==-1);

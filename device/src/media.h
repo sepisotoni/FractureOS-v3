@@ -4,6 +4,15 @@ static char notification[81],notice_app[81],notice_title[81],notice_body[81];
 static uint16_t *notice_art;
 static char lyrics_line[3][81],lyrics_message[81]="Open lyrics to look up this track";
 static int lyrics_plain,lyrics_page;
+/* A small rolling LRC window is allocated only while lyrics are open. */
+typedef struct {int count,filled;double at[12];char line[12][81];} LyricsWindow;
+static LyricsWindow *lyrics_window,*lyrics_pending;
+static int lyrics_index=-2;
+static void lyrics_release(void){free(lyrics_window);free(lyrics_pending);lyrics_window=lyrics_pending=NULL;lyrics_index=-2;}
+static double media_position_ms,media_clock_at;
+static unsigned long media_identity(void){const char *p;unsigned long h=2166136261UL;for(p=media_title;*p;p++)h=((h^(unsigned char)*p)*16777619UL)&0xffffffffUL;h=((h^124)*16777619UL)&0xffffffffUL;for(p=media_artist;*p;p++)h=((h^(unsigned char)*p)*16777619UL)&0xffffffffUL;return h;}
+static double playback_ms(void);
+static int lyrics_sync(void){int i,index=-1;if(!lyrics_window)return 0;for(i=0;i<lyrics_window->count;i++){if(lyrics_window->at[i]>playback_ms())break;index=i;}if(index==lyrics_index)return 0;lyrics_index=index;memset(lyrics_line,0,sizeof lyrics_line);if(index>0)strcpy(lyrics_line[0],lyrics_window->line[index-1]);if(index>=0)strcpy(lyrics_line[1],lyrics_window->line[index]);if(index+1<lyrics_window->count)strcpy(lyrics_line[2],lyrics_window->line[index+1]);return 1;}
 static int notice_live(void);
 static int notice_overlay_allowed(void);
 static void notice_release_art(void){free(notice_art);notice_art=NULL;}
@@ -15,6 +24,7 @@ static unsigned int media_sequence,media_ack;
 static char media_action[16];
 static int media_argument;
 static uint16_t *media_art;
+static double playback_ms(void){double v=media_position_ms+(media_playing?(mono()-media_clock_at)*1000:0);if(v<0)v=0;if(v>media_duration*1000.0)v=media_duration*1000.0;return v;}
 static int notice_live(void){return cfg.notifications&&notice_until>mono();}
 static int media_live(void){return cfg.media&&media_at>0&&mono()-media_at<20;}
 static int hex_digit(int c){if(c>='0'&&c<='9')return c-'0';if(c>='a'&&c<='f')return c-'a'+10;return -1;}
@@ -23,22 +33,26 @@ static void media_release_art(void){free(media_art);media_art=NULL;media_art_loa
 static int media_load_art(void){FILE *f;uint16_t *data;if(menu!=12)return 0;f=fopen("/tmp/fracture-media.rgb","rb");if(!f)return 0;data=malloc(18432);if(!data){fclose(f);return 0;}if(fread(data,1,18432,f)!=18432||fgetc(f)!=EOF){free(data);fclose(f);return 0;}fclose(f);media_release_art();media_art=data;media_art_loaded=1;return 1;}
 static void media_send(const char *action,int argument){if(!media_live()){strcpy(media_message,"Windows media is offline");return;}if(media_sequence!=media_ack&&mono()-media_action_at<10)return;snprintf(media_action,sizeof media_action,"%s",action);media_argument=argument;media_sequence++;if(!media_sequence)media_sequence=1;media_action_at=mono();}
 static int media_command(const char *name,const char *a,const char *b){int p,pos,dur,vol,vok,play,prev,next;char extra;
+ if(!strcmp(name,"lyrics-begin")&&cfg.media&&menu==19&&a&&!b){int n;unsigned long identity;if(sscanf(a,"%d,%lu%c",&n,&identity,&extra)!=2||n<1||n>12||identity!=media_identity())return 0;free(lyrics_pending);lyrics_pending=calloc(1,sizeof *lyrics_pending);if(!lyrics_pending)return 0;lyrics_pending->count=n;return 1;}
+ if(!strcmp(name,"lyrics-line")&&lyrics_pending&&a&&b){char *end;double at=strtod(a,&end);int n=lyrics_pending->filled;if(*end||at<0||at>86400000||n>=lyrics_pending->count||(n&&at<lyrics_pending->at[n-1]))return 0;if(!decode_text(b,lyrics_pending->line[n],81))return 0;lyrics_pending->at[n]=at;lyrics_pending->filled++;return 1;}
+ if(!strcmp(name,"lyrics-commit")&&!a&&lyrics_pending&&lyrics_pending->filled==lyrics_pending->count){free(lyrics_window);lyrics_window=lyrics_pending;lyrics_pending=NULL;lyrics_index=-2;lyrics_plain=0;lyrics_sync();return 1;}
+ if(!strcmp(name,"media-clock")&&a&&!b){double at;int playing;if(sscanf(a,"%lf,%d%c",&at,&playing,&extra)!=2||at<0||at>86400000||playing<0||playing>1)return 0;media_position_ms=at;media_clock_at=mono();media_playing=playing;return 1;}
  if(!strncmp(name,"media-",6)&&!cfg.media&&strcmp(name,"media-clear"))return 0;
- if(!strcmp(name,"media-text")&&a&&b){char *dst=NULL;if(!strcmp(a,"title"))dst=media_title;else if(!strcmp(a,"artist"))dst=media_artist;else if(!strcmp(a,"message"))dst=media_message;if(!dst)return 0;if(dst==media_title){char next[81];if(!decode_text(b,next,81))return 0;if(strcmp(next,media_title)){memset(lyrics_line,0,sizeof lyrics_line);strcpy(lyrics_message,"Looking up lyrics...");}strcpy(dst,next);return 1;}return decode_text(b,dst,81);}
+ if(!strcmp(name,"media-text")&&a&&b){char *dst=NULL;if(!strcmp(a,"title"))dst=media_title;else if(!strcmp(a,"artist"))dst=media_artist;else if(!strcmp(a,"message"))dst=media_message;if(!dst)return 0;if(dst==media_title){char next[81];if(!decode_text(b,next,81))return 0;if(strcmp(next,media_title)){lyrics_release();memset(lyrics_line,0,sizeof lyrics_line);strcpy(lyrics_message,"Looking up lyrics...");}strcpy(dst,next);return 1;}if(dst==media_artist){char next[81];if(!decode_text(b,next,81))return 0;if(strcmp(next,media_artist))lyrics_release();strcpy(dst,next);return 1;}return decode_text(b,dst,81);}
  if(!strcmp(name,"notice")&&a&&!b){if(!cfg.notifications)return 0;if(!decode_text(a,notification,sizeof notification))return 0;notice_app[0]=notice_title[0]=notice_body[0]=0;notice_release_art();notice_until=notification[0]?mono()+cfg.notice_seconds:0;return 1;}
  if(!strcmp(name,"notice-text")&&cfg.notifications&&a&&b){char *dst=!strcmp(a,"app")?notice_app:!strcmp(a,"title")?notice_title:!strcmp(a,"body")?notice_body:NULL;if(!dst)return 0;return decode_text(b,dst,81);}
  if(!strcmp(name,"notice-art")&&cfg.notifications&&a&&!b){FILE *f;uint16_t *data;if(!strcmp(a,"clear")){notice_release_art();return 1;}if(strcmp(a,"load"))return 0;f=fopen("/tmp/fracture-notice.rgb","rb");if(!f)return 0;data=malloc(4608);if(!data){fclose(f);return 0;}if(fread(data,1,4608,f)!=4608||fgetc(f)!=EOF){free(data);fclose(f);return 0;}fclose(f);notice_release_art();notice_art=data;return 1;}
  if(!strcmp(name,"notice-show")&&cfg.notifications&&a&&!b){char *end;long seconds=strtol(a,&end,10);if(*end||seconds<0||seconds>120)return 0;notification[0]=0;notice_until=mono()+(seconds?seconds:cfg.notice_seconds);return 1;}
  if(!strcmp(name,"media-lyrics")&&a&&b){char *dst=NULL;if(!strcmp(a,"previous"))dst=lyrics_line[0];else if(!strcmp(a,"current"))dst=lyrics_line[1];else if(!strcmp(a,"next"))dst=lyrics_line[2];else if(!strcmp(a,"message"))dst=lyrics_message;if(!dst)return 0;return decode_text(b,dst,81);}
  if(!strcmp(name,"lyrics-state")&&a&&!b){if(strcmp(a,"0")&&strcmp(a,"1"))return 0;lyrics_plain=atoi(a);return 1;}
- if(!strcmp(name,"media-state")&&a&&!b){if(sscanf(a,"%d,%d,%d,%d,%d,%d,%d,%d%c",&p,&pos,&dur,&vol,&vok,&play,&prev,&next,&extra)!=8||p<0||p>1||pos<0||dur<0||dur>86400||pos>dur||vol< -1||vol>100||vok<0||vok>1||play<0||play>1||prev<0||prev>1||next<0||next>1)return 0;media_playing=p;media_progress=pos;media_duration=dur;media_volume=vol;media_volume_ok=vok;media_can_play=play;media_can_prev=prev;media_can_next=next;media_at=mono();return 1;}
- if(!strcmp(name,"media-clear")&&!a){media_at=0;media_ack=media_sequence;media_title[0]=media_artist[0]=0;memset(lyrics_line,0,sizeof lyrics_line);strcpy(lyrics_message,"Waiting for a playing track");media_release_art();return 1;}
+ if(!strcmp(name,"media-state")&&a&&!b){if(sscanf(a,"%d,%d,%d,%d,%d,%d,%d,%d%c",&p,&pos,&dur,&vol,&vok,&play,&prev,&next,&extra)!=8||p<0||p>1||pos<0||dur<0||dur>86400||pos>dur||vol< -1||vol>100||vok<0||vok>1||play<0||play>1||prev<0||prev>1||next<0||next>1)return 0;media_playing=p;media_position_ms=pos*1000.0;media_clock_at=mono();media_progress=pos;media_duration=dur;media_volume=vol;media_volume_ok=vok;media_can_play=play;media_can_prev=prev;media_can_next=next;media_at=mono();return 1;}
+ if(!strcmp(name,"media-clear")&&!a){lyrics_release();media_at=0;media_ack=media_sequence;media_title[0]=media_artist[0]=0;memset(lyrics_line,0,sizeof lyrics_line);strcpy(lyrics_message,"Waiting for a playing track");media_release_art();return 1;}
  if(!strcmp(name,"media-art")&&a&&!b){if(!strcmp(a,"load"))return media_load_art();if(!strcmp(a,"clear")){media_release_art();return 1;}return 0;}
  if(!strcmp(name,"media-ack")&&a&&!b){char *end;unsigned long n=strtoul(a,&end,10);if(*end||n!=media_sequence)return 0;media_ack=(unsigned int)n;return 1;}
  return 0;}
 static void duration_text(char *s,size_t cap,int seconds){if(seconds<0)seconds=0;if(seconds>=3600)snprintf(s,cap,"%d:%02d:%02d",seconds/3600,seconds/60%60,seconds%60);else snprintf(s,cap,"%02d:%02d",seconds/60,seconds%60);}
-static int metrics_live(void){return cfg.telemetry&&stats_at>0&&mono()-stats_at<10;}
-static int temperature_live(void){return cfg.telemetry&&temp_at>0&&mono()-temp_at<10&&cpu_temp>=-500;}
+static int metrics_live(void){return cfg.telemetry&&stats_at>0&&mono()-stats_at<7;}
+static int temperature_live(void){return cfg.telemetry&&temp_at>0&&mono()-temp_at<7&&cpu_temp>=-500;}
 static int metric_count(void){return cfg.profile==1?((metrics_live()?((cpu>=0)+(ram>=0)+(net_down>=0||net_up>=0)):0)+temperature_live()):0;}
 /* A bottom dock shares horizontal space. Activity never becomes a stack. */
 static int activity_count(void){return (timer_end>0)+(watch_start>0||watch_elapsed>0)+(cfg.alarm_hour>=0);}
@@ -68,9 +82,9 @@ static void media_draw(void){int x,y,progress;char s[40];struct tm t;uint16_t fg
  spotify_mark(17,6,26);localtime_now(&t);strftime(s,sizeof s,"%H:%M",&t);text(W-16-measured(s),10,s,1,fg);
  if(media_art)for(y=0;y<96;y++)for(x=0;x<96;x++)pixels[(44+y)*W+16+x]=media_art[y*96+x];else{rounded(16,44,96,96,14,theme_color(theme.surface));media_symbol(45,74,36,SYM_SPOTIFY,accent,bg);}
  text_lines(126,44,media_live()&&media_title[0]?media_title:"No active track",180,2,2,fg);if(media_live())text_fit(126,96,media_artist,180,1,muted);if(strcmp(media_message,"Spotify on Windows"))text_fit(126,118,media_message,180,1,muted);
- progress=media_live()?media_progress+(media_playing?(int)(mono()-media_at):0):0;if(progress>media_duration)progress=media_duration;rounded(16,151,288,3,1,theme_color(theme.surface));if(media_duration>0)rect(16,151,288*progress/media_duration,3,accent);duration_text(s,sizeof s,progress);text(16,158,s,1,muted);duration_text(s,sizeof s,media_live()?media_duration:0);text(W-16-measured(s),158,s,1,muted);
+ progress=media_live()?(int)(playback_ms()/1000):0;if(progress>media_duration)progress=media_duration;rounded(16,151,288,3,1,theme_color(theme.surface));if(media_duration>0)rect(16,151,288*progress/media_duration,3,accent);duration_text(s,sizeof s,progress);text(16,158,s,1,muted);duration_text(s,sizeof s,media_live()?media_duration:0);text(W-16-measured(s),158,s,1,muted);
  {int symbols[5]={SYM_PREV,media_playing?SYM_PAUSE:SYM_PLAY,SYM_NEXT,SYM_VOLUME,SYM_MORE};for(x=0;x<5;x++){uint16_t c=x==selected?fg:muted;rounded(12+x*60,184,55,31,11,x==selected?theme_color(theme.surface):bg);media_symbol(28+x*60,188,24,symbols[x],c,x==selected?theme_color(theme.surface):bg);}}
  {const char *labels[]={"Previous",media_playing?"Pause":"Play","Next","Volume","More"};center(221,labels[selected],1,muted);}}
-static void lyrics_draw(void){struct tm t;char s[16];uint16_t fg=theme_color(theme.foreground),muted=theme_color(theme.muted);spotify_mark(16,8,24);text(50,10,"Lyrics",2,fg);localtime_now(&t);strftime(s,sizeof s,"%H:%M",&t);text(W-16-measured(s),12,s,1,fg);text_fit(16,47,media_title,288,1,muted);
+static void lyrics_draw(void){struct tm t;char s[16];uint16_t fg=theme_color(theme.foreground),muted=theme_color(theme.muted);spotify_mark(16,8,24);text_fit(50,10,media_title[0]?media_title:"Spotify",202,2,fg);localtime_now(&t);strftime(s,sizeof s,"%H:%M",&t);text(W-16-measured(s),12,s,1,fg);text_fit(16,47,media_artist,288,1,muted);
  if(!lyrics_line[0][0]&&!lyrics_line[1][0]&&!lyrics_line[2][0]){text_lines(18,100,lyrics_message,284,3,1,muted);}else{text_fit(18,82,lyrics_line[0],284,1,muted);text_lines(18,112,lyrics_line[1],284,2,2,fg);text_fit(18,178,lyrics_line[2],284,1,muted);}
  center(220,lyrics_plain?"Tap: next / double: previous":"Synced lyrics / hold: back",1,muted);}

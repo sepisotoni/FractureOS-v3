@@ -196,7 +196,7 @@ func mediaProperties(session uintptr) (uintptr, error) {
 	return props, e
 }
 func sessionSnapshot(session, props uintptr) mediaSnapshot {
-	s := mediaSnapshot{Title: comText(props, 6), Artist: comText(props, 9), Message: "Spotify on Windows", Volume: -1}
+	s := mediaSnapshot{Title: comText(props, 6), Artist: comText(props, 9), Album: comText(props, 10), Message: "Spotify on Windows", Volume: -1}
 	info, e := comGet(session, 9)
 	if e == nil {
 		defer comRelease(info)
@@ -229,7 +229,16 @@ func sessionSnapshot(session, props uintptr) mediaSnapshot {
 			}
 		}
 		s.Duration = int((end - start) / 10000000)
-		s.Position = int((pos - start) / 10000000)
+		ms := (pos - start) / 10000
+		if ms < 0 {
+			ms = 0
+		}
+		if ms > int64(s.Duration)*1000 {
+			ms = int64(s.Duration) * 1000
+		}
+		s.PositionMS = &ms
+		s.SampledAt = time.Now().UnixMilli()
+		s.Position = int(ms / 1000)
 		if s.Duration < 0 {
 			s.Duration = 0
 		}

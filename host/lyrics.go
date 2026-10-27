@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"net/http"
 	"net/url"
@@ -34,28 +36,30 @@ type lyricsRecord struct {
 	Instrumental bool   `json:"instrumental"`
 }
 type lyricsSession struct {
-	Title    string        `json:"title"`
-	Artist   string        `json:"artist"`
-	Album    string        `json:"album"`
-	Duration int           `json:"duration"`
-	Position int           `json:"position"`
-	Playing  bool          `json:"playing"`
-	View     bool          `json:"view"`
-	Page     int           `json:"page"`
-	Provided *lyricsRecord `json:"provided,omitempty"`
-	Enabled  bool          `json:"enabled"`
+	PositionMS int64         `json:"position_ms"`
+	Title      string        `json:"title"`
+	Artist     string        `json:"artist"`
+	Album      string        `json:"album"`
+	Duration   int           `json:"duration"`
+	Position   int           `json:"position"`
+	Playing    bool          `json:"playing"`
+	View       bool          `json:"view"`
+	Page       int           `json:"page"`
+	Provided   *lyricsRecord `json:"provided,omitempty"`
+	Enabled    bool          `json:"enabled"`
 }
 type lyricsRequest struct {
-	Operation string `json:"operation"`
-	Title     string `json:"title"`
-	Artist    string `json:"artist"`
-	Previous  string `json:"previous"`
-	Current   string `json:"current"`
-	Next      string `json:"next"`
-	Message   string `json:"message"`
-	Plain     bool   `json:"plain"`
-	LRC       string `json:"lrc"`
-	Text      string `json:"text"`
+	Lines     []lyricLine `json:"lines,omitempty"`
+	Operation string      `json:"operation"`
+	Title     string      `json:"title"`
+	Artist    string      `json:"artist"`
+	Previous  string      `json:"previous"`
+	Current   string      `json:"current"`
+	Next      string      `json:"next"`
+	Message   string      `json:"message"`
+	Plain     bool        `json:"plain"`
+	LRC       string      `json:"lrc"`
+	Text      string      `json:"text"`
 }
 
 func (b *Broker) lyricSession() (lyricsSession, error) {
@@ -81,9 +85,11 @@ func (b *Broker) lyricSession() (lyricsSession, error) {
 		return lyricsSession{View: s.View, Enabled: s.Enabled}, nil
 	}
 	if s.Playing {
-		s.Position += int(time.Since(b.mediaReceived).Seconds())
+		s.PositionMS += time.Since(b.mediaReceived).Milliseconds()
+		s.Position = int(s.PositionMS / 1000)
 		if s.Position > s.Duration {
 			s.Position = s.Duration
+			s.PositionMS = int64(s.Duration) * 1000
 		}
 	}
 	s.Provided = b.providedLyrics
@@ -143,6 +149,35 @@ func registerLyrics(mux *http.ServeMux, b *Broker, token string) {
 			}
 			b.providedLyrics = record
 			b.mediaMu.Unlock()
+			fmt.Fprint(w, "OK")
+			return
+		}
+		if q.Operation == "schedule" {
+			if !s.View || len(q.Lines) < 1 || len(q.Lines) > 12 {
+				http.Error(w, "invalid lyrics schedule", 400)
+				return
+			}
+			identity := fnv.New32a()
+			title, _ := hex.DecodeString(asciiHex(s.Title))
+			artist, _ := hex.DecodeString(asciiHex(s.Artist))
+			identity.Write(title)
+			identity.Write([]byte("|"))
+			identity.Write(artist)
+			commands := []string{fmt.Sprintf("lyrics-begin %d,%d", len(q.Lines), identity.Sum32())}
+			previous := -1.0
+			for _, line := range q.Lines {
+				if line.At < 0 || line.At > 86400 || line.At < previous || len(line.Text) > 512 {
+					http.Error(w, "invalid lyrics timeline", 400)
+					return
+				}
+				previous = line.At
+				commands = append(commands, fmt.Sprintf("lyrics-line %d %s", int64(line.At*1000), asciiHex(line.Text)))
+			}
+			commands = append(commands, "lyrics-commit")
+			if e = b.batch(commands); e != nil {
+				http.Error(w, "lyrics delivery failed", 502)
+				return
+			}
 			fmt.Fprint(w, "OK")
 			return
 		}
@@ -228,6 +263,15 @@ var lrcStamp = regexp.MustCompile(`^\[(\d{1,3}):(\d{2}(?:\.\d{1,3})?)\]`)
 
 func parseLyrics(record lyricsRecord) ([]lyricLine, bool) {
 	var lines []lyricLine
+	offset := 0.0
+	for _, line := range strings.Split(record.Synced, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "[offset:") {
+			v := strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(line), "[offset:"), "]")
+			if ms, e := strconv.Atoi(v); e == nil && ms >= -60000 && ms <= 60000 {
+				offset = float64(ms) / 1000
+			}
+		}
+	}
 	for _, line := range strings.Split(record.Synced, "\n") {
 		if len(lines) >= 600 {
 			break
@@ -250,6 +294,10 @@ func parseLyrics(record lyricsRecord) ([]lyricLine, bool) {
 			line = line[:512]
 		}
 		for _, at := range times {
+			at += offset
+			if at < 0 {
+				at = 0
+			}
 			if len(lines) < 600 {
 				lines = append(lines, lyricLine{At: at, Text: line})
 			}
@@ -366,6 +414,7 @@ func lyricsWorker() error {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	key, lastUpdate := "", ""
+	windowStart, windowEnd := -1, -1
 	var record lyricsRecord
 	var lines []lyricLine
 	plain := false
@@ -391,6 +440,7 @@ func lyricsWorker() error {
 		if next := lyricsKey(s); next != key || providedChanged {
 			key = next
 			lastUpdate = ""
+			windowStart, windowEnd = -1, -1
 			message = ""
 			provided = s.Provided
 			if s.Provided != nil {
@@ -420,6 +470,40 @@ func lyricsWorker() error {
 				}
 			}
 		}
+		if len(lines) > 0 && !plain {
+			raw, e = hubRequest(c, "/api/lyrics", lyricsRequest{Operation: "session"})
+			var current lyricsSession
+			if e != nil || json.Unmarshal([]byte(raw), &current) != nil {
+				return e
+			}
+			if lyricsKey(current) != key {
+				continue
+			}
+			s = current
+			index := sort.Search(len(lines), func(i int) bool { return lines[i].At > float64(s.PositionMS)/1000 }) - 1
+			if windowStart < 0 || index < windowStart || index >= windowEnd-4 {
+				start := index - 1
+				if start < 0 {
+					start = 0
+				}
+				end := start + 12
+				if end > len(lines) {
+					end = len(lines)
+				}
+				if start != windowStart || end != windowEnd {
+					_, err := hubRequest(c, "/api/lyrics", lyricsRequest{Operation: "schedule", Title: s.Title, Artist: s.Artist, Lines: lines[start:end]})
+					if err == nil {
+						windowStart, windowEnd = start, end
+					}
+				}
+			}
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-ticker.C:
+			}
+			continue
+		}
 		q := lyricsRequest{Operation: "update", Title: s.Title, Artist: s.Artist, Plain: plain, Message: message}
 		if len(lines) > 0 {
 			index := -1
@@ -430,7 +514,7 @@ func lyricsWorker() error {
 				}
 			} else {
 				for i, line := range lines {
-					if line.At > float64(s.Position) {
+					if line.At > float64(s.PositionMS)/1000 {
 						break
 					}
 					index = i

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verified deployment of the 0.1.10 application environment, not firmware flashing."""
+"""Verified deployment of the 0.1.11 application environment, not firmware flashing."""
 import argparse
 import datetime
 import hashlib
@@ -14,7 +14,7 @@ from tomtom import TomTom
 
 ROOT = '/mnt/sdcard/fracture-v3'
 START = '/mnt/sdcard/opentom/start.sh'
-VERSION = 'v0.1.10'
+VERSION = 'v0.1.11'
 
 
 def control(device, cmd):

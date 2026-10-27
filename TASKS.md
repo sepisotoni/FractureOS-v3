@@ -140,3 +140,12 @@ The P-series checkboxes below describe complete target modules. Initial implemen
 ## Current handoff
 
 The v0.1.9 application runs on the TomTom, with persistent startup and preserved OpenTom recovery. The Linux hub is installed as a user service on the owner's host. Remaining work starts with real Windows acceptance, physical button/noise validation, portable toolchain packaging and the broader module lifecycle/protocol/editor design. The large feature catalog remains a roadmap, not a completed implementation. Use manual target-device checks for follow-up UI changes; do not add Python test harnesses or scheduled test jobs.
+
+## X — v0.1.11 playback, navigation and local preview
+
+- [ ] X01 Buffer timed lyrics on-device, track subsecond playback and seeks/pauses; use song title in header and Spotify in Media.
+- [ ] X02 Batch telemetry and keep the last valid readings through a five-second delivery grace period.
+- [ ] X03 Power opens Apps; touch opens Quick settings with real battery/link information. Group timer, stopwatch and alarms inside Clock; add Home.
+- [ ] X04 Refine the curved purple/blue F; add a lightweight Fracture → FractureOS startup animation and inspect the earlier boot-logo mechanism.
+- [ ] X05 Render the home preview locally on Windows using the shared C renderer and synchronized face/theme/font/model data; unload it when hidden.
+- [ ] X06 Check on TomTom and Windows, preserve settings, package/install and publish v0.1.11 with explicit hardware limits.

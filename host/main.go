@@ -33,7 +33,7 @@ import (
 	"time"
 )
 
-const version = "0.1.10"
+const version = "0.1.11"
 
 //go:embed ui.html
 var page string
@@ -184,6 +184,37 @@ func validateCommand(cmd string) error {
 	case "notice":
 		if len(a) == 2 && mediaTextValid(a[1]) {
 			return nil
+		}
+	case "lyrics-begin":
+		if len(a) == 2 && regexp.MustCompile(`^(?:[1-9]|1[0-2]),[0-9]{1,10}$`).MatchString(a[1]) {
+			return nil
+		}
+	case "preview-asset":
+		if len(a) == 3 && (a[1] == "atlas" || a[1] == "font" || a[1] == "notice") && n(2, 0, 170000) {
+			return nil
+		}
+	case "lyrics-line":
+		if len(a) == 3 && n(1, 0, 86400000) && mediaTextValid(a[2]) {
+			return nil
+		}
+	case "lyrics-commit", "home-state":
+		if len(a) == 1 {
+			return nil
+		}
+	case "media-clock":
+		if len(a) == 2 {
+			var at int64
+			var playing int
+			if count, e := fmt.Sscanf(a[1], "%d,%d", &at, &playing); e == nil && count == 2 && at >= 0 && at <= 86400000 && (playing == 0 || playing == 1) && fmt.Sprintf("%d,%d", at, playing) == a[1] {
+				return nil
+			}
+		}
+	case "stats-bundle":
+		if len(a) == 3 && (a[2] == "hub" || a[2] == "pc") {
+			var cpu, ram, temp, down, up int
+			if count, e := fmt.Sscanf(a[1], "%d,%d,%d,%d,%d", &cpu, &ram, &temp, &down, &up); e == nil && count == 5 && cpu >= 0 && cpu <= 100 && ram >= 0 && ram <= 100 && temp >= -1000 && temp <= 1500 && down >= -1 && up >= -1 && fmt.Sprintf("%d,%d,%d,%d,%d", cpu, ram, temp, down, up) == a[1] {
+				return nil
+			}
 		}
 	case "media-state":
 		if len(a) == 2 && regexp.MustCompile(`^[0-9,-]{1,80}$`).MatchString(a[1]) {
@@ -370,7 +401,14 @@ func hubRequest(c Config, path string, payload any) (string, error) {
 		return "", e
 	}
 	defer res.Body.Close()
-	data, e := io.ReadAll(io.LimitReader(res.Body, 8192))
+	limit := int64(8192)
+	if path == "/api/preview" {
+		limit = 384 * 1024
+	}
+	data, e := io.ReadAll(io.LimitReader(res.Body, limit+1))
+	if len(data) > int(limit) {
+		return "", errors.New("hub response exceeds limit")
+	}
 	if e != nil {
 		return "", e
 	}
@@ -400,6 +438,11 @@ func (b *Broker) call(cmd string) (string, error) {
 	}
 	if strings.HasPrefix(cmd, "stats-temp ") && strings.HasSuffix(cmd, " hub") && time.Now().Before(b.temperaturePCUntil) {
 		return "OK", nil
+	}
+	if strings.HasPrefix(cmd, "stats-bundle ") && strings.HasSuffix(cmd, " hub") && time.Now().Before(b.temperaturePCUntil) {
+		parts := strings.Split(strings.Fields(cmd)[1], ",")
+		parts[2] = "-1000"
+		cmd = "stats-bundle " + strings.Join(parts, ",") + " hub"
 	}
 	if strings.HasPrefix(cmd, "weather-state ") {
 		conf, err := readConfig()
@@ -444,6 +487,7 @@ func serve() error {
 	registerIntegrations(mux, b, c.Token)
 	registerLyrics(mux, b, c.Token)
 	registerForecast(mux, b, c.Token)
+	registerPreview(mux, b, c.Token)
 	mux.HandleFunc("/api/media", func(w http.ResponseWriter, r *http.Request) {
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+c.Token)) != 1 {
 			http.Error(w, "unauthorized", 401)
@@ -928,7 +972,7 @@ func configCommand(a []string) error {
 	return saveConfig(c)
 }
 func help() {
-	fmt.Println(`FractureOS 0.1.10
+	fmt.Println(`FractureOS 0.1.11
   fracture status | profile minimal|desk|bedside | theme teal|amber|blue
   fracture theme NAME | theme-get | theme-set KEY VALUE | theme-save NEW_NAME | theme-reset
   fracture face NAME | face-get | face-set KEY VALUE | face-reset

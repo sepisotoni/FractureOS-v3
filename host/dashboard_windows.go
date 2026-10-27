@@ -91,6 +91,12 @@ func platformDashboard() error {
 	var children []uintptr
 	fields := map[int]uintptr{}
 	pageIndex := 0
+	var renderer homeRenderer
+	defer renderer.close()
+	var preview homePreviewPacket
+	previewVisible := true
+	previewGeneration := 0
+	timerTicks := 0
 	c, err := readConfig()
 	if err != nil {
 		return err
@@ -128,6 +134,11 @@ func platformDashboard() error {
 		}()
 	}
 	refresh := func() {
+		mu.Lock()
+		wantPreview := previewVisible
+		generation := previewGeneration
+		previous := preview
+		mu.Unlock()
 		async(func() (string, error) {
 			conf, e := readConfig()
 			if e != nil {
@@ -141,10 +152,20 @@ func platformDashboard() error {
 			if e = json.Unmarshal([]byte(out), &next); e != nil {
 				return "", e
 			}
+			var packet homePreviewPacket
+			if wantPreview {
+				packet, e = fetchHomePreview(conf, previous)
+			}
 			mu.Lock()
+			if wantPreview && previewVisible && generation == previewGeneration && e == nil {
+				preview = packet
+			}
 			state = next
 			lastSuccess = time.Now()
 			mu.Unlock()
+			if e != nil {
+				return "", e
+			}
 			return "Connected to FractureOS " + next.Version, nil
 		})
 	}
@@ -197,6 +218,17 @@ func platformDashboard() error {
 	}
 	var buildPage func()
 	buildPage = func() {
+		mu.Lock()
+		previewVisible = pageIndex == 0
+		previewGeneration++
+		if !previewVisible {
+			preview = homePreviewPacket{}
+		}
+		mu.Unlock()
+		if pageIndex != 0 {
+			renderer.close()
+		}
+
 		for _, v := range children {
 			user32.NewProc("DestroyWindow").Call(v)
 		}
@@ -522,7 +554,12 @@ func platformDashboard() error {
 			return 0
 		case 0x113:
 			if minimized, _, _ := user32.NewProc("IsIconic").Call(wnd); minimized == 0 && pageIndex == 0 {
-				refresh()
+				timerTicks++
+				if timerTicks%3 == 0 {
+					refresh()
+				} else {
+					invalidate()
+				}
 			}
 			return 0
 		case 0x8002:
@@ -600,14 +637,17 @@ func platformDashboard() error {
 			if pageIndex == 0 {
 				card(25, 135, 420, 247)
 				card(465, 135, 410, 247)
-				now := time.Now().UTC().Add(time.Duration(st.Offset) * time.Minute)
-				draw(now.Format("15:04"), 46, 154, 370, 86, clockFont, foreground)
-				draw(now.Format("Monday, 02 January"), 49, 247, 360, 30, normal, muted)
-				summary := st.Profile + "  /  " + st.Face
-				if last.IsZero() || time.Since(last) > 10*time.Second {
-					summary = "TomTom offline — waiting for connection"
+				mu.Lock()
+				packet := preview
+				mu.Unlock()
+				if e := renderer.draw(dc, 75, 139, packet); e != nil {
+					draw(e.Error(), 49, 210, 360, 100, normal, muted)
 				}
-				draw(summary, 49, 295, 360, 30, normal, accent)
+				summary := "Home preview / drawn on this PC"
+				if last.IsZero() || time.Since(last) > 10*time.Second {
+					summary = "TomTom offline / last home preview"
+				}
+				draw(summary, 49, 383, 450, 25, normal, muted)
 				value := func(n int, unit string) string {
 					if last.IsZero() || time.Since(last) > 10*time.Second || n < 0 {
 						return "Unavailable"
@@ -679,7 +719,7 @@ func platformDashboard() error {
 	buildPage()
 	user32.NewProc("ShowWindow").Call(hwnd, 1)
 	user32.NewProc("UpdateWindow").Call(hwnd)
-	user32.NewProc("SetTimer").Call(hwnd, 1, 3000, 0)
+	user32.NewProc("SetTimer").Call(hwnd, 1, 1000, 0)
 	initialConfig := c
 	async(func() (string, error) {
 		q, e := integrationGet(initialConfig)

@@ -27,6 +27,8 @@ type mediaDeviceStatus struct {
 	Argument   int    `json:"media_arg"`
 }
 type mediaSnapshot struct {
+	PositionMS *int64 `json:"position_ms,omitempty"`
+	SampledAt  int64  `json:"sampled_at,omitempty"`
 	Album      string `json:"album"`
 	Title      string `json:"title"`
 	Artist     string `json:"artist"`
@@ -89,7 +91,7 @@ func mediaAPI(b *Broker, w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 32*1024)
 	var s mediaSnapshot
-	if json.NewDecoder(r.Body).Decode(&s) != nil || s.Position < 0 || s.Duration < 0 || s.Duration > 86400 || s.Position > s.Duration || s.Volume < -1 || s.Volume > 100 || len(s.Title) > 512 || len(s.Artist) > 512 || len(s.Album) > 512 || len(s.Message) > 512 || (len(s.Artwork) != 0 && len(s.Artwork) != 18432) {
+	if json.NewDecoder(r.Body).Decode(&s) != nil || s.Position < 0 || s.Duration < 0 || s.Duration > 86400 || s.Position > s.Duration || s.Volume < -1 || s.Volume > 100 || len(s.Title) > 512 || len(s.Artist) > 512 || len(s.Album) > 512 || len(s.Message) > 512 || (s.PositionMS != nil && (*s.PositionMS < 0 || *s.PositionMS > int64(s.Duration)*1000)) || (len(s.Artwork) != 0 && len(s.Artwork) != 18432) {
 		http.Error(w, "invalid media update", 400)
 		return
 	}
@@ -99,6 +101,22 @@ func mediaAPI(b *Broker, w http.ResponseWriter, r *http.Request) {
 		}
 		return 0
 	}
+	received := time.Now()
+	positionMS := int64(s.Position) * 1000
+	if s.PositionMS != nil {
+		positionMS = *s.PositionMS
+	}
+	// Timestamped Windows samples account for transport delay, bounded against
+	// clock skew. Older companions retain their integer-second fallback.
+	if s.Playing && s.SampledAt > 0 {
+		age := received.UnixMilli() - s.SampledAt
+		if age > 0 && age < 15000 {
+			positionMS += age
+		}
+	}
+	if positionMS > int64(s.Duration)*1000 {
+		positionMS = int64(s.Duration) * 1000
+	}
 	commands := []string{}
 	if s.Clear {
 		commands = append(commands, "media-clear")
@@ -106,6 +124,9 @@ func mediaAPI(b *Broker, w http.ResponseWriter, r *http.Request) {
 		commands = append(commands, "media-text title "+asciiHex(s.Title), "media-text artist "+asciiHex(s.Artist), fmt.Sprintf("media-state %d,%d,%d,%d,%d,%d,%d,%d", bit(s.Playing), s.Position, s.Duration, s.Volume, bit(s.VolumeOK), bit(s.PlayOK), bit(s.PreviousOK), bit(s.NextOK)))
 	}
 	commands = append(commands, "media-text message "+asciiHex(s.Message))
+	if !s.Clear && s.PositionMS != nil {
+		commands = append(commands, fmt.Sprintf("media-clock %d,%d", positionMS+int64(bit(s.Playing))*time.Since(received).Milliseconds(), bit(s.Playing)))
+	}
 	if s.ClearArt {
 		commands = append(commands, "media-art clear")
 	}
@@ -113,6 +134,19 @@ func mediaAPI(b *Broker, w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "device update failed", 502)
 		return
 	}
+
+	b.mediaMu.Lock()
+	if s.Clear {
+		b.mediaLatest = lyricsSession{}
+		b.providedLyrics = nil
+	} else {
+		if b.mediaLatest.Title != s.Title || b.mediaLatest.Artist != s.Artist {
+			b.providedLyrics = nil
+		}
+		b.mediaLatest = lyricsSession{Title: s.Title, Artist: s.Artist, Album: s.Album, Position: int(positionMS / 1000), PositionMS: positionMS, Duration: s.Duration, Playing: s.Playing}
+		b.mediaReceived = received
+	}
+	b.mediaMu.Unlock()
 
 	if len(s.Artwork) > 0 {
 		if e := uploadMediaArt(b.device, s.Artwork); e != nil {
@@ -124,18 +158,6 @@ func mediaAPI(b *Broker, w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	b.mediaMu.Lock()
-	if s.Clear {
-		b.mediaLatest = lyricsSession{}
-		b.providedLyrics = nil
-	} else {
-		if b.mediaLatest.Title != s.Title || b.mediaLatest.Artist != s.Artist {
-			b.providedLyrics = nil
-		}
-		b.mediaLatest = lyricsSession{Title: s.Title, Artist: s.Artist, Album: s.Album, Position: s.Position, Duration: s.Duration, Playing: s.Playing}
-		b.mediaReceived = time.Now()
-	}
-	b.mediaMu.Unlock()
 	fmt.Fprint(w, `{"updated":true}`)
 }
 func thumbnailRGB(data []byte) ([]byte, error) { return thumbnailRGBSize(data, 96) }

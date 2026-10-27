@@ -6,6 +6,7 @@ typedef struct { char atlas[64]; unsigned long hour_color,minute_color,backgroun
 static Face face;
 static unsigned char *face_pixels;
 static int face_ready;
+static unsigned long atlas_hash;
 static int identifier(const char *s){size_t i;if(!s[0]||strlen(s)>63||strstr(s,".."))return 0;
  for(i=0;s[i];i++)if(!((s[i]>='a'&&s[i]<='z')||(s[i]>='0'&&s[i]<='9')||s[i]=='-'||s[i]=='_'||s[i]=='.'))return 0;return 1;}
 static int face_number(const char *s,int lo,int hi,int *n){char *end;long v;errno=0;v=strtol(s,&end,10);if(errno||end==s||*end||v<lo||v>hi)return 0;*n=(int)v;return 1;}
@@ -39,7 +40,7 @@ static int face_atlas(const Face *f,unsigned char **out){char path[640],header[1
  if(fread(data,1,170000,fp)!=170000||fgetc(fp)!=EOF||ferror(fp)){free(data);fclose(fp);return 0;}fclose(fp);*out=data;return 1;}
 static int face_load(void){Face next;char path[640];unsigned char *data=NULL;memset(&next,0,sizeof next);next.weight=1;
  face_path(path,sizeof path,1);if(!face_read(path,&next)){memset(&next,0,sizeof next);next.weight=1;face_path(path,sizeof path,0);if(!face_read(path,&next))return 0;}
- if(!face_atlas(&next,&data))return 0;free(face_pixels);face_pixels=data;face=next;face_ready=1;return 1;}
+ if(!face_atlas(&next,&data))return 0;free(face_pixels);face_pixels=data;atlas_hash=content_hash(data,170000);face=next;face_ready=1;return 1;}
 static int face_save(const Face *f){char path[640],tmp[650];FILE *fp;int i,ok;face_path(path,sizeof path,1);snprintf(tmp,sizeof tmp,"%s.new",path);fp=fopen(tmp,"w");if(!fp)return 0;
  fprintf(fp,"atlas=%s\nhour_color=%06lx\nminute_color=%06lx\nbackground=%06lx\ntime_format=%d\nshow_date=%d\nshow_ampm=%d\ncolon=%d\ndate_x=%d\ndate_y=%d\ndate_scale=%d\ncolon_x=%d\ncolon_y=%d\ncolon_gap=%d\ncolon_size=%d\n",f->atlas,f->hour_color,f->minute_color,f->background,f->time_format,f->show_date,f->show_ampm,f->colon,f->date_x,f->date_y,f->date_scale,f->colon_x,f->colon_y,f->colon_gap,f->colon_size);
  fprintf(fp,"layout=%s\nblink=%d\nhour_only=%d\n",f->layout==1?"stacked":f->layout==2?"horizontal":"custom",f->blink,f->hour_only);fprintf(fp,"show_seconds=%d\nweight=%d\n",f->show_seconds,f->weight);

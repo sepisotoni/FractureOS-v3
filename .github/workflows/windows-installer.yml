@@ -16,7 +16,7 @@ jobs:
         run: |
           go install github.com/tc-hib/go-winres@v0.3.3
           Push-Location host
-          go-winres make --arch amd64,arm64 --file-version 0.1.10.0 --product-version 0.1.10.0
+          go-winres make --arch amd64,arm64 --file-version 0.1.11.0 --product-version 0.1.11.0
           if ($LASTEXITCODE) { throw 'Windows resources failed' }
           Pop-Location
       - name: Compile native Windows apps
@@ -29,6 +29,44 @@ jobs:
             go build -trimpath -ldflags '-s -w -H=windowsgui' -o "build/windows-$arch/fracture.exe" ./host
             if ($LASTEXITCODE) { throw 'Go build failed' }
           }
+      - name: Compile shared home renderer for both architectures
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $vc = Join-Path $vs 'VC/Auxiliary/Build/vcvarsall.bat'
+          foreach ($entry in @(@('amd64','x64'),@('arm64','x64_arm64'))) {
+            $arch=$entry[0]; $target=$entry[1]
+            cmd /c "`"$vc`" $target && cl /nologo /LD /O2 /std:c11 /D_CRT_SECURE_NO_WARNINGS /Fobuild/windows-$arch/preview.obj device/src/preview.c /link /OUT:build/windows-$arch/fracture-preview.dll"
+            if ($LASTEXITCODE) { throw "Home renderer build failed: $arch" }
+          }
+      - name: Exercise shared C home renderer
+        shell: pwsh
+        run: |
+          Add-Type @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class FracturePreview {
+            [DllImport("kernel32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr LoadLibrary(string p);
+            [DllImport("fracture-preview.dll",CallingConvention=CallingConvention.Cdecl)] public static extern int FracturePreviewAssets(byte[] a,int n,byte[] f,int m);
+            [DllImport("fracture-preview.dll",CallingConvention=CallingConvention.Cdecl)] public static extern int FracturePreviewRender([MarshalAs(UnmanagedType.LPStr)]string s,uint age,byte[] pixels,int n);
+            [DllImport("fracture-preview.dll",CallingConvention=CallingConvention.Cdecl)] public static extern void FracturePreviewClose();
+          }
+          '@
+          $dll=(Resolve-Path build/windows-amd64/fracture-preview.dll).Path
+          if (![FracturePreview]::LoadLibrary($dll)) {throw 'Renderer could not load'}
+          $pgm=[IO.File]::ReadAllBytes("$pwd/assets/faces/digit-atlas-nunito.pgm")
+          $atlas=New-Object byte[] 170000;[Array]::Copy($pgm,16,$atlas,0,170000)
+          $font=[IO.File]::ReadAllBytes("$pwd/assets/ui/default.bin")
+          if (![FracturePreview]::FracturePreviewAssets($atlas,$atlas.Length,$font,$font.Length)) {throw 'Renderer rejected assets'}
+          $lines=@('FPR1','now=1793100000','face=nunito','profile=0','appearance=0','alarm_hour=-1','telemetry=0','weather=0','media=0','notifications=0')
+          Get-Content assets/faces/nunito.face | ForEach-Object {if ($_ -match '^[a-z0-9_]+=' -and $_ -notmatch '^layout=') {$lines += "face.$_"}}
+          Get-Content assets/themes/midnight.theme | ForEach-Object {if ($_ -match '^[a-z0-9_]+=') {$lines += "theme.$_"}}
+          $model=($lines -join "`n")+"`nEND`n"
+          $pixels=New-Object byte[] 307200
+          if (![FracturePreview]::FracturePreviewRender($model,0,$pixels,$pixels.Length)) {throw 'Renderer rejected model'}
+          if (@($pixels | Where-Object {$_ -ne 0 -and $_ -ne 255}).Count -lt 1000) {throw 'Renderer produced an empty face'}
+          if (![FracturePreview]::FracturePreviewRender($model,1250,$pixels,$pixels.Length)) {throw 'Renderer could not advance the clock locally'}
+          [FracturePreview]::FracturePreviewClose()
       - name: Compile Inno Setup installers
         shell: pwsh
         run: |

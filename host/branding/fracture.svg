@@ -1,7 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-  <defs><linearGradient id="surface" x2="1" y2="1"><stop stop-color="#152236"/><stop offset="1" stop-color="#05080f"/></linearGradient><linearGradient id="ice" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#8ff4ff"/><stop offset="1" stop-color="#2eb4f8"/></linearGradient></defs>
+  <defs>
+    <linearGradient id="surface" x2="1" y2="1"><stop stop-color="#152236"/><stop offset="1" stop-color="#05080f"/></linearGradient>
+    <linearGradient id="purple" x2="1" y2="1"><stop stop-color="#c3a1ff"/><stop offset="1" stop-color="#9060ed"/></linearGradient>
+    <linearGradient id="blue" x2="1" y2="1"><stop stop-color="#66e5ff"/><stop offset="1" stop-color="#32b5fa"/></linearGradient>
+  </defs>
   <rect x="4" y="4" width="248" height="248" rx="58" fill="url(#surface)"/>
-  <path d="M63 55h143l-18 37H105v36H63z" fill="url(#ice)"/>
-  <path d="M63 142h111l-17 35h-52v37H63z" fill="#5ad9fb"/>
-  <path d="m118 114 42-15h39l-16 29h-39l-26 13z" fill="#ab8bff"/>
+  <path d="M82 44H188a19 19 0 0 1 0 38H108v35l-44 18V62a18 18 0 0 1 18-18Z" fill="url(#purple)"/>
+  <path d="m64 147 44-18h65a18 18 0 0 1 0 36h-65v31a22 22 0 0 1-44 0Z" fill="url(#blue)"/>
 </svg>

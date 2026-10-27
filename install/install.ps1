@@ -1,6 +1,6 @@
 # Detect Windows architecture, verify the release checksum, then launch Inno Setup.
 $ErrorActionPreference = 'Stop'
-$version = if ($env:FRACTURE_VERSION) { $env:FRACTURE_VERSION } else { 'v0.1.10' }
+$version = if ($env:FRACTURE_VERSION) { $env:FRACTURE_VERSION } else { 'v0.1.11' }
 if ($version -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Invalid release version' }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $archName = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }

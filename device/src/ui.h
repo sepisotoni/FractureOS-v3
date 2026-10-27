@@ -1,9 +1,10 @@
 /* Small UI text atlas and original geometric symbols. No vector/font runtime. */
 static unsigned char *ui_font;
+static unsigned long ui_font_hash;
 static double menu_anim_start;
 static int menu_anim_from,menu_anim_to;
 static void ui_font_load(void){char path[640];const char *slash;FILE *f;unsigned char *data;int user;
- for(user=1;user>=0;user--){const char *base=user?config_path:assets_path;slash=strrchr(base,'/');snprintf(path,sizeof path,"%.*s/%s",slash?(int)(slash-base):1,slash?base:".",user?"ui-font.bin":"ui/default.bin");f=fopen(path,"rb");if(!f)continue;data=malloc(45699);if(!data){fclose(f);return;}if(fread(data,1,45699,f)==45699&&!memcmp(data,"FUI1",4)&&fgetc(f)==EOF){int i,ok=1;for(i=0;i<95;i++)if(data[4+i]<1||data[4+i]>20)ok=0;if(ok){ui_font=data;fclose(f);return;}}free(data);fclose(f);}}
+ for(user=1;user>=0;user--){const char *base=user?config_path:assets_path;slash=strrchr(base,'/');snprintf(path,sizeof path,"%.*s/%s",slash?(int)(slash-base):1,slash?base:".",user?"ui-font.bin":"ui/default.bin");f=fopen(path,"rb");if(!f)continue;data=malloc(45699);if(!data){fclose(f);return;}if(fread(data,1,45699,f)==45699&&!memcmp(data,"FUI1",4)&&fgetc(f)==EOF){int i,ok=1;for(i=0;i<95;i++)if(data[4+i]<1||data[4+i]>20)ok=0;if(ok){ui_font=data;ui_font_hash=content_hash(data,45699);fclose(f);return;}}free(data);fclose(f);}}
 static int ui_height(int scale){return scale==1?16:scale*9+3;}
 static int ui_width(const char *s,int scale){int w=0,height=ui_height(scale);for(;*s;s++){int c=(unsigned char)*s;if(c<32||c>126)c='?';w+=ui_font[4+c-32]*height/24+1;}return w;}
 /* Area sampling preserves thin strokes when a 24px atlas becomes small text. */

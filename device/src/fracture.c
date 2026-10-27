@@ -8,7 +8,15 @@
 #include <errno.h>
 #include <stdint.h>
 #include <signal.h>
+#include <time.h>
+#if defined(FRACTURE_RENDER_ONLY) && defined(_WIN32)
+#include <io.h>
+#define fsync _commit
+#define unlink _unlink
+#else
 #include <unistd.h>
+#endif
+#ifndef FRACTURE_RENDER_ONLY
 #include <fcntl.h>
 #include <time.h>
 #include <poll.h>
@@ -31,8 +39,9 @@
 #define __NR_clock_gettime (__NR_SYSCALL_BASE+263)
 #endif
 #endif
+#endif /* device platform includes */
 #ifndef FRACTURE_VERSION
-#define FRACTURE_VERSION "0.1.10"
+#define FRACTURE_VERSION "0.1.11"
 #endif
 #define W 320
 #define H 240
@@ -44,12 +53,14 @@ static const char *assets_path="/mnt/sdcard/fracture-v3/faces";
 static const char *profiles[]={"minimal","desk","bedside"};
 static const char *themes[]={"teal","amber","blue"};
 static uint16_t pixels[W*H];
+#ifndef FRACTURE_RENDER_ONLY
 static unsigned char *mapped;
 static size_t mapped_size;
 static int fb=-1,input=-1,gpio=-1,light=-1,listener=-1,lockfd=-1,old_light=-1;
 static struct fb_fix_screeninfo fix;
 static struct fb_var_screeninfo var;
 static volatile sig_atomic_t running=1;
+#endif
 static int menu=0,selected=0,alert=0,touch_down=0,touch_held=0;
 static int cpu=-1,ram=-1,disk_usage=-1,cpu_temp=-1000,temp_pc=0,net_down=-1,net_up=-1,dirty=1,frame_count=0;
 static double timer_end=0,watch_start=0,watch_elapsed=0,stats_at=0,temp_at=0,menu_activity=0,touch_at=0,tap_due=0,power_due=0;
@@ -66,6 +77,11 @@ static const unsigned char font[][5]={
  {0x7f,8,0x14,0x22,0x41},{0x7f,0x40,0x40,0x40,0x40},{0x7f,2,0xc,2,0x7f},{0x7f,4,8,0x10,0x7f},{0x3e,0x41,0x41,0x41,0x3e},
  {0x7f,9,9,9,6},{0x3e,0x41,0x51,0x21,0x5e},{0x7f,9,0x19,0x29,0x46},{0x46,0x49,0x49,0x49,0x31},{1,1,0x7f,1,1},
  {0x3f,0x40,0x40,0x40,0x3f},{0x1f,0x20,0x40,0x20,0x1f},{0x3f,0x40,0x38,0x40,0x3f},{0x63,0x14,8,0x14,0x63},{7,8,0x70,8,7},{0x61,0x51,0x49,0x45,0x43}};
+static unsigned long content_hash(const unsigned char *p,size_t n){unsigned long h=2166136261UL;size_t i;for(i=0;i<n;i++)h=((h^p[i])*16777619UL)&0xffffffffUL;return h;}
+#ifdef FRACTURE_RENDER_ONLY
+static double preview_mono=1000;
+static double mono(void){return preview_mono;}
+#else
 static double mono(void){struct timespec t;
 #ifdef __arm__
  if(syscall(__NR_clock_gettime,1,&t))return 0;
@@ -73,6 +89,7 @@ static double mono(void){struct timespec t;
  if(clock_gettime(CLOCK_MONOTONIC,&t))return 0;
 #endif
  return t.tv_sec+t.tv_nsec/1e9;}
+#endif
 static uint16_t rgb(int r,int g,int b){return (uint16_t)(((r>>3)<<11)|((g>>2)<<5)|(b>>3));}
 static void rect(int x,int y,int width,int height,uint16_t color){int i,j;
  for(j=y;j<y+height && j<H;j++)for(i=x;i<x+width && i<W;i++)if(i>=0 && j>=0)pixels[j*W+i]=color;}
@@ -131,19 +148,29 @@ static void brightness(void){
 #include "dashboard.h"
 #include "weather.h"
 #include "media.h"
+#ifndef FRACTURE_RENDER_ONLY
 #include "forecast.h"
 #include "navigation.h"
 #include "power.h"
+#include "startup.h"
+#else
+static void power_draw(void){}
+static int notice_overlay_allowed(void){return 1;}
+#endif
 static void render(void){char s[64];int height;struct tm t;uint16_t bg=theme_color(theme.background),fg=theme_color(theme.foreground),muted=theme_color(theme.muted),accent=theme_color(theme.accent);
  rect(0,0,W,H,bg);localtime_now(&t);
  appearance_apply(t.tm_hour);bg=theme_color(theme.background);fg=theme_color(theme.foreground);muted=theme_color(theme.muted);accent=theme_color(theme.accent);rect(0,0,W,H,bg);
  if(alert){center(50,alert==2?"DAILY ALARM":"TIME IS UP",3,accent);center(130,"TAP TO DISMISS",2,fg);center(200,"SILENT VISUAL ALERT",1,muted);power_draw();return;}
+#ifndef FRACTURE_RENDER_ONLY
  if(menu){navigation_draw();if(notice_live()&&notice_overlay_allowed())notice_draw(H-96);power_draw();return;}
+#endif
  height=H-status_height();
  if(face_ready&&t.tm_year>=120){if(height==H)face_draw(&t);else face_draw_height(&t,height);}
  else if(t.tm_year<120){center(65,"SET TIME",4,accent);center(120,"CONNECT HUB OR USE CLI",1,fg);}
  else{strftime(s,sizeof s,"%H:%M",&t);center(60,s,5,fg);strftime(s,sizeof s,"%a %d %b",&t);center(125,s,2,muted);}
  if(height<H)status_draw(height);if(!strcmp(cfg.face,"neon"))dashboard_chrome();power_draw();}
+#ifndef FRACTURE_RENDER_ONLY
+#include "home_model.h"
 static int ppm(const char *path){FILE *f=fopen(path,"wb");int i;if(!f)return -1;fprintf(f,"P6\n320 240\n255\n");for(i=0;i<W*H;i++){unsigned char v[3];v[0]=((pixels[i]>>11)&31)*255/31;v[1]=((pixels[i]>>5)&63)*255/63;v[2]=(pixels[i]&31)*255/31;fwrite(v,1,3,f);}return fclose(f);}
 static void present(void){int y;if(!mapped)return;
  /* Small full-frame copies on actual redraws avoid stale dirty-row assumptions
@@ -157,9 +184,12 @@ static void command(char *line,char *reply,size_t cap){char *name,*a,*b,*extra;i
  name=strtok(line," \r\n");a=strtok(NULL," \r\n");b=strtok(NULL," \r\n");extra=strtok(NULL," \r\n");snprintf(reply,cap,"ERR invalid command\n");if(!name||extra)return;
  if(weather_command(name,a,b)||media_command(name,a,b)){dirty=1;snprintf(reply,cap,"OK\n");return;}
  if(!strcmp(name,"status")&&!a){localtime_now(&t);snprintf(reply,cap,"{\"version\":\"%s\",\"profile\":\"%s\",\"theme\":\"%s\",\"face\":\"%s\",\"face_loaded\":%s,\"brightness\":%d,\"offset\":%d,\"alarm_hour\":%d,\"alarm_minute\":%d,\"timer_seconds\":%d,\"menu\":%d,\"selection\":%d,\"frames\":%d,\"time_valid\":%s,\"hold_live\":%s,\"power_down\":%d,\"stopwatch_seconds\":%d,\"stopwatch_running\":%s,\"media_view\":%s,\"media_art_loaded\":%d,\"media_seq\":%u,\"media_action\":\"%s\",\"media_arg\":%d,\"media_pending\":%s}\n",FRACTURE_VERSION,profiles[cfg.profile],cfg.theme_name,cfg.face,face_ready?"true":"false",cfg.brightness,cfg.offset,cfg.alarm_hour,cfg.alarm_minute,timer_end>mono()?(int)(timer_end-mono()):0,menu,selected,frame_count,t.tm_year>=120?"true":"false",power_regs?"true":"false",power_down,(int)(watch_elapsed+(watch_start?mono()-watch_start:0)),watch_start?"true":"false",menu==PAGE_PLAYER||menu==PAGE_MEDIA_MORE||menu==PAGE_LYRICS||(menu==PAGE_EDIT&&edit_parent==PAGE_PLAYER)?"true":"false",media_art_loaded,media_sequence,media_action,media_argument,media_sequence!=media_ack&&mono()-media_action_at<10?"true":"false");
- {size_t used=strlen(reply);if(used>=2){snprintf(reply+used-2,cap-used+2,",\"telemetry\":%d,\"weather\":%d,\"notifications\":%d,\"media_enabled\":%d,\"appearance\":%d,\"cpu\":%d,\"ram\":%d,\"disk\":%d,\"traffic\":%d,\"weather_live\":%s,\"weather_code\":%d,\"temperature_tenths\":%d,\"weather_unusual\":%s,\"weather_visible\":%s,\"cpu_temp_tenths\":%d,\"cpu_temp_pc\":%s,\"notification_seconds\":%d,\"menu_timeout\":%d,\"notification_active\":%s,\"lyrics_view\":%s,\"lyrics_page\":%d,\"weather_view\":%s,\"forecast_saved_at\":%ld}\n",cfg.telemetry,cfg.weather,cfg.notifications,cfg.media,cfg.appearance,metrics_live()?cpu:-1,metrics_live()?ram:-1,metrics_live()?disk_usage:-1,metrics_live()?(net_up>net_down?net_up:net_down):-1,weather_live()?"true":"false",weather_code,weather_temp,weather_unusual?"true":"false",weather_visible()?"true":"false",temperature_live()?cpu_temp:-1000,temp_pc?"true":"false",cfg.notice_seconds,cfg.menu_timeout,notice_live()?"true":"false",menu==PAGE_LYRICS?"true":"false",lyrics_page,menu>=PAGE_WEATHER?"true":"false",forecast_saved);}}return;}
- if(!strcmp(name,"forecast-reload")&&!a){forecast_header();if(menu>=PAGE_WEATHER)forecast_load();dirty=1;snprintf(reply,cap,"OK\n");return;}
- if(!strcmp(name,"capture")&&!a){render();present();snprintf(reply,cap,ppm("/tmp/fracture-v3-screen.ppm")?"ERR capture\n":"OK\n");return;}
+ {size_t used=strlen(reply);if(used>=2){snprintf(reply+used-2,cap-used+2,",\"telemetry\":%d,\"weather\":%d,\"notifications\":%d,\"media_enabled\":%d,\"appearance\":%d,\"cpu\":%d,\"ram\":%d,\"disk\":%d,\"traffic\":%d,\"weather_live\":%s,\"weather_code\":%d,\"temperature_tenths\":%d,\"weather_unusual\":%s,\"weather_visible\":%s,\"cpu_temp_tenths\":%d,\"cpu_temp_pc\":%s,\"notification_seconds\":%d,\"menu_timeout\":%d,\"notification_active\":%s,\"lyrics_view\":%s,\"lyrics_page\":%d,\"weather_view\":%s,\"lyrics_index\":%d,\"lyrics_buffer\":%d,\"forecast_saved_at\":%ld}\n",cfg.telemetry,cfg.weather,cfg.notifications,cfg.media,cfg.appearance,metrics_live()?cpu:-1,metrics_live()?ram:-1,metrics_live()?disk_usage:-1,metrics_live()?(net_up>net_down?net_up:net_down):-1,weather_live()?"true":"false",weather_code,weather_temp,weather_unusual?"true":"false",weather_visible()?"true":"false",temperature_live()?cpu_temp:-1000,temp_pc?"true":"false",cfg.notice_seconds,cfg.menu_timeout,notice_live()?"true":"false",menu==PAGE_LYRICS?"true":"false",lyrics_page,weather_page(menu)?"true":"false",lyrics_index,lyrics_window?lyrics_window->count:0,forecast_saved);}}return;}
+ if(!strcmp(name,"forecast-reload")&&!a){forecast_header();if(weather_page(menu))forecast_load();dirty=1;snprintf(reply,cap,"OK\n");return;}
+ if(!strcmp(name,"boot-preview")&&!a){startup_at=mono();startup_frame=-1;dirty=1;snprintf(reply,cap,"OK\n");return;}
+ if(!strcmp(name,"home-state")&&!a){home_model(reply,cap);return;}
+ if(!strcmp(name,"preview-asset")&&a&&b){preview_asset(a,b,reply,cap);return;}
+ if(!strcmp(name,"capture")&&!a){if(startup_at)startup_draw(mono()-startup_at);else render();present();snprintf(reply,cap,ppm("/tmp/fracture-v3-screen.ppm")?"ERR capture\n":"OK\n");return;}
  if(!strcmp(name,"theme-get")&&!a){theme_json(reply,cap);return;}
  if(!strcmp(name,"theme-reset")&&!a){char path[640];Theme next=theme;theme_path(path,sizeof path,0);if(!theme_read(path,&next))return;theme_path(path,sizeof path,1);if(unlink(path)&&errno!=ENOENT)return;theme=next;dirty=1;snprintf(reply,cap,"OK\n");return;}
  if(!strcmp(name,"face-get")&&!a){if(face_ready)face_json(reply,cap);return;}
@@ -185,6 +215,7 @@ static void command(char *line,char *reply,size_t cap){char *name,*a,*b,*extra;i
  else if(!strcmp(name,"timer")&&!b&&integer(a,0,86400,&n)){timer_end=n?mono()+n:0;alert=0;}
  else if(!strcmp(name,"alarm")&&!b&&!strcmp(a,"off"))cfg.alarm_hour=-1;
  else if(!strcmp(name,"alarm")&&b&&integer(a,0,23,&n)&&integer(b,0,59,&m)){cfg.alarm_hour=n;cfg.alarm_minute=m;}
+ else if(!strcmp(name,"stats-bundle")&&cfg.telemetry&&a&&b){int c,r,temp,down,up;char extra;if(sscanf(a,"%d,%d,%d,%d,%d%c",&c,&r,&temp,&down,&up,&extra)!=5||c<0||c>100||r<0||r>100||temp< -1000||temp>1500||down< -1||up< -1||(strcmp(b,"hub")&&strcmp(b,"pc")))return;cpu=c;ram=r;net_down=down;net_up=up;stats_at=mono();if(temp>=-500){cpu_temp=temp;temp_at=stats_at;temp_pc=!strcmp(b,"pc");}}
  else if(!strcmp(name,"stats-temp")&&cfg.telemetry&&(!b||!strcmp(b,"hub")||!strcmp(b,"pc"))&&integer(a,-1000,1500,&n)){cpu_temp=n;temp_at=mono();temp_pc=b&&!strcmp(b,"pc");}
  else if(!strcmp(name,"stats-extra")&&cfg.telemetry&&a&&b&&integer(a,-1,100,&n)){char extra;int down,up;if(sscanf(b,"%d,%d%c",&down,&up,&extra)!=2||down< -1||up< -1)return;disk_usage=n;net_down=down;net_up=up;}
  else if(!strcmp(name,"stats")&&cfg.telemetry&&b&&integer(a,0,100,&n)&&integer(b,0,100,&m)){cpu=n;ram=m;stats_at=mono();}
@@ -193,7 +224,7 @@ static void command(char *line,char *reply,size_t cap){char *name,*a,*b,*extra;i
  else return;
  if(memcmp(&old,&cfg,sizeof cfg)&&save()){cfg=old;theme_load();snprintf(reply,cap,"ERR settings persistence\n");return;}brightness();dirty=1;snprintf(reply,cap,"OK\n");}
 static void stop(int sig){(void)sig;running=0;}
-static int control(int argc,char **argv){int s,i;struct sockaddr_un addr;char line[256],reply[2048];size_t used=0;ssize_t n;
+static int control(int argc,char **argv){int s,i;struct sockaddr_un addr;char line[256],reply[20000];size_t used=0;ssize_t n;
  if(argc<1)return 2;line[0]=0;for(i=0;i<argc;i++){if(strlen(argv[i])+used+2>=sizeof line)return 2;used+=(size_t)snprintf(line+used,sizeof line-used,"%s%s",i?" ":"",argv[i]);}strcat(line,"\n");
  s=socket(AF_UNIX,SOCK_STREAM,0);if(s<0)return 1;memset(&addr,0,sizeof addr);addr.sun_family=AF_UNIX;strcpy(addr.sun_path,SOCK);if(connect(s,(struct sockaddr*)&addr,sizeof addr)){perror("connect");close(s);return 1;}
  if(write(s,line,strlen(line))!=(ssize_t)strlen(line)){close(s);return 1;}used=0;while(used+1<sizeof reply&&(n=read(s,reply+used,sizeof reply-used-1))>0)used+=n;reply[used]=0;close(s);fputs(reply,stdout);return used&&strncmp(reply,"ERR",3)?0:1;}
@@ -207,7 +238,7 @@ static void inputs(double now){struct input_event e;ssize_t n;
  if(tap_due&&now>=tap_due){tap_due=0;event("tap");}
  power_poll(now);
  if(power_due&&now>=power_due){power_due=0;event("power");}}
-static int daemon_run(int seconds){struct sockaddr_un addr;struct pollfd p[2];double start=mono(),last_tick=-1;int count,client;char line[256],reply[2048];FILE *pid;struct tm t;
+static int daemon_run(int seconds){struct sockaddr_un addr;struct pollfd p[2];double start=mono(),last_tick=-1;int count,client;char line[256],reply[20000];FILE *pid;struct tm t;
  lockfd=open("/tmp/fracture-v3.lock",O_CREAT|O_RDWR,0600);if(lockfd<0||flock(lockfd,LOCK_EX|LOCK_NB)){fprintf(stderr,"Already running\n");return 1;}
  if(framebuffer()){perror("framebuffer");return 1;}listener=socket(AF_UNIX,SOCK_STREAM,0);if(listener<0)return 1;memset(&addr,0,sizeof addr);addr.sun_family=AF_UNIX;strcpy(addr.sun_path,SOCK);unlink(SOCK);umask(077);
  if(bind(listener,(struct sockaddr*)&addr,sizeof addr)||listen(listener,4)){perror("control socket");return 1;}
@@ -218,19 +249,24 @@ static int daemon_run(int seconds){struct sockaddr_un addr;struct pollfd p[2];do
 #endif
  power_open();brightness();signal(SIGTERM,stop);signal(SIGINT,stop);signal(SIGPIPE,SIG_IGN);pid=fopen("/tmp/fracture-v3.pid","w");if(pid){fprintf(pid,"%ld\n",(long)getpid());fclose(pid);}
  fprintf(stderr,"FractureOS %s running\n",FRACTURE_VERSION);
- while(running){double now=mono();if(seconds>0&&now-start>=seconds)break;inputs(now);if(menu&&menu!=PAGE_PLAYER&&menu!=PAGE_LYRICS&&cfg.menu_timeout&&menu_activity>0&&now-menu_activity>=cfg.menu_timeout&&!power_down&&!touch_down){preview_cancel();page_open(PAGE_CLOCK);}if(link_at&&now-link_at>=15){link_at=0;dirty=1;}if(weather_at&&now-weather_at>=1800){weather_at=0;dirty=1;}if(stats_at&&now-stats_at>=10){stats_at=0;dirty=1;}if(notice_until&&now>=notice_until){notice_until=0;notification[0]=0;notice_release_art();dirty=1;}if(media_at&&now-media_at>=20){media_at=0;media_release_art();dirty=1;}if(menu_anim_start){dirty=1;if(now-menu_anim_start>=0.18)menu_anim_start=0;}
+ if(access("/tmp/fracture-started",F_OK)){int marker=open("/tmp/fracture-started",O_WRONLY|O_CREAT,0600);if(marker>=0)close(marker);startup_at=mono();}
+ while(running){double now=mono();if(seconds>0&&now-start>=seconds)break;inputs(now);if(menu&&menu!=PAGE_PLAYER&&menu!=PAGE_LYRICS&&cfg.menu_timeout&&menu_activity>0&&now-menu_activity>=cfg.menu_timeout&&!power_down&&!touch_down){preview_cancel();page_open(PAGE_CLOCK);}if(link_at&&now-link_at>=15){link_at=0;dirty=1;}if(weather_at&&now-weather_at>=1800){weather_at=0;dirty=1;}if(stats_at&&now-stats_at>=7){stats_at=0;dirty=1;}if(notice_until&&now>=notice_until){notice_until=0;notification[0]=0;notice_release_art();dirty=1;}if(media_at&&now-media_at>=20){media_at=0;media_release_art();dirty=1;}if(menu_anim_start){dirty=1;if(now-menu_anim_start>=0.18)menu_anim_start=0;}
  if(timer_end&&now>=timer_end){timer_end=0;alert=1;dirty=1;}
  localtime_now(&t);if(t.tm_year>=120&&cfg.alarm_hour==t.tm_hour&&cfg.alarm_minute==t.tm_min&&cfg.last_alarm_day!=(t.tm_year*366+t.tm_yday)){cfg.last_alarm_day=t.tm_year*366+t.tm_yday;if(!save()){alert=2;dirty=1;}}
  {double tick=(timer_end||watch_start||cfg.profile==1||menu==PAGE_PLAYER||(face_ready&&!menu&&!alert&&(face.show_seconds||(face.colon&&face.blink&&!(face.hour_only&&t.tm_min==0)))))?(double)time(NULL):(double)(time(NULL)/60);if(tick!=last_tick){dirty=1;last_tick=tick;}}
- if(dirty){render();present();dirty=0;}
+ if(menu==PAGE_LYRICS&&lyrics_sync())dirty=1;
+ if(startup_at){double elapsed=now-startup_at;if(elapsed>=1.4||menu||touch_down||power_down){startup_at=0;dirty=1;}else if((int)(elapsed*12)!=startup_frame){startup_frame=(int)(elapsed*12);startup_draw(elapsed);present();dirty=0;}}
+ if(dirty&&!startup_at){render();present();dirty=0;}
  p[0].fd=listener;p[0].events=POLLIN;p[0].revents=0;p[1].fd=input;p[1].events=POLLIN;p[1].revents=0;count=poll(p,2,50);if(count>0&&(p[0].revents&POLLIN)){client=accept(listener,NULL,NULL);if(client>=0){struct timeval timeout={1,0};size_t used=0;ssize_t got;setsockopt(client,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof timeout);setsockopt(client,SOL_SOCKET,SO_SNDTIMEO,&timeout,sizeof timeout);
  while(used+1<sizeof line){got=read(client,line+used,1);if(got!=1)break;if(line[used++]=='\n')break;}line[used]=0;if(used&&line[used-1]=='\n'){command(line,reply,sizeof reply);if(write(client,reply,strlen(reply))<0)dirty=1;}close(client);}}}
 #ifdef __arm__
  if(light>=0&&old_light>=0)ioctl(light,IOW_BACKLIGHT_UPDATE,old_light);
 #endif
- if(power_regs)munmap((void*)power_regs,4096);media_release_art();notice_release_art();forecast_release();if(mapped)munmap(mapped,mapped_size);if(fb>=0)close(fb);if(input>=0)close(input);if(gpio>=0)close(gpio);if(light>=0)close(light);close(listener);unlink(SOCK);unlink("/tmp/fracture-v3.pid");close(lockfd);return 0;}
+ if(power_regs)munmap((void*)power_regs,4096);lyrics_release();media_release_art();notice_release_art();forecast_release();if(mapped)munmap(mapped,mapped_size);if(fb>=0)close(fb);if(input>=0)close(input);if(gpio>=0)close(gpio);if(light>=0)close(light);close(listener);unlink(SOCK);unlink("/tmp/fracture-v3.pid");close(lockfd);return 0;}
 int main(int argc,char **argv){int i,seconds=0;char asset_directory[640];const char *preview=NULL,*snapshot=NULL,*slash=strrchr(argv[0],'/');
  if(slash){snprintf(asset_directory,sizeof asset_directory,"%.*s/faces",(int)(slash-argv[0]),argv[0]);assets_path=asset_directory;}
  if(argc>1&&!strcmp(argv[1],"ctl")){alarm(5);return control(argc-2,argv+2);}
  for(i=1;i<argc;i++){if(!strcmp(argv[i],"--version")){puts(FRACTURE_VERSION);return 0;}else if(!strcmp(argv[i],"--config")&&i+1<argc)config_path=argv[++i];else if(!strcmp(argv[i],"--assets")&&i+1<argc)assets_path=argv[++i];else if(!strcmp(argv[i],"--seconds")&&i+1<argc)seconds=atoi(argv[++i]);else if(!strcmp(argv[i],"--preview")&&i+1<argc)preview=argv[++i];else if(!strcmp(argv[i],"--snapshot")&&i+1<argc)snapshot=argv[++i];else if(!strcmp(argv[i],"--at")&&i+1<argc)wall_override=(time_t)atol(argv[++i]);else{fprintf(stderr,"Unknown argument\n");return 2;}}
  load();theme_load();face_load();ui_font_load();forecast_header();if(preview){render();return ppm(preview)?1:0;}if(snapshot){int y;if(framebuffer())return 1;for(y=0;y<H;y++)memcpy(pixels+y*W,mapped+(y+var.yoffset)*fix.line_length+var.xoffset*2,W*2);return ppm(snapshot)?1:0;}return daemon_run(seconds);}
+
+#endif /* FRACTURE_RENDER_ONLY */
