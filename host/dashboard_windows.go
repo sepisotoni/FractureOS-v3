@@ -552,6 +552,18 @@ func platformDashboard() error {
 				})
 			}
 			return 0
+		case 5: // WM_SIZE: release the optional preview while minimized.
+			mu.Lock()
+			previewVisible = pageIndex == 0 && wp != 1
+			previewGeneration++
+			if !previewVisible {
+				preview = homePreviewPacket{}
+			}
+			mu.Unlock()
+			if wp == 1 {
+				renderer.close()
+			}
+			return 0
 		case 0x113:
 			if minimized, _, _ := user32.NewProc("IsIconic").Call(wnd); minimized == 0 && pageIndex == 0 {
 				timerTicks++

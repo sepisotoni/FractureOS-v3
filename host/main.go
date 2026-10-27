@@ -569,6 +569,7 @@ func hubBackground(ctx context.Context, b *Broker) {
 	var cancel context.CancelFunc
 	var done <-chan error
 	lastSync := time.Time{}
+	statusFailure := time.Time{}
 	stopWorker := func() {
 		if worker != nil {
 			cancel()
@@ -603,7 +604,17 @@ func hubBackground(ctx context.Context, b *Broker) {
 				continue
 			}
 			status, err := b.call("status")
-			if err != nil || strings.Contains(status, `"telemetry":0`) || (!strings.Contains(status, `"profile":"desk"`) || !strings.Contains(status, `"menu":0`)) {
+			if err != nil {
+				if statusFailure.IsZero() {
+					statusFailure = time.Now()
+				}
+				if time.Since(statusFailure) > 5*time.Second {
+					stopWorker()
+				}
+				continue
+			}
+			statusFailure = time.Time{}
+			if strings.Contains(status, `"telemetry":0`) || (!strings.Contains(status, `"profile":"desk"`) || !strings.Contains(status, `"menu":0`)) {
 				stopWorker()
 				continue
 			}

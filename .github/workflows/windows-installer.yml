@@ -154,6 +154,7 @@ jobs:
       - name: Hash artifacts
         shell: pwsh
         run: |
+          foreach ($arch in @('amd64','arm64')) {Copy-Item "build/windows-$arch/fracture-preview.dll" "build/inno/fracture-preview-$arch.dll"}
           Get-ChildItem build/inno/*-setup.exe | ForEach-Object { "$((Get-FileHash $_ -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)" } | Set-Content -Encoding ascii build/inno/WINDOWS-SHA256SUMS
       - uses: actions/upload-artifact@v4
         if: always()

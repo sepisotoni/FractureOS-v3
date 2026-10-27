@@ -34,7 +34,7 @@ for system in ('linux','windows'):
    renderer=ROOT/'build'/f'windows-{arch}'/'fracture-preview.dll'
    if not renderer.is_file(): raise RuntimeError('Missing Windows shared renderer: '+str(renderer))
    shutil.copy2(renderer,staging/'fracture-preview.dll')
-   (staging/'README.txt').write_text('FractureOS '+VERSION+'\nOpen fracture.exe for the tray. Right-click for Settings.\nWindows runtime validation is pending. See https://github.com/sepisotoni/FractureOS-v3\n')
+   (staging/'README.txt').write_text('FractureOS '+VERSION+'\nOpen fracture.exe for the tray. Right-click for Settings.\nWindows x64 installer/update and shared renderer checks passed; ARM64 runtime needs hardware acceptance. See https://github.com/sepisotoni/FractureOS-v3\n')
    package=OUT/(name+'.zip')
    with zipfile.ZipFile(package,'w',zipfile.ZIP_DEFLATED) as archive:
     for child in sorted(staging.iterdir()):archive.write(child,child.name)

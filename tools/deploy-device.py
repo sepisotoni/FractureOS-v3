@@ -57,7 +57,7 @@ def main():
     parser.add_argument('--evidence', type=Path)
     args = parser.parse_args()
     socket.inet_aton(args.host)
-    with TomTom(args.host) as device:
+    with TomTom(args.host, timeout=60) as device:
         if args.action == 'restore':
             restore(device)
             return
