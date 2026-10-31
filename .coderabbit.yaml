@@ -1,0 +1,16 @@
+language: en-US
+tone_instructions: "Be concise and technical. Prioritize actionable findings with file locations and suggested fixes."
+reviews:
+  profile: assertive
+  auto_review:
+    enabled: true
+    drafts: false
+  path_instructions:
+    - path: "**/*"
+      instructions: "Look for dead or unreachable code, unused imports and exports, redundant functions, inconsistent naming conventions, duplicated logic, and maintainability issues. Do not suggest removing public APIs without checking references. Identify concrete locations and avoid stylistic noise."
+    - path: "**/*.go"
+      instructions: "Pay special attention to goroutine leaks, race conditions, context cancellation, error handling, auth and WhatsApp session lifecycle."
+    - path: "**/*.{ts,tsx,js,jsx}"
+      instructions: "Check stale UI code, naming inconsistencies, unreferenced components, async cleanup, auth and unsafe data exposure."
+    - path: "**/*.{py,c,cpp,h,hpp,java}"
+      instructions: "Check resource and memory safety, unreachable code, naming consistency, thread handling and portability."
