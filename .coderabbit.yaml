@@ -1,5 +1,5 @@
 language: en-US
-tone_instructions: "Be concise and technical. Prioritize actionable findings with file locations and suggested fixes."
+tone_instructions: "Be precise and concise. Classify findings by severity, cite exact files and lines, and avoid speculative or cosmetic feedback."
 reviews:
   profile: assertive
   auto_review:
@@ -7,10 +7,19 @@ reviews:
     drafts: false
   path_instructions:
     - path: "**/*"
-      instructions: "Look for dead or unreachable code, unused imports and exports, redundant functions, inconsistent naming conventions, duplicated logic, and maintainability issues. Do not suggest removing public APIs without checking references. Identify concrete locations and avoid stylistic noise."
+      instructions: |
+        Review proportionally to scope and risk. For small cosmetic, documentation, naming,
+        or straightforward edits, concentrate on changed lines and immediate dependents;
+        avoid sweeping unrelated suggestions.
+        For new features, study surrounding modules, call sites, interfaces, tests,
+        backwards compatibility, failure paths and integration behavior.
+        For auth, storage, concurrency, CI/deployment, migrations or public APIs,
+        inspect dependencies and system-level impact even for small diffs.
+        Detect dead/unreachable code, unused symbols, duplicated logic, inconsistent
+        names and misleading abstractions only when evidence supports the issue.
+        Do not flag intentional compatibility shims without checking usages.
+        Give actionable fixes; don't demand unrelated rewrites.
     - path: "**/*.go"
-      instructions: "Pay special attention to goroutine leaks, race conditions, context cancellation, error handling, auth and WhatsApp session lifecycle."
-    - path: "**/*.{ts,tsx,js,jsx}"
-      instructions: "Check stale UI code, naming inconsistencies, unreferenced components, async cleanup, auth and unsafe data exposure."
-    - path: "**/*.{py,c,cpp,h,hpp,java}"
-      instructions: "Check resource and memory safety, unreachable code, naming consistency, thread handling and portability."
+      instructions: "Inspect goroutine lifetimes, data races, context cancellation, errors, authentication, session persistence, and test coverage."
+    - path: "**/*.{js,jsx,ts,tsx,py,java,c,cpp,h,hpp}"
+      instructions: "Inspect async/thread cleanup, input validation, memory/resource safety, naming consistency and relevant tests."
