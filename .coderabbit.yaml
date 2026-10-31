@@ -1,0 +1,25 @@
+language: en-US
+tone_instructions: "Be precise and concise. Classify findings by severity, cite exact files and lines, and avoid speculative or cosmetic feedback."
+reviews:
+  profile: assertive
+  auto_review:
+    enabled: true
+    drafts: false
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        Review proportionally to scope and risk. For small cosmetic, documentation, naming,
+        or straightforward edits, concentrate on changed lines and immediate dependents;
+        avoid sweeping unrelated suggestions.
+        For new features, study surrounding modules, call sites, interfaces, tests,
+        backwards compatibility, failure paths and integration behavior.
+        For auth, storage, concurrency, CI/deployment, migrations or public APIs,
+        inspect dependencies and system-level impact even for small diffs.
+        Detect dead/unreachable code, unused symbols, duplicated logic, inconsistent
+        names and misleading abstractions only when evidence supports the issue.
+        Do not flag intentional compatibility shims without checking usages.
+        Give actionable fixes; don't demand unrelated rewrites.
+    - path: "**/*.go"
+      instructions: "Inspect goroutine lifetimes, data races, context cancellation, errors, authentication, session persistence, and test coverage."
+    - path: "**/*.{js,jsx,ts,tsx,py,java,c,cpp,h,hpp}"
+      instructions: "Inspect async/thread cleanup, input validation, memory/resource safety, naming consistency and relevant tests."
