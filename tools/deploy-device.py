@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verified deployment of the 0.1.11 application environment, not firmware flashing."""
+"""Verified deployment of the 0.1.13 application environment, not firmware flashing."""
 import argparse
 import datetime
 import hashlib
@@ -14,7 +14,7 @@ from tomtom import TomTom
 
 ROOT = '/mnt/sdcard/fracture-v3'
 START = '/mnt/sdcard/opentom/start.sh'
-VERSION = 'v0.1.11'
+VERSION = 'v0.1.13'
 
 
 def control(device, cmd):
@@ -54,9 +54,13 @@ def main():
     parser.add_argument('action', choices=['install', 'restore'])
     parser.add_argument('--host', default='192.168.101.115')
     parser.add_argument('--package', type=Path, default=Path(__file__).resolve().parent.parent)
+    parser.add_argument('--slot', default=VERSION,
+                        help='release directory name; use a suffixed slot for same-version testing')
     parser.add_argument('--evidence', type=Path)
     args = parser.parse_args()
     socket.inet_aton(args.host)
+    if not re.fullmatch(re.escape(VERSION)+r'(?:-[A-Za-z0-9._-]{1,32})?', args.slot):
+        parser.error('slot must be '+VERSION+' or a safe suffixed test slot')
     with TomTom(args.host, timeout=60) as device:
         if args.action == 'restore':
             restore(device)
@@ -65,6 +69,8 @@ def main():
         if 'armv5' not in identity or '2.6.13' not in identity or 'ONE (v6)' not in identity:
             raise RuntimeError('This device release supports the validated OpenTom ONE (v6), Linux 2.6.13 only: ' + identity)
         previous_current = device.command('cat '+ROOT+'/current 2>/dev/null')[1].strip()
+        if args.slot != VERSION and not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9._-]{1,32})?', previous_current):
+            raise RuntimeError('Cannot safely test-slot deploy without a valid existing current slot')
         # A new private backup directory on the modern host, outside public files.
         backup = args.evidence or (Path.home() / '.local/share/fracture-v3/backups' / (datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + secrets.token_hex(3)))
         backup.mkdir(parents=True, mode=0o700, exist_ok=False)
@@ -84,7 +90,7 @@ def main():
         device.checked('mkdir ' + stage + ' ' + stage+'/faces '+stage+'/themes '+stage+'/ui')
         uploaded = []
         changed = False
-        report = {'version': VERSION, 'device': args.host, 'payloads': {}, 'backup': {}}
+        report = {'version': VERSION, 'slot': args.slot, 'previous_current': previous_current, 'device': args.host, 'payloads': {}, 'backup': {}}
         try:
             for name,path in payloads.items():
                 destination = stage+'/'+name
@@ -111,26 +117,28 @@ def main():
                     device.checked('cp '+START+' '+ROOT+'/stock-start.sh && sync')
             else:
                 device.checked('test -s '+ROOT+'/stock-start.sh')
-            destination = ROOT+'/releases/'+VERSION
+            destination = ROOT+'/releases/'+args.slot
             # Never overwrite a running executable or silently republish same version.
             exists,_ = device.command('test -d '+destination)
             if exists == 0:
                 for name in [n for n in payloads if n not in ('boot.sh','control.sh','entry.sh')]:
                     digest = device.download(destination+'/'+name, backup/(name.replace('/','_')+'.installed'),probe)
-                    if digest != report['payloads'][name]: raise RuntimeError('Installed '+VERSION+' differs; use a new release version')
+                    if digest != report['payloads'][name]: raise RuntimeError('Installed '+args.slot+' differs; use a new release slot')
             else:
                 device.checked('mkdir '+destination+' '+destination+'/faces '+destination+'/themes '+destination+'/ui')
                 for name in [n for n in payloads if n not in ('boot.sh','control.sh','entry.sh')]:
                     device.checked('cp '+stage+'/'+name+' '+destination+'/'+name)
             device.checked('mkdir -p '+ROOT+'/faces '+ROOT+'/themes')
-            for name in ['boot.sh','control.sh']:
-                device.checked('cp '+stage+'/'+name+' '+ROOT+'/'+name+'.new && sync && mv '+ROOT+'/'+name+'.new '+ROOT+'/'+name)
-            for name,value in [('device-ip',args.host),('current',VERSION)]:
+            if args.slot == VERSION:
+                for name in ['boot.sh','control.sh']:
+                    device.checked('cp '+stage+'/'+name+' '+ROOT+'/'+name+'.new && sync && mv '+ROOT+'/'+name+'.new '+ROOT+'/'+name)
+            for name,value in [('device-ip',args.host),('current',args.slot)]:
                 device.checked('echo '+shlex.quote(value)+' > '+ROOT+'/'+name+'.new && sync && mv '+ROOT+'/'+name+'.new '+ROOT+'/'+name)
+            changed = True
             offset = int(datetime.datetime.now().astimezone().utcoffset().total_seconds()/60)
             device.checked('if test ! -f '+ROOT+'/settings.cfg; then echo '+shlex.quote('version=1\noffset='+str(offset)+'\nbrightness=30\nprofile=0\ntheme=0\ntheme_name=midnight\nalarm_hour=-1\nalarm_minute=0\nlast_alarm_day=-1')+' > '+ROOT+'/settings.cfg; fi')
-            device.checked('cp '+stage+'/entry.sh '+START+'.new && sync && mv '+START+'.new '+START)
-            changed = True
+            if args.slot == VERSION:
+                device.checked('cp '+stage+'/entry.sh '+START+'.new && sync && mv '+START+'.new '+START)
             # Preserve foreground parent shells so /etc/rc cannot reach force_reboot.
             ps = device.checked('ps')
             for line in ps.splitlines():
@@ -157,18 +165,33 @@ def main():
             else: raise RuntimeError('Clock did not become healthy')
             if report['status']['version'] != VERSION[1:]: raise RuntimeError('Unexpected running version')
             device.checked('if test ! -f '+ROOT+'/tomtom.ico.original; then cp /mnt/sdcard/tomtom.ico '+ROOT+'/tomtom.ico.original; fi')
-            device.checked('cp '+destination+'/tomtom.ico /mnt/sdcard/tomtom.ico.new && sync && mv /mnt/sdcard/tomtom.ico.new /mnt/sdcard/tomtom.ico')
-            digest=device.download('/mnt/sdcard/tomtom.ico',backup/'tomtom.ico.installed',probe)
-            if digest != report['payloads']['tomtom.ico']: raise RuntimeError('TomTom icon verification failed')
+            if args.slot == VERSION:
+                device.checked('cp '+destination+'/tomtom.ico /mnt/sdcard/tomtom.ico.new && sync && mv /mnt/sdcard/tomtom.ico.new /mnt/sdcard/tomtom.ico')
+                digest=device.download('/mnt/sdcard/tomtom.ico',backup/'tomtom.ico.installed',probe)
+                if digest != report['payloads']['tomtom.ico']: raise RuntimeError('TomTom icon verification failed')
             device.checked('sync')
             report['installed'] = True
-            print('FractureOS '+VERSION+' is running. Startup backed up at '+ROOT+'/stock-start.sh')
+            print('FractureOS '+VERSION+' is running from slot '+args.slot+'. Startup backed up at '+ROOT+'/stock-start.sh')
             print('Host backup:', backup)
             print(json.dumps(report['status']))
         except BaseException:
             if changed:
-                print('Activation failed; restoring OpenTom.')
-                restore(device)
+                if args.slot == VERSION:
+                    print('Activation failed; restoring OpenTom.')
+                    restore(device)
+                else:
+                    print('Test activation failed; returning to '+previous_current+'.')
+                    device.checked('echo '+shlex.quote(previous_current)+' > '+ROOT+'/current.new && sync && mv '+ROOT+'/current.new '+ROOT+'/current')
+                    code,_ = device.command('test -f /tmp/fracture-v3.pid')
+                    if code == 0: device.checked('kill $(cat /tmp/fracture-v3.pid)')
+                    deadline = time.monotonic()+20
+                    while time.monotonic()<deadline:
+                        code,out = device.command('/bin/sh '+ROOT+'/control.sh status')
+                        if code == 0 and json.loads(out).get('version') == VERSION[1:]:
+                            break
+                        time.sleep(0.5)
+                    else:
+                        raise RuntimeError('Test activation failed and the previous slot did not recover')
             raise
         finally:
             # A USB disconnect must not hide the original error or lose recovery evidence.

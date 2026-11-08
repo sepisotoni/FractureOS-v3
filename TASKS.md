@@ -123,7 +123,7 @@ The P-series checkboxes below describe complete target modules. Initial implemen
 
 ## P5 — Media/display experiments
 
-- [ ] P501 Prototype PCM audio forwarding; measure actual speaker behavior, CPU, underruns and latency (M21).
+- [x] P501 Implement opt-in PCM audio forwarding with Linux and Windows capture sources and adjustable device gain. Linux playback is verified; Windows runtime, CPU, underruns and end-to-end latency still need measurement (M21).
 - [ ] P502 Prototype cropped/window/screen mirroring with RGB565 dirty tiles and measured frame rate (M22).
 - [ ] P503 Establish Windows WDK/tooling and signed-driver distribution route for true extension; this is a native driver exception to the Go host preference (M23).
 - [ ] P504 Implement and validate virtual monitor connect/disconnect, mode handling, frame forwarding and recovery on Windows; keep driver opt-in.

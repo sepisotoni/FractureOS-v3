@@ -24,6 +24,7 @@ type Notification struct {
 type IntegrationSettings struct {
 	LyricsEnabled *bool              `json:"lyrics_enabled,omitempty"`
 	Operation     string             `json:"operation"`
+	Audio         *AudioConfig       `json:"audio,omitempty"`
 	Weather       WeatherConfig      `json:"weather"`
 	Notifications NotificationConfig `json:"notifications"`
 	HubMetrics    bool               `json:"hub_metrics"`
@@ -65,6 +66,9 @@ func registerIntegrations(mux *http.ServeMux, b *Broker, token string) {
 		switch q.Operation {
 		case "get":
 		case "set":
+			if q.Audio != nil {
+				c.Audio = *q.Audio
+			}
 			c.Weather = q.Weather
 			c.Notifications = q.Notifications
 			c.HubMetrics = q.HubMetrics
@@ -83,7 +87,7 @@ func registerIntegrations(mux *http.ServeMux, b *Broker, token string) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(IntegrationSettings{LyricsEnabled: &c.LyricsEnabled, Weather: c.Weather, Notifications: c.Notifications, HubMetrics: c.HubMetrics})
+		_ = json.NewEncoder(w).Encode(IntegrationSettings{LyricsEnabled: &c.LyricsEnabled, Audio: &c.Audio, Weather: c.Weather, Notifications: c.Notifications, HubMetrics: c.HubMetrics})
 	})
 	mux.HandleFunc("/api/notifications", func(w http.ResponseWriter, r *http.Request) {
 		if !auth(w, r) {
@@ -166,6 +170,11 @@ func integrationGet(c Config) (IntegrationSettings, error) {
 func integrationSave(c Config, q IntegrationSettings) error {
 	if e := validateIntegrations(q.Weather, q.Notifications); e != nil {
 		return e
+	}
+	if q.Audio != nil {
+		if e := validateAudio(*q.Audio); e != nil {
+			return e
+		}
 	}
 	q.Operation = "set"
 	_, e := hubRequest(c, "/api/integrations", q)

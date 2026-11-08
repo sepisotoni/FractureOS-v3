@@ -23,11 +23,15 @@
 #include <sys/file.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
+#include <sys/soundcard.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/reboot.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <linux/fb.h>
 #include <linux/input.h>
 #ifdef __arm__
@@ -41,7 +45,7 @@
 #endif
 #endif /* device platform includes */
 #ifndef FRACTURE_VERSION
-#define FRACTURE_VERSION "0.1.11"
+#define FRACTURE_VERSION "0.1.13"
 #endif
 #define W 320
 #define H 240
@@ -57,6 +61,8 @@ static uint16_t pixels[W*H];
 static unsigned char *mapped;
 static size_t mapped_size;
 static int fb=-1,input=-1,gpio=-1,light=-1,listener=-1,lockfd=-1,old_light=-1;
+static pid_t audio_pid=-1;
+static char audio_token[33];
 static struct fb_fix_screeninfo fix;
 static struct fb_var_screeninfo var;
 static volatile sig_atomic_t running=1;
@@ -180,11 +186,67 @@ static void present(void){int y;if(!mapped)return;
  else for(y=0;y<H;y++)memcpy(mapped+(y+var.yoffset)*fix.line_length+var.xoffset*2,pixels+y*W,W*2);frame_count++;}
 
 static int integer(const char *s,int lo,int hi,int *value){char *end;long n;errno=0;n=strtol(s,&end,10);if(errno||end==s||*end||n<lo||n>hi)return 0;*value=(int)n;return 1;}
+static int audio_read_all(int fd,unsigned char *data,size_t length){ssize_t n;while(length){n=read(fd,data,length);if(n<0&&errno==EINTR)continue;if(n<=0)return 0;data+=n;length-=(size_t)n;}return 1;}
+static int audio_write_all(int fd,const unsigned char *data,size_t length){ssize_t n;while(length){n=write(fd,data,length);if(n<0&&errno==EINTR)continue;if(n<=0)return 0;data+=n;length-=(size_t)n;}return 1;}
+static unsigned int audio_u32(const unsigned char *p){return ((unsigned int)p[0]<<24)|((unsigned int)p[1]<<16)|((unsigned int)p[2]<<8)|p[3];}
+static void audio_worker(int ready_fd){
+ int dsp=-1,server=-1,client,rate=16000,format=AFMT_S16_LE,channels=2,fd,i,flags,rcvbuf=4096,reuse=1;
+ long maxfd=sysconf(_SC_OPEN_MAX);struct sockaddr_in addr,peer;unsigned char header[16],pcm[640],output[1280],token[32];socklen_t peerlen;struct timeval timeout={0,500000};
+ signal(SIGTERM,SIG_DFL);signal(SIGINT,SIG_DFL);signal(SIGPIPE,SIG_IGN);
+ if(maxfd<0||maxfd>4096)maxfd=4096;for(fd=3;fd<maxfd;fd++)if(fd!=ready_fd)close(fd);
+ dsp=open("/dev/dsp",O_WRONLY|O_NONBLOCK);
+ if(dsp<0||ioctl(dsp,SNDCTL_DSP_SPEED,&rate)<0||rate!=16000||
+    ioctl(dsp,SNDCTL_DSP_SETFMT,&format)<0||format!=AFMT_S16_LE||
+    ioctl(dsp,SNDCTL_DSP_CHANNELS,&channels)<0||channels!=2)goto fail;
+ flags=fcntl(dsp,F_GETFL,0);if(flags<0||fcntl(dsp,F_SETFL,flags&~O_NONBLOCK)<0)goto fail;
+ server=socket(AF_INET,SOCK_STREAM,0);if(server<0)goto fail;
+ setsockopt(server,SOL_SOCKET,SO_REUSEADDR,&reuse,sizeof reuse);
+ memset(&addr,0,sizeof addr);addr.sin_family=AF_INET;addr.sin_addr.s_addr=htonl(INADDR_ANY);addr.sin_port=htons(18745);
+ if(bind(server,(struct sockaddr*)&addr,sizeof addr)||listen(server,1))goto fail;
+ if(!audio_write_all(ready_fd,(const unsigned char*)"OKAY",4))goto fail;close(ready_fd);
+ for(;;){
+  client=accept(server,NULL,NULL);if(client<0){if(errno==EINTR)continue;break;}
+  peerlen=sizeof peer;if(getpeername(client,(struct sockaddr*)&peer,&peerlen)||peer.sin_family!=AF_INET||peer.sin_addr.s_addr!=inet_addr("192.168.101.105")){close(client);continue;}
+  setsockopt(client,SOL_SOCKET,SO_RCVBUF,&rcvbuf,sizeof rcvbuf);
+  setsockopt(client,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof timeout);
+  if(!audio_read_all(client,token,sizeof token)||memcmp(token,audio_token,sizeof token)){close(client);continue;}
+  if(!audio_write_all(client,(const unsigned char*)"OKAY",4)){close(client);continue;}
+  {unsigned int expected=0;
+  for(;;){
+   if(!audio_read_all(client,header,sizeof header)||memcmp(header,"FRA1",4))break;
+   if(audio_u32(header+4)!=expected++)break;
+   if(!audio_read_all(client,pcm,sizeof pcm))break;
+   for(i=0;i<(int)sizeof pcm;i+=2){output[i*2]=pcm[i];output[i*2+1]=pcm[i+1];output[i*2+2]=pcm[i];output[i*2+3]=pcm[i+1];}
+   if(!audio_write_all(dsp,output,sizeof output))break;
+  }}
+  close(client);ioctl(dsp,SNDCTL_DSP_RESET,0);
+  close(server);close(dsp);_exit(0);
+ }
+ close(server);close(dsp);_exit(0);
+fail:
+ if(ready_fd>=0){write(ready_fd,"ERR!",4);close(ready_fd);}
+ if(server>=0)close(server);if(dsp>=0)close(dsp);_exit(1);
+}
+static void audio_reap(void){int status;if(audio_pid>0){pid_t result=waitpid(audio_pid,&status,WNOHANG);if(result==audio_pid||(result<0&&errno==ECHILD))audio_pid=-1;}}
+static void audio_stop(void){if(audio_pid>0){kill(audio_pid,SIGTERM);while(waitpid(audio_pid,NULL,0)<0&&errno==EINTR){}audio_pid=-1;}memset(audio_token,0,sizeof audio_token);}
+static int audio_start(const char *token){
+ int ready[2],i;pid_t child;unsigned char reply[4];size_t used=0;ssize_t n;
+ if(!token||strlen(token)!=32)return 0;for(i=0;i<32;i++)if(!((token[i]>='0'&&token[i]<='9')||(token[i]>='a'&&token[i]<='f')))return 0;
+ audio_reap();if(alert)return 0;if(audio_pid>0)audio_stop();if(pipe(ready))return 0;
+ memcpy(audio_token,token,32);audio_token[32]=0;
+ child=fork();if(child<0){close(ready[0]);close(ready[1]);memset(audio_token,0,sizeof audio_token);return 0;}
+ if(!child){close(ready[0]);audio_worker(ready[1]);_exit(1);}
+ close(ready[1]);while(used<sizeof reply){n=read(ready[0],reply+used,sizeof reply-used);if(n<0&&errno==EINTR)continue;if(n<=0)break;used+=(size_t)n;}close(ready[0]);
+ memset(audio_token,0,sizeof audio_token);
+ if(used!=sizeof reply||memcmp(reply,"OKAY",4)){while(waitpid(child,NULL,0)<0&&errno==EINTR){}return 0;}
+ audio_pid=child;return 1;
+}
 static void command(char *line,char *reply,size_t cap){char *name,*a,*b,*extra;int n,m,i;Settings old=cfg;struct tm t;
  name=strtok(line," \r\n");a=strtok(NULL," \r\n");b=strtok(NULL," \r\n");extra=strtok(NULL," \r\n");snprintf(reply,cap,"ERR invalid command\n");if(!name||extra)return;
  if(weather_command(name,a,b)||media_command(name,a,b)){dirty=1;snprintf(reply,cap,"OK\n");return;}
  if(!strcmp(name,"status")&&!a){localtime_now(&t);snprintf(reply,cap,"{\"version\":\"%s\",\"profile\":\"%s\",\"theme\":\"%s\",\"face\":\"%s\",\"face_loaded\":%s,\"brightness\":%d,\"offset\":%d,\"alarm_hour\":%d,\"alarm_minute\":%d,\"timer_seconds\":%d,\"menu\":%d,\"selection\":%d,\"frames\":%d,\"time_valid\":%s,\"hold_live\":%s,\"power_down\":%d,\"stopwatch_seconds\":%d,\"stopwatch_running\":%s,\"media_view\":%s,\"media_art_loaded\":%d,\"media_seq\":%u,\"media_action\":\"%s\",\"media_arg\":%d,\"media_pending\":%s}\n",FRACTURE_VERSION,profiles[cfg.profile],cfg.theme_name,cfg.face,face_ready?"true":"false",cfg.brightness,cfg.offset,cfg.alarm_hour,cfg.alarm_minute,timer_end>mono()?(int)(timer_end-mono()):0,menu,selected,frame_count,t.tm_year>=120?"true":"false",power_regs?"true":"false",power_down,(int)(watch_elapsed+(watch_start?mono()-watch_start:0)),watch_start?"true":"false",menu==PAGE_PLAYER||menu==PAGE_MEDIA_MORE||menu==PAGE_LYRICS||(menu==PAGE_EDIT&&edit_parent==PAGE_PLAYER)?"true":"false",media_art_loaded,media_sequence,media_action,media_argument,media_sequence!=media_ack&&mono()-media_action_at<10?"true":"false");
  {size_t used=strlen(reply);if(used>=2){snprintf(reply+used-2,cap-used+2,",\"telemetry\":%d,\"weather\":%d,\"notifications\":%d,\"media_enabled\":%d,\"appearance\":%d,\"cpu\":%d,\"ram\":%d,\"disk\":%d,\"traffic\":%d,\"weather_live\":%s,\"weather_code\":%d,\"temperature_tenths\":%d,\"weather_unusual\":%s,\"weather_visible\":%s,\"cpu_temp_tenths\":%d,\"cpu_temp_pc\":%s,\"notification_seconds\":%d,\"menu_timeout\":%d,\"notification_active\":%s,\"lyrics_view\":%s,\"lyrics_page\":%d,\"weather_view\":%s,\"lyrics_index\":%d,\"lyrics_buffer\":%d,\"forecast_saved_at\":%ld}\n",cfg.telemetry,cfg.weather,cfg.notifications,cfg.media,cfg.appearance,metrics_live()?cpu:-1,metrics_live()?ram:-1,metrics_live()?disk_usage:-1,metrics_live()?(net_up>net_down?net_up:net_down):-1,weather_live()?"true":"false",weather_code,weather_temp,weather_unusual?"true":"false",weather_visible()?"true":"false",temperature_live()?cpu_temp:-1000,temp_pc?"true":"false",cfg.notice_seconds,cfg.menu_timeout,notice_live()?"true":"false",menu==PAGE_LYRICS?"true":"false",lyrics_page,weather_page(menu)?"true":"false",lyrics_index,lyrics_window?lyrics_window->count:0,forecast_saved);}}return;}
+ if(!strcmp(name,"audio-stop")&&!a){audio_stop();snprintf(reply,cap,"OK\n");return;}
  if(!strcmp(name,"forecast-reload")&&!a){forecast_header();if(weather_page(menu))forecast_load();dirty=1;snprintf(reply,cap,"OK\n");return;}
  if(!strcmp(name,"boot-preview")&&!a){startup_at=mono();startup_frame=-1;dirty=1;snprintf(reply,cap,"OK\n");return;}
  if(!strcmp(name,"home-state")&&!a){home_model(reply,cap);return;}
@@ -195,6 +257,7 @@ static void command(char *line,char *reply,size_t cap){char *name,*a,*b,*extra;i
  if(!strcmp(name,"face-get")&&!a){if(face_ready)face_json(reply,cap);return;}
  if(!strcmp(name,"face-reset")&&!a){char path[640];face_path(path,sizeof path,1);if(unlink(path)&&errno!=ENOENT)return;if(!face_load())return;dirty=1;snprintf(reply,cap,"OK\n");return;}
  if(!a)return;
+ if(!strcmp(name,"audio-start")&&a&&!b){if(audio_start(a)){memset(a,0,32);snprintf(reply,cap,"OK\n");}else{memset(a,0,strlen(a));snprintf(reply,cap,"ERR audio unavailable or preempted\n");}return;}
  if(!strcmp(name,"link")&&!b&&integer(a,0,1,&n)){int was=link_live();link_at=n?mono():0;if(was!=link_live())dirty=1;snprintf(reply,cap,"OK\n");return;}
  if(!strcmp(name,"ui-timeout")&&a&&b&&integer(b,0,600,&n)){if(!strcmp(a,"notification")&&n>=1&&n<=120)cfg.notice_seconds=n;else if(!strcmp(a,"menu"))cfg.menu_timeout=n;else return;if(save()){cfg=old;return;}dirty=1;snprintf(reply,cap,"OK\n");return;}
  if(!strcmp(name,"feature")&&a&&b&&integer(b,0,2,&n)){int *field=NULL;if(!strcmp(a,"telemetry")&&n<2)field=&cfg.telemetry;else if(!strcmp(a,"weather"))field=&cfg.weather;else if(!strcmp(a,"notifications")&&n<2)field=&cfg.notifications;else if(!strcmp(a,"media")&&n<2)field=&cfg.media;else if(!strcmp(a,"appearance"))field=&cfg.appearance;if(!field)return;*field=n;if(save()){cfg=old;return;}if(!cfg.telemetry)stats_at=0;if(!cfg.weather)weather_at=0;if(!cfg.notifications){notice_until=0;notice_release_art();}if(!cfg.media){media_at=0;media_release_art();}dirty=1;snprintf(reply,cap,"OK\n");return;}
@@ -253,6 +316,7 @@ static int daemon_run(int seconds){struct sockaddr_un addr;struct pollfd p[2];do
  while(running){double now=mono();if(seconds>0&&now-start>=seconds)break;inputs(now);if(menu&&menu!=PAGE_PLAYER&&menu!=PAGE_LYRICS&&cfg.menu_timeout&&menu_activity>0&&now-menu_activity>=cfg.menu_timeout&&!power_down&&!touch_down){preview_cancel();page_open(PAGE_CLOCK);}if(link_at&&now-link_at>=15){link_at=0;dirty=1;}if(weather_at&&now-weather_at>=1800){weather_at=0;dirty=1;}if(stats_at&&now-stats_at>=7){stats_at=0;dirty=1;}if(notice_until&&now>=notice_until){notice_until=0;notification[0]=0;notice_release_art();dirty=1;}if(media_at&&now-media_at>=20){media_at=0;media_release_art();lyrics_release();memset(lyrics_line,0,sizeof lyrics_line);strcpy(lyrics_message,"Windows media is offline");dirty=1;}if(menu_anim_start){dirty=1;if(now-menu_anim_start>=0.18)menu_anim_start=0;}
  if(timer_end&&now>=timer_end){timer_end=0;alert=1;dirty=1;}
  localtime_now(&t);if(t.tm_year>=120&&cfg.alarm_hour==t.tm_hour&&cfg.alarm_minute==t.tm_min&&cfg.last_alarm_day!=(t.tm_year*366+t.tm_yday)){cfg.last_alarm_day=t.tm_year*366+t.tm_yday;if(!save()){alert=2;dirty=1;}}
+ if(alert)audio_stop();
  {double tick=(timer_end||watch_start||cfg.profile==1||menu==PAGE_PLAYER||(face_ready&&!menu&&!alert&&(face.show_seconds||(face.colon&&face.blink&&!(face.hour_only&&t.tm_min==0)))))?(double)time(NULL):(double)(time(NULL)/60);if(tick!=last_tick){dirty=1;last_tick=tick;}}
  if(menu==PAGE_LYRICS&&lyrics_sync())dirty=1;
  if(startup_at){double elapsed=now-startup_at;if(elapsed>=1.4||menu||touch_down||power_down){startup_at=0;dirty=1;}else if((int)(elapsed*12)!=startup_frame){startup_frame=(int)(elapsed*12);startup_draw(elapsed);present();dirty=0;}}
@@ -262,7 +326,7 @@ static int daemon_run(int seconds){struct sockaddr_un addr;struct pollfd p[2];do
 #ifdef __arm__
  if(light>=0&&old_light>=0)ioctl(light,IOW_BACKLIGHT_UPDATE,old_light);
 #endif
- if(power_regs)munmap((void*)power_regs,4096);lyrics_release();media_release_art();notice_release_art();forecast_release();if(mapped)munmap(mapped,mapped_size);if(fb>=0)close(fb);if(input>=0)close(input);if(gpio>=0)close(gpio);if(light>=0)close(light);close(listener);unlink(SOCK);unlink("/tmp/fracture-v3.pid");close(lockfd);return 0;}
+ audio_stop();if(power_regs)munmap((void*)power_regs,4096);lyrics_release();media_release_art();notice_release_art();forecast_release();if(mapped)munmap(mapped,mapped_size);if(fb>=0)close(fb);if(input>=0)close(input);if(gpio>=0)close(gpio);if(light>=0)close(light);close(listener);unlink(SOCK);unlink("/tmp/fracture-v3.pid");close(lockfd);return 0;}
 int main(int argc,char **argv){int i,seconds=0;char asset_directory[640];const char *preview=NULL,*snapshot=NULL,*slash=strrchr(argv[0],'/');
  if(slash){snprintf(asset_directory,sizeof asset_directory,"%.*s/faces",(int)(slash-argv[0]),argv[0]);assets_path=asset_directory;}
  if(argc>1&&!strcmp(argv[1],"ctl")){alarm(5);return control(argc-2,argv+2);}
