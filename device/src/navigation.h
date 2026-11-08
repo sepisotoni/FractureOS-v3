@@ -42,7 +42,7 @@ static void choose(void){Settings old=cfg;switch(menu){
  case PAGE_CONFIRM:if(selected==1)power_action(pending_power);else page_back();break;
  case PAGE_MEDIA:page_open(PAGE_PLAYER);break;
  case PAGE_PLAYER:if(selected==0&&media_can_prev)media_send("previous",0);else if(selected==1&&media_can_play)media_send(media_playing?"pause":"play",0);else if(selected==2&&media_can_next)media_send("next",0);else if(selected==3){if(media_live()&&media_volume_ok)editor(0,"Windows volume",media_volume<0?50:media_volume,0,100,5);else{info_text="Volume unavailable on this player";page_open(PAGE_INFO);}}else if(selected==4)page_open(PAGE_MEDIA_MORE);break;
- case PAGE_MEDIA_MORE:if(selected==0){page_open(PAGE_LYRICS);lyrics_page=0;}else if(selected==1){info_text="Audio plays on Windows / not TomTom";page_open(PAGE_INFO);}else page_back();break;
+ case PAGE_MEDIA_MORE:if(selected==0){page_open(PAGE_LYRICS);lyrics_page=0;}else if(selected==1){info_text="Audio forwarding is set in host Settings";page_open(PAGE_INFO);}else page_back();break;
  case PAGE_EDIT:if(edit_parent==PAGE_QUICK)cfg.brightness=edit_value;else if(edit_parent==PAGE_TIMER_CUSTOM)custom_timer[edit_field]=edit_value;else if(edit_parent==PAGE_ALARM_CUSTOM)custom_alarm[edit_field]=edit_value;else if(edit_parent==PAGE_SETTINGS){if(edit_field==0)cfg.brightness=edit_value;else if(edit_field==1)cfg.offset=edit_value;else if(edit_field==2)cfg.menu_timeout=edit_value;else cfg.notice_seconds=edit_value;}else if(edit_parent==PAGE_PLAYER)media_send("volume",edit_value);page_open(edit_parent);break;
  case PAGE_INFO:page_back();break;
  default:page_open(PAGE_APPS);break;}
@@ -76,6 +76,12 @@ static void weather_draw(void){char s[80],label[32],value[40];int i,start=(selec
  for(i=start;i<start+4&&i<page_count();i++){int y=72+(i-start)*32,code,rain,temp,low=0;if(i==selected)rounded(9,y-3,302,31,10,theme_color(theme.surface));if(menu==PAGE_WEATHER_HOURS){ForecastHour *h=&forecast->hour[i];forecast_time(label,sizeof label,h->when,"%H:%M");code=h->code;rain=h->rain;temp=h->temp;}else{ForecastDay *d=&forecast->day[i];forecast_time(label,sizeof label,d->when,"%a %d");code=d->code;rain=d->rain;temp=d->high;low=d->low;}
  text(19,y,label,1,fg);weather_icon(105,y-1,code,accent,theme_color(theme.background));if(menu==PAGE_WEATHER_DAYS)snprintf(value,sizeof value,"%d / %d C",low/10,temp/10);else snprintf(value,sizeof value,"%d C",temp/10);text_fit(142,y,value,101,1,fg);if(rain>=0){snprintf(value,sizeof value,"%d%%",rain);text(262,y,value,1,muted);}}
  snprintf(s,sizeof s,"%d/%d  Tap next / power %s",selected+1,page_count(),menu==PAGE_WEATHER_HOURS?"week":"hourly");center(221,s,1,muted);}
+static void quick_settings_draw(void){static const char *labels[]={"Brightness","Theme","Settings","Home"};static const int icons[]={6,2,12,9};static const int xs[]={26,166,26,166},ys[]={68,68,132,132};int i;uint16_t fg=theme_color(theme.foreground),muted=theme_color(theme.muted),accent=theme_color(theme.accent),bg=theme_color(theme.background),active=theme_color(theme.surface),battery;
+ battery_refresh();battery=battery_state==1||battery_state==2?accent:muted;
+ icon(244,7,14,battery,bg);if(battery_state==2){stroke(254,9,250,14,fg);stroke(250,14,255,14,fg);stroke(255,14,252,19,fg);}
+ rounded(282,14,16,9,5,link_live()?accent:muted);rounded(284,16,12,5,3,bg);rounded(292,8,16,9,5,link_live()?accent:muted);rounded(294,10,12,5,3,bg);if(link_live())stroke(291,17,299,13,accent);else rect(288,13,8,5,bg);
+ for(i=0;i<4;i++){int x=xs[i],y=ys[i];rounded(x,y,128,54,12,i==selected?active:bg);icon(x+10,y+16,icons[i],i==selected?accent:muted,i==selected?active:bg);text_fit(x+41,y+19,labels[i],78,1,i==selected?fg:muted);}
+ center(211,"Tap: browse / power: select",1,muted);}
 static void navigation_draw(void){char s[96],a[24],b[24];int i,start=(selected/4)*4;uint16_t fg=theme_color(theme.foreground),muted=theme_color(theme.muted),accent=theme_color(theme.accent),bg=theme_color(theme.background);double now=mono();
  if(menu==PAGE_FACES||menu==PAGE_THEMES){struct tm t;localtime_now(&t);face_draw_height(&t,193);rounded(8,194,304,46,10,theme_color(theme.surface));snprintf(s,sizeof s,"%s  %d/%d",menu==PAGE_FACES?cfg.face:cfg.theme_name,selected+1,page_count());center(196,s,1,fg);center(218,"Tap: preview / power: keep",1,muted);return;}
  if(weather_page(menu)){weather_draw();return;}
@@ -83,7 +89,7 @@ static void navigation_draw(void){char s[96],a[24],b[24];int i,start=(selected/4
  if(menu==PAGE_PLAYER){media_draw();return;}text_fit(18,8,page_title(),270,3,fg);
  if(menu==PAGE_EDIT){snprintf(s,sizeof s,"%d",edit_value);center(85,s,5,accent);center(160,"Tap + / double tap -",1,muted);center(191,"Power: apply / hold 1.5s: cancel",1,muted);return;}
  if(menu==PAGE_INFO){text_fit(16,90,info_text,288,1,fg);center(185,"Power to go back",1,muted);return;}
- if(menu==PAGE_QUICK){battery_refresh();snprintf(s,sizeof s,"%s / %s",battery_label(),link_live()?"Hub connected":"Hub disconnected");text_fit(18,43,s,284,1,accent);}
+ if(menu==PAGE_QUICK){quick_settings_draw();return;}
  else if(menu==PAGE_WATCH){duration_text(a,sizeof a,(int)(watch_elapsed+(watch_start?now-watch_start:0)));duration_text(b,sizeof b,(int)watch_lap);snprintf(s,sizeof s,"%s   /   Lap %s",a,b);text(20,43,s,1,accent);}
  else if(menu==PAGE_CONFIRM)text(20,43,pending_power==1?"Alarms cannot wake the device":"Clock will stop until restarted",1,muted);
  else if(menu==PAGE_ALARM)text(20,43,"Daily / silent visual alerts",1,muted);

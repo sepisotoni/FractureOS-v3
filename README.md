@@ -1,8 +1,8 @@
 # FractureOS v3
 
-A quiet, customizable clock for a TomTom ONE (v6), with a C device app and Go Linux hub / Windows tray companion. **v0.1.13 adds opt-in system-audio forwarding from Linux or Windows, with an adjustable TomTom output level.** This audio-only release is based on v0.1.11; unrelated development features remain deferred. It uses the existing OpenTom kernel and drivers; installation replaces the application startup, not the bootloader or firmware.
+A quiet, customizable clock for a TomTom ONE (v6), with a C device app and Go Linux hub / Windows tray companion. **v0.1.14 combines compact Quick settings and expanded face defaults with opt-in system-audio forwarding from Linux or Windows, plus host-to-device time synchronization.** It uses the existing OpenTom kernel and drivers; installation replaces the application startup, not the bootloader or firmware.
 
-The original nine faces are now editable FractureOS assets. The blue Nunito face restores its original proportions with a centered date and live seconds, optional larger stacked digits, optional horizontal **HH : MM**, a blinking colon, and an hour-only behavior: **10:00 shows 10 throughout that minute; 10:01 returns to the full time** in either layout. The clock geometry adapts to a compact bottom dock; date and seconds are drawn at their final text size instead of shrinking a completed image. Digits have a configurable 0–2 pixel weight (default 1). The old information sidebar and its application dependencies are absent from the new renderer. Only the selected face's 170 KB digit atlas is resident.
+The supplied faces are editable FractureOS assets. The blue Nunito face restores its original proportions with a centered date and live seconds; the other supplied faces now also show date and seconds by default. Larger stacked digits, horizontal **HH : MM**, a blinking colon, and hour-only behavior remain configurable: **10:00 shows 10 throughout that minute; 10:01 returns to the full time** in either layout. The clock geometry adapts to a compact bottom dock; date and seconds are drawn at their final text size instead of shrinking a completed image. Digits have a configurable 0–2 pixel weight (default 1). Only the selected face's 170 KB digit atlas is resident.
 
 ![Notification card covering the clock dock](docs/images/notification-card.png)
 
@@ -13,7 +13,7 @@ The interface uses pure-black backgrounds, rounded menu highlights, simple metri
 On the **Linux machine connected to the TomTom** (Ubuntu and other Linux distributions, x86-64 or ARM64):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/sepisotoni/FractureOS-v3/v0.1.13/install/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/sepisotoni/FractureOS-v3/v0.1.14/install/install.sh | sh
 ```
 
 Then, with the TomTom reachable over its USB network:
@@ -28,12 +28,12 @@ The installer selects the host architecture, verifies the release SHA-256, insta
 On **64-bit Windows**, paste into PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/sepisotoni/FractureOS-v3/v0.1.13/install/install.ps1 | iex
+irm https://raw.githubusercontent.com/sepisotoni/FractureOS-v3/v0.1.14/install/install.ps1 | iex
 ```
 
 An **Inno Setup `.exe` installer** installs the native dashboard, tray and uninstaller for the current user. Connection and clock configuration live in app Settings. x64 installation, native window/tab navigation, settings persistence, closing and uninstallation were exercised on a Windows runner. ARM64 is cross-built; real Spotify/PawnIO hardware acceptance is still pending. macOS, 32-bit PCs and direct installation from a shell on the TomTom are unsupported.
 
-Release archives and checksums: [v0.1.13 downloads](https://github.com/sepisotoni/FractureOS-v3/releases/tag/v0.1.13). You can download and inspect the installer before running it. Checksums verify download integrity; signed release manifests are still on the roadmap.
+Release archives and checksums: [v0.1.14 downloads](https://github.com/sepisotoni/FractureOS-v3/releases/tag/v0.1.14). You can download and inspect the installer before running it. Checksums verify download integrity; signed release manifests are still on the roadmap.
 
 ## Connect Windows to the hub
 
@@ -55,10 +55,16 @@ Open **Settings → TomTom audio**, choose Linux system output or Windows loopba
 
 Linux capture uses the default PipeWire/PulseAudio output monitor through `parec`. Windows uses WASAPI loopback capture; the Windows builds pass cross-compilation, but that capture path has not been runtime-tested on Windows. The relay sends 16 kHz mono PCM in 20 ms frames. Actual end-to-end latency, CPU use and underrun behavior have not been benchmarked. See [audio validation](docs/AUDIO-VALIDATION.md).
 
-## New in v0.1.13
+## Time synchronization
 
-- Opt-in Linux or Windows system-output forwarding to the TomTom speaker with adjustable digital gain. The 5% setting was confirmed comfortable in a brief Linux-to-device playback test. Audio remains disabled by default.
-- This audio-only release is based on v0.1.11; unrelated in-progress features are intentionally deferred.
+The Linux hub sends its current Unix time to the TomTom shortly after startup and resynchronizes every five minutes. The host clock must itself be accurate. The device's configured UTC offset is applied separately for display; automatic daylight-saving changes are not included.
+
+## New in v0.1.14
+
+- Quick settings now use compact 2×2 icon tiles and abbreviated battery/hub status. The supplied non-Nunito faces show date and seconds by default.
+- Opt-in Linux or Windows system-output forwarding to the TomTom speaker has adjustable digital gain. The 5% setting was confirmed comfortable in a brief Linux-to-device playback test; audio remains disabled by default.
+- The Linux host sets device time on hub startup and resynchronizes every five minutes. The device's UTC offset remains a separate display setting; automatic DST is not included.
+- Unrelated in-progress features remain deferred.
 
 ## New in v0.1.11
 
@@ -182,11 +188,11 @@ Linux/hub: **192.168.101.105**. TomTom USB: **192.168.101.115**. TomTom LAN alia
 
 ## What works now
 
-| Component | Available in v0.1.13 |
+| Component | Available in v0.1.14 |
 |---|---|
-| TomTom | v0.1.11 clock and settings features; opt-in audio sink with per-session authentication, alarm preemption and bounded PCM playback |
-| Linux | v0.1.11 TLS hub and integrations; Linux output-monitor capture; configurable digital output gain (5% default); device deployment and restoration |
-| Windows | v0.1.11 native tray/dashboard and integrations; WASAPI loopback capture builds for x64/ARM64 but still needs runtime verification; optional PawnIO worker (hardware verification pending) |
+| TomTom | v0.1.12 Quick settings and face defaults; opt-in audio sink with per-session authentication, alarm preemption and bounded PCM playback |
+| Linux | TLS hub and integrations; Linux output-monitor capture; configurable digital output gain (5% default); host-to-device time sync; device deployment and restoration |
+| Windows | Native tray/dashboard and integrations; WASAPI loopback capture builds for x64/ARM64 but still needs runtime verification; optional PawnIO worker (hardware verification pending) |
 | Installation | Prebuilt Linux x86-64/ARM64 and Windows x64/ARM64 archives; checksum verification; versioned device payloads; original startup/icon backup; recovery to OpenTom |
 
 This is not all 23 planned modules. Windows audio runtime/latency acceptance, full Windows playback-control/PawnIO acceptance, automatic Windows toast capture, mirroring/true monitor extension, calendar, automatic Windows notifications, Windows metrics/activity switching, arbitrary widget composition, GPS, signed automatic updates and a general module loader remain on the [task board](TASKS.md). Core clock/menu/timer code is currently one small binary; Linux metrics/weather/audio and Windows media/temperature/audio run in separate processes only when enabled and requested. Full dynamic unloading of every core feature is not implemented.
