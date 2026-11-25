@@ -1,0 +1,90 @@
+name: Windows setup for in-app updater
+# Builds fracture-vX.Y.Z-windows-{amd64,arm64}-setup.exe (the asset the installed
+# updater looks for), uploads them to an existing release, and merges their hashes
+# into that release's SHA256SUMS without dropping existing entries.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag (for example v0.1.15)
+        required: true
+        type: string
+        default: v0.1.15
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+      - name: Resolve and validate version
+        shell: pwsh
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if ($env:TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Invalid tag' }
+          $v = $env:TAG.Substring(1)
+          $src = (Select-String -Path host/main.go -Pattern '^const version = "([0-9.]+)"').Matches.Groups[1].Value
+          if ($src -ne $v) { throw "host/main.go version $src does not match tag $v" }
+          "VERSION=$v" | Add-Content $env:GITHUB_ENV
+      - name: Build resources and executables
+        shell: pwsh
+        run: |
+          go install github.com/tc-hib/go-winres@v0.3.3
+          Push-Location host
+          go-winres make --arch amd64,arm64 --file-version "$env:VERSION.0" --product-version "$env:VERSION.0"
+          if ($LASTEXITCODE) { throw 'Windows resources failed' }
+          Pop-Location
+          $env:CGO_ENABLED='0'; $env:GOOS='windows'
+          foreach ($arch in @('amd64','arm64')) {
+            $env:GOARCH=$arch
+            New-Item -ItemType Directory -Force "build/windows-$arch" | Out-Null
+            go build -trimpath -ldflags '-s -w -H=windowsgui' -o "build/windows-$arch/fracture.exe" ./host
+            if ($LASTEXITCODE) { throw "Go build failed: $arch" }
+          }
+      - name: Build home renderer DLLs
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $vc = Join-Path $vs 'VC/Auxiliary/Build/vcvarsall.bat'
+          foreach ($entry in @(@('amd64','x64'),@('arm64','x64_arm64'))) {
+            $arch=$entry[0]; $target=$entry[1]
+            cmd /c "`"$vc`" $target && cl /nologo /LD /O2 /std:c11 /D_CRT_SECURE_NO_WARNINGS /Fobuild/windows-$arch/preview.obj device/src/preview.c /link /OUT:build/windows-$arch/fracture-preview.dll"
+            if ($LASTEXITCODE) { throw "Home renderer build failed: $arch" }
+          }
+      - name: Compile Inno Setup installers
+        shell: pwsh
+        run: |
+          $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $compiler)) { choco install innosetup -y --no-progress }
+          foreach ($arch in @('amd64','arm64')) {
+            & $compiler "/DArch=$arch" "/DAppVersion=$env:VERSION" install/fracture.iss
+            if ($LASTEXITCODE) { throw "Inno Setup failed: $arch" }
+          }
+          Get-ChildItem build/inno/*-setup.exe | ForEach-Object { $_.Name }
+      - name: Upload installers and merge SHA256SUMS
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          $dir = Join-Path $pwd 'build/inno'
+          $sums = Join-Path $dir 'SHA256SUMS'
+          $new = Get-ChildItem "$dir/fracture-$env:TAG-windows-*-setup.exe"
+          if ($new.Count -ne 2) { throw 'Expected amd64 and arm64 installers' }
+          gh release download $env:TAG --repo $env:GITHUB_REPOSITORY --pattern SHA256SUMS --dir $dir --clobber
+          $names = $new | ForEach-Object { $_.Name }
+          $kept = @()
+          if (Test-Path $sums) {
+            $kept = @(Get-Content $sums | Where-Object { $l=$_; $l.Trim() -and -not ($names | Where-Object { $l -match ('  ' + [regex]::Escape($_) + '$') }) })
+          }
+          $added = $new | ForEach-Object { "$((Get-FileHash $_ -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)" }
+          ($kept + $added) | Set-Content -Encoding ascii $sums
+          Get-Content $sums
+          gh release upload $env:TAG --repo $env:GITHUB_REPOSITORY --clobber @($new.FullName) $sums
+          if ($LASTEXITCODE) { throw 'Release upload failed' }
