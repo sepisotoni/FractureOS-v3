@@ -835,6 +835,7 @@
 
   <script>
     const session = location.hash.slice(1);
+    const initialPage = new URLSearchParams(location.search).get("page");
     history.replaceState(null, "", location.pathname);
     const $ = id => document.getElementById(id);
     let config = {}, integrations = null, lastStatus = null, liveFace = null, liveTheme = null;
@@ -1698,6 +1699,7 @@
         }
         try { await loadIntegrations(); } catch (error) { show(error.message, true); }
         try { await loadWallpaper(); } catch (error) { /* wallpaper optional */ }
+        if (initialPage && viewMeta[initialPage]) setPage(initialPage);
       } catch (error) { show(error.message, true); }
     })();
 

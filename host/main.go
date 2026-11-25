@@ -710,7 +710,9 @@ func hubBackground(ctx context.Context, b *Broker) {
 	}
 }
 
-func settings(open bool) error {
+func settings(open bool) error { return settingsPage(open, "") }
+
+func settingsPage(open bool, initialPage string) error {
 	token, e := randomToken()
 	if e != nil {
 		return e
@@ -833,6 +835,10 @@ func settings(open bool) error {
 			}
 			out, err := hubRequest(c, "/api/wallpaper", payload)
 			if err != nil {
+				if strings.Contains(err.Error(), "404 page not found") {
+					http.Error(w, "Your Linux hub is on an older version without wallpaper support — update the Linux hub or switch to Direct USB mode.", 502)
+					return
+				}
 				http.Error(w, err.Error(), 502)
 				return
 			}
@@ -934,7 +940,11 @@ func settings(open bool) error {
 			}
 		}
 	}()
-	url := "http://" + listener.Addr().String() + "/#" + token
+	url := "http://" + listener.Addr().String() + "/"
+	if regexp.MustCompile(`^[a-z]{1,20}$`).MatchString(initialPage) {
+		url += "?page=" + initialPage
+	}
+	url += "#" + token
 	if open {
 		if e = openURL(url); e != nil {
 			return e
@@ -971,7 +981,11 @@ func main() {
 			e = platformDashboard()
 		}
 	case "web":
-		e = settings(true)
+		target := ""
+		if len(a) > 1 {
+			target = a[1]
+		}
+		e = settingsPage(true, target)
 	case "apply-update":
 		e = applyUpdate(a[1:])
 	case "update":

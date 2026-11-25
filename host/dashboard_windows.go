@@ -564,12 +564,12 @@ func platformDashboard() error {
 				})
 			case 2203:
 				exe, _ := os.Executable()
-				cmd := exec.Command(exe, "web")
+				cmd := exec.Command(exe, "web", "wallpaper")
 				if cmd.Start() == nil {
 					go cmd.Wait()
 				}
 				mu.Lock()
-				message = "Opened Web Dashboard — select Wallpaper in the sidebar to crop & upload."
+				message = "Opened Web Dashboard directly on the Wallpaper tab."
 				mu.Unlock()
 				invalidate()
 			case 235:
