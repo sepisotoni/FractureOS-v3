@@ -1,24 +1,6 @@
-name: Windows MSIX packages
+name: Windows installers
 on:
   workflow_dispatch:
-    inputs:
-      package_name:
-        description: Exact package Name reserved in Microsoft Partner Center
-        required: true
-        type: string
-      publisher:
-        description: Exact Publisher value from Partner Center
-        required: true
-        type: string
-      publisher_display_name:
-        description: Publisher display name registered in Partner Center
-        required: true
-        type: string
-      package_version:
-        description: Four-part MSIX version (for example 0.1.15.0)
-        required: true
-        type: string
-        default: 0.1.15.0
 permissions:
   contents: read
 jobs:
@@ -31,12 +13,10 @@ jobs:
           go-version: '1.27.3'
       - name: Build application icon and manifest resources
         shell: pwsh
-        env:
-          PACKAGE_VERSION: ${{ inputs.package_version }}
         run: |
           go install github.com/tc-hib/go-winres@v0.3.3
           Push-Location host
-          go-winres make --arch amd64,arm64 --file-version "$env:PACKAGE_VERSION" --product-version "$env:PACKAGE_VERSION"
+          go-winres make --arch amd64,arm64 --file-version 0.1.15.0 --product-version 0.1.15.0
           if ($LASTEXITCODE) { throw 'Windows resources failed' }
           Pop-Location
       - name: Compile native Windows apps
@@ -87,99 +67,97 @@ jobs:
           if (@($pixels | Where-Object {$_ -ne 0 -and $_ -ne 255}).Count -lt 1000) {throw 'Renderer produced an empty face'}
           if (![FracturePreview]::FracturePreviewRender($model,1250,$pixels,$pixels.Length)) {throw 'Renderer could not advance the clock locally'}
           [FracturePreview]::FracturePreviewClose()
-      - name: Package unsigned MSIX for Microsoft Store submission
+      - name: Compile Inno Setup installers
         shell: pwsh
-        env:
-          PACKAGE_NAME: ${{ inputs.package_name }}
-          PACKAGE_PUBLISHER: ${{ inputs.publisher }}
-          PACKAGE_PUBLISHER_DISPLAY_NAME: ${{ inputs.publisher_display_name }}
-          PACKAGE_VERSION: ${{ inputs.package_version }}
         run: |
-          $name=$env:PACKAGE_NAME
-          $publisher=$env:PACKAGE_PUBLISHER
-          $publisherDisplayName=$env:PACKAGE_PUBLISHER_DISPLAY_NAME
-          $version=$env:PACKAGE_VERSION
-          if ($name -notmatch '^[A-Za-z0-9.]{3,50}$') { throw 'Invalid Partner Center package name' }
-          if ($publisher -notmatch '^CN=[A-Za-z0-9 .,_=+-]{1,160}$') { throw 'Invalid Partner Center publisher value' }
-          if (!$publisherDisplayName -or $publisherDisplayName.Length -gt 100 -or $publisherDisplayName -match '[<>"''\x00-\x1f]') { throw 'Invalid Partner Center publisher display name' }
-          if ($version -notmatch '^[0-9]{1,5}\.[0-9]{1,5}\.[0-9]{1,5}\.[0-9]{1,5}$') { throw 'Invalid four-part package version' }
-          $sourceVersion=(Select-String -Path host/main.go -Pattern '^const version = "([0-9.]+)"').Matches.Groups[1].Value
-          if (!$sourceVersion -or $version -ne "$sourceVersion.0") { throw 'Package version must match host/main.go' }
-          $safePublisher=[System.Security.SecurityElement]::Escape($publisher)
-          $safePublisherDisplayName=[System.Security.SecurityElement]::Escape($publisherDisplayName)
-          $makeappxCommand=Get-Command MakeAppx.exe -ErrorAction SilentlyContinue
-          if ($makeappxCommand) {
-            $makeappx=$makeappxCommand.Source
-          } else {
-            $sdkRoot=Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'
-            $makeappx=(Get-ChildItem $sdkRoot -Filter MakeAppx.exe -Recurse | Sort-Object FullName -Descending | Select-Object -First 1).FullName
-            if (!$makeappx) { throw 'Windows SDK MakeAppx.exe is unavailable' }
+          $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $compiler)) { throw 'Inno Setup 6 is missing from runner' }
+          foreach ($arch in @('amd64','arm64')) {
+            & $compiler "/DArch=$arch" install/fracture.iss
+            if ($LASTEXITCODE) { throw 'Inno Setup failed' }
           }
-          $root=Join-Path $pwd 'build/msix'
-          New-Item -ItemType Directory -Force $root | Out-Null
-          Add-Type -AssemblyName System.Drawing
-          $source=[System.Drawing.Image]::FromFile((Resolve-Path assets/branding/fracture.png).Path)
-          $logoSizes=@(
-            @{Name='Square44x44Logo.png';Width=44;Height=44},
-            @{Name='Square150x150Logo.png';Width=150;Height=150},
-            @{Name='StoreLogo.png';Width=50;Height=50}
-          )
-          try {
-            foreach ($arch in @('amd64','arm64')) {
-              $appxArch=if ($arch -eq 'amd64') { 'x64' } else { 'arm64' }
-              $stage=Join-Path $root "stage-$arch"
-              $assets=Join-Path $stage 'Assets'
-              New-Item -ItemType Directory -Force $assets | Out-Null
-              Copy-Item "build/windows-$arch/fracture.exe" $stage
-              Copy-Item "build/windows-$arch/fracture-preview.dll" $stage
-              foreach ($spec in $logoSizes) {
-                $image=New-Object System.Drawing.Bitmap($spec.Width,$spec.Height)
-                $graphics=[System.Drawing.Graphics]::FromImage($image)
-                try {
-                  $graphics.Clear([System.Drawing.Color]::Transparent)
-                  $graphics.InterpolationMode=[System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-                  $graphics.DrawImage($source,0,0,$spec.Width,$spec.Height)
-                  $image.Save((Join-Path $assets $spec.Name),[System.Drawing.Imaging.ImageFormat]::Png)
-                } finally { $graphics.Dispose(); $image.Dispose() }
-              }
-              $wide=New-Object System.Drawing.Bitmap(310,150)
-              $graphics=[System.Drawing.Graphics]::FromImage($wide)
-              try {
-                $graphics.Clear([System.Drawing.Color]::FromArgb(9,13,20))
-                $graphics.InterpolationMode=[System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-                $graphics.DrawImage($source,80,0,150,150)
-                $wide.Save((Join-Path $assets 'Wide310x150Logo.png'),[System.Drawing.Imaging.ImageFormat]::Png)
-              } finally { $graphics.Dispose(); $wide.Dispose() }
-              $manifest=Get-Content install/msix/Package.appxmanifest.template -Raw
-              $manifest=$manifest.Replace('__PACKAGE_NAME__',$name).Replace('__PUBLISHER__',$safePublisher).Replace('__PUBLISHER_DISPLAY_NAME__',$safePublisherDisplayName).Replace('__VERSION__',$version).Replace('__ARCH__',$appxArch)
-              $manifestPath=Join-Path $stage 'AppxManifest.xml'
-              [IO.File]::WriteAllText($manifestPath,$manifest,[Text.UTF8Encoding]::new($false))
-              [xml]$parsed=Get-Content $manifestPath -Raw
-              if (!$parsed.Package.Capabilities) { throw "Manifest capabilities missing for $arch" }
-              $package=Join-Path $root "fracture-$version-windows-$arch.msix"
-              & $makeappx pack /d $stage /p $package /o
-              if ($LASTEXITCODE) { throw "MSIX package failed: $arch" }
-              & $makeappx unpack /p $package /d (Join-Path $root "verify-$arch")
-              if ($LASTEXITCODE) { throw "MSIX package validation failed: $arch" }
-            }
-          } finally { $source.Dispose() }
-          $bundleDir=Join-Path $root 'bundle-input'
-          New-Item -ItemType Directory -Force $bundleDir | Out-Null
-          Copy-Item (Join-Path $root 'fracture-*-windows-amd64.msix') $bundleDir
-          Copy-Item (Join-Path $root 'fracture-*-windows-arm64.msix') $bundleDir
-          $bundle=Join-Path $root "fracture-$version-windows.msixbundle"
-          & $makeappx bundle /d $bundleDir /p $bundle /bv $version /o
-          if ($LASTEXITCODE) { throw 'MSIX bundle creation failed' }
-          foreach ($dir in @('stage-amd64','stage-arm64','verify-amd64','verify-arm64','bundle-input')) {
-            Remove-Item -LiteralPath (Join-Path $root $dir) -Recurse -Force
+      - name: Exercise installer, native window and uninstaller
+        shell: pwsh
+        run: |
+          $dest = Join-Path $env:RUNNER_TEMP 'FractureOS-acceptance'
+          $installer = Get-ChildItem build/inno/*-amd64-setup.exe | Select-Object -First 1
+          $p = Start-Process $installer.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=`"$dest`"" -Wait -PassThru
+          if ($p.ExitCode) { throw "Installer exit $($p.ExitCode)" }
+          $p = Start-Process "$dest/fracture.exe" -ArgumentList dashboard -PassThru
+          Start-Sleep -Seconds 5
+          $p.Refresh()
+          if ($p.HasExited -or !$p.MainWindowHandle) { throw 'Native dashboard did not open' }
+          Add-Type @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class FractureWindow {
+            [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string c, string n);
+            public delegate bool WindowCallback(IntPtr h, IntPtr p);
+            [DllImport("user32.dll")] public static extern bool EnumWindows(WindowCallback c, IntPtr p);
+            [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);
+            [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
+            [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr h, int id);
+            [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW")] public static extern IntPtr SetText(IntPtr h, uint m, IntPtr w, string s);
+            [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
           }
+          '@
+          [void][FractureWindow]::SendMessage($p.MainWindowHandle,0x111,[IntPtr]102,[IntPtr]::Zero)
+          $inputHandle=[FractureWindow]::GetDlgItem($p.MainWindowHandle,230)
+          if (!$inputHandle) { throw 'Connection input is missing' }
+          $changed=[FractureWindow]::SetText($inputHandle,0x0c,[IntPtr]::Zero,'https://127.0.0.1:47832')
+          if (!$changed) { throw 'Cross-process WM_SETTEXT failed' }
+          [void][FractureWindow]::SendMessage($p.MainWindowHandle,0x111,[IntPtr]235,[IntPtr]::Zero)
+          $saved=Get-Content "$env:APPDATA/fracture-v3/config.json" -Raw | ConvertFrom-Json
+          if ($saved.hub -ne 'https://127.0.0.1:47832') { throw "Native connection settings did not persist: $($saved.hub)" }
+          foreach ($tab in @(101,102,103,104,105,100)) {
+            [void][FractureWindow]::SendMessage($p.MainWindowHandle,0x111,[IntPtr]$tab,[IntPtr]::Zero)
+            Start-Sleep -Milliseconds 300
+            $p.Refresh(); if ($p.HasExited) { throw "Dashboard crashed on tab $tab" }
+          }
+          "Dashboard working set: $($p.WorkingSet64) bytes; window: $($p.MainWindowHandle)" | Tee-Object build/inno/validation.txt
+          Add-Type -AssemblyName System.Drawing,System.Windows.Forms
+          $screen=[System.Windows.Forms.SystemInformation]::VirtualScreen
+          $image=New-Object System.Drawing.Bitmap($screen.Width,$screen.Height)
+          $graphics=[System.Drawing.Graphics]::FromImage($image)
+          try { $graphics.CopyFromScreen($screen.Left,$screen.Top,0,0,$image.Size); $image.Save("$pwd/build/inno/dashboard.png") } finally { $graphics.Dispose(); $image.Dispose() }
+          # Exercise the same staged helper used by the Update button.
+          $helper=Join-Path $env:RUNNER_TEMP 'fracture-updater.exe'
+          Copy-Item "$dest/fracture.exe" $helper
+          $stagedInstaller=Join-Path $env:RUNNER_TEMP $installer.Name
+          Copy-Item $installer.FullName $stagedInstaller
+          $update=Start-Process $helper -ArgumentList 'apply-update',"`"$stagedInstaller`"","`"$dest`"","`"$dest/fracture.exe`"" -PassThru
+          if (!$update.WaitForExit(60000) -or $update.ExitCode) { throw 'Update helper failed' }
+          Start-Sleep -Seconds 4
+          $new=Get-Process fracture | Where-Object { $_.Path -eq (Join-Path $dest "fracture.exe") }
+          if (@($new).Count -lt 2) { throw 'Updater did not reopen dashboard and tray' }
+          $saved=Get-Content "$env:APPDATA/fracture-v3/config.json" -Raw | ConvertFrom-Json
+          if ($saved.hub -ne 'https://127.0.0.1:47832') { throw 'Update lost connection settings' }
+          foreach ($proc in $new) { if ($proc.MainWindowHandle) { [void]$proc.CloseMainWindow() } }
+          $tray=[FractureWindow]::FindWindow('FractureOSv3Tray',$null)
+          if ($tray) { [void][FractureWindow]::SendMessage($tray,0x10,[IntPtr]::Zero,[IntPtr]::Zero) }
+          $ids=@($new | ForEach-Object { $_.Id })
+          $callback=[FractureWindow+WindowCallback]{param($window,$unused)
+            [uint32]$owner=0; [void][FractureWindow]::GetWindowThreadProcessId($window,[ref]$owner)
+            if ($ids -contains [int]$owner) {
+              $name=New-Object System.Text.StringBuilder 256
+              [void][FractureWindow]::GetClassName($window,$name,256)
+              "Closing update window: $owner $name" | Add-Content build/inno/validation.txt
+              [void][FractureWindow]::SendMessage($window,0x10,[IntPtr]::Zero,[IntPtr]::Zero)
+            };return $true
+          }
+          [void][FractureWindow]::EnumWindows($callback,[IntPtr]::Zero)
+          foreach ($proc in $new) { if (!$proc.WaitForExit(15000)) { throw "Updated app did not close: PID $($proc.Id), title $($proc.MainWindowTitle)" } }
+          'In-place update preserved settings and reopened dashboard/tray' | Add-Content build/inno/validation.txt
+          $u=Start-Process "$dest/unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+          if ($u.ExitCode) { throw "Uninstaller exit $($u.ExitCode)" }
+          if (Test-Path "$dest/fracture.exe") { throw 'Uninstaller left executable behind' }
       - name: Hash artifacts
         shell: pwsh
         run: |
-          Get-ChildItem build/msix/*.msix,build/msix/*.msixbundle | ForEach-Object { "$((Get-FileHash $_ -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)" } | Set-Content -Encoding ascii build/msix/SHA256SUMS
-          'Unsigned packages target Partner Center submission. Store signing, policy review, listing, and install/runtime checks remain required before release.' | Set-Content build/msix/STORE-SUBMISSION-STATUS.txt
+          foreach ($arch in @('amd64','arm64')) {Copy-Item "build/windows-$arch/fracture-preview.dll" "build/inno/fracture-preview-$arch.dll"}
+          Get-ChildItem build/inno/*-setup.exe | ForEach-Object { "$((Get-FileHash $_ -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)" } | Set-Content -Encoding ascii build/inno/WINDOWS-SHA256SUMS
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: windows-msix-store-submission
-          path: build/msix/
+          name: windows-installers
+          path: build/inno/

@@ -8,7 +8,7 @@ FractureOS replaces the **application startup** of a TomTom ONE (v6) running Ope
 
 - **Device:** a small C program directly owns framebuffer, switch-style touch input, power-button sampling, local clock/tools, settings and bounded integration state.
 - **Linux host:** a mostly standard-library Go executable acts as TLS hub, CLI, settings server and supervisor for optional worker subprocesses. The opt-in agenda uses pinned iCalendar parsing and recurrence-expansion modules. Python tooling stages and verifies application payloads over the legacy device link.
-- **Windows:** the same Go source builds a native tray and separate Win32/GDI dashboard, with optional media and temperature workers. A small C DLL shares the home renderer; there is no Electron/WebView runtime. The published v0.1.11 installer is Inno Setup; current Windows notification-listener packaging is an unsigned MSIX candidate intended for Store submission, not yet install/runtime validated.
+- **Windows:** the same Go source builds a native tray and separate Win32/GDI dashboard, with optional media and temperature workers. A small C DLL shares the home renderer; there is no Electron/WebView runtime. The published v0.1.11 installer is Inno Setup; the in-app updater downloads and checksum-verifies the release setup exe. Windows notification capture needs a packaged build and is not yet runtime validated.
 - **Assets:** declarative clock geometry/palettes and pre-rasterized fonts/artwork, not executable face plugins.
 
 ## Actual communication chain

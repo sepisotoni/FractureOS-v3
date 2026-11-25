@@ -60,10 +60,6 @@ func updateClient(timeout time.Duration) *http.Client {
 }
 func checkUpdate(ctx context.Context) (updateOffer, error) {
 	offer := updateOffer{Current: version, Version: "v" + version, Page: "https://github.com/sepisotoni/FractureOS-v3/releases"}
-	if runtime.GOOS == "windows" {
-		offer.Page = "ms-windows-store://downloadsandupdates"
-		return offer, nil
-	}
 	req, e := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/repos/sepisotoni/FractureOS-v3/releases?per_page=20", nil)
 	if e != nil {
 		return offer, e
@@ -110,7 +106,7 @@ func downloadUpdate(ctx context.Context, offer updateOffer) (string, string, err
 	suffix := ""
 	switch runtime.GOOS {
 	case "windows":
-		return "", "", errors.New("Windows app updates are delivered through Microsoft Store")
+		suffix = "windows-" + runtime.GOARCH + "-setup.exe"
 	case "linux":
 		suffix = "linux-" + runtime.GOARCH + ".tar.gz"
 	default:
@@ -183,9 +179,6 @@ func downloadUpdate(ctx context.Context, offer updateOffer) (string, string, err
 	return path, stage, nil
 }
 func installUpdate(ctx context.Context) (string, error) {
-	if runtime.GOOS == "windows" {
-		return "Windows app updates are delivered through Microsoft Store.", nil
-	}
 	offer, e := checkUpdate(ctx)
 	if e != nil {
 		return "", e

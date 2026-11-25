@@ -1,12 +1,12 @@
 # v0.1.15 Beta candidate — implementation status
 
-The local `release/v0.1.15-beta` branch integrates the requested dashboard, weather, song-text fallback, Today agenda, notification controls, native resize work, changelog, TomTom presets and v0.1.14 audio/time-sync base. It is an unpublished candidate. Go/C builds and focused tests pass; four platform archives were generated locally with checksums. Windows runtime, Store and physical-device acceptance are not established; see [release validation](RELEASE-VALIDATION.md).
+The local `release/v0.1.15-beta` branch integrates the requested dashboard, weather, song-text fallback, Today agenda, notification controls, native resize work, changelog, TomTom presets and v0.1.14 audio/time-sync base. It is an unpublished candidate. Go/C builds and focused tests pass; four platform archives were generated locally with checksums. Windows runtime and physical-device acceptance are not established; see [release validation](RELEASE-VALIDATION.md).
 
 # Windows notification packaging — current status
 
-The Windows toast-listener effort is moving from the published Inno Setup installer path to an unsigned MSIX bundle intended for Microsoft Store submission. Workflow dispatch requires the Partner Center package `Name`, `Publisher`, `PublisherDisplayName`, and a four-part `Version` matching `host/main.go`. Access requires the packaged app's `userNotificationListener` capability and explicit user consent. `install/install.ps1` opens the Store listing only if `FRACTURE_STORE_PRODUCT_ID` is set. No product ID is configured here, so the script intentionally stops and does not install or open a listing. Store identity, submission and policy review, and signed Store publication remain gates to installation and runtime validation; do not describe the listener as validated or publicly installable yet. This is a Windows-host packaging task only: it does not include deploying anything to the TomTom over USB.
+Windows is installed and updated with the Inno Setup `.exe` installer. The in-app **Update FractureOS** button downloads `fracture-<version>-windows-<arch>-setup.exe` from the GitHub release, verifies it against the release `SHA256SUMS`, and runs it; release notes are compiled into the app, so they arrive with the update. Windows toast capture needs the notification-listener capability, which Windows only grants to packaged apps, so it stays unavailable with this installer until a packaged build exists.
 
-The v0.1.11 implementation and installer notes below are historical release records and do not establish validation of this MSIX candidate.
+The v0.1.11 implementation and installer notes below are historical release records.
 
 # v0.1.15 Beta notification controls — implementation status
 

@@ -3,6 +3,7 @@ package main
 // Native Win32/GDI dashboard. This is an on-demand process: no embedded browser,
 // WebView runtime, UI polling in the tray, or retained dashboard after closing.
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -370,9 +371,10 @@ func platformDashboard() error {
 		case 5:
 			label("Recent changes", 36, 140)
 			label("Installed app: "+version+"  ·  TomTom: "+st.Version, 36, 455)
-			button(270, "Open Microsoft Store updates", 36, 505, 280)
-			label("Microsoft Store manages Windows app updates.", 36, 550)
-			label("Connection and pairing settings remain in your user profile.", 36, 585)
+			button(270, "Check for updates", 36, 505, 240)
+			button(271, "Update FractureOS", 302, 505, 250)
+			label("The app closes during installation and reopens when it is ready. Settings are kept.", 36, 550)
+			label("On Linux, open the web settings on the hub to update that installation.", 36, 585)
 		}
 		invalidate()
 	}
@@ -491,16 +493,18 @@ func platformDashboard() error {
 					return "Approve the sensor helper in Windows, then use Check sensor. The app stays open.", e
 				})
 			case 270:
-				if e := openURL("ms-windows-store://downloadsandupdates"); e != nil {
-					mu.Lock()
-					message = e.Error()
-					mu.Unlock()
-				} else {
-					mu.Lock()
-					message = "Microsoft Store manages Windows app updates."
-					mu.Unlock()
-				}
-				invalidate()
+				async(func() (string, error) {
+					offer, e := checkUpdate(context.Background())
+					if e != nil {
+						return "", e
+					}
+					if offer.Available {
+						return "Available: " + offer.Version + ". Click Update FractureOS to install.", nil
+					}
+					return "Already up to date (" + version + ")", nil
+				})
+			case 271:
+				async(func() (string, error) { return installUpdate(context.Background()) })
 			case 239:
 				if authorizedSensorRunning() {
 					mu.Lock()

@@ -8,6 +8,6 @@ Use the existing project documentation before making changes:
 - `docs/RELEASE-VALIDATION.md` records evidence and validation limits.
 - `TASKS.md` tracks roadmap work and open acceptance gates.
 
-Keep historical release evidence distinct from the current development state. The published v0.1.11 Windows installer used Inno Setup; the Windows notification-listener candidate is an unsigned MSIX intended for Microsoft Store submission. Its `userNotificationListener` capability, explicit user consent, Store identity/submission/policy review, and signed Store publication are relevant gates; installation and runtime validation are not yet established. This notification task is host-only and does not call for TomTom/USB deployment.
+Keep historical release evidence distinct from the current development state. The published v0.1.11 Windows installer used Inno Setup; Windows continues to use Inno Setup and the in-app updater.
 
 For documentation follow-ups, edit the most relevant existing guide and preserve unrelated working-tree changes. Do not treat design documents as evidence of implemented behavior.

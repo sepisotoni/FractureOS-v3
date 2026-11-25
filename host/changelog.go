@@ -1,5 +1,7 @@
 package main
 
+// releaseNotes is compiled into the app, so the notes always match the installed
+// version and arrive with every update. Nothing here is fetched over the network.
 type releaseNote struct {
 	Version string   `json:"version"`
 	Status  string   `json:"status"`
@@ -9,43 +11,25 @@ type releaseNote struct {
 var releaseNotes = []releaseNote{
 	{
 		Version: "v0.1.15 Beta",
-		Status:  "Unpublished candidate",
+		Status:  "Prerelease",
 		Changes: []string{
-			"Combines the desktop dashboard, expanded weather descriptions, song-text fallback, optional Today agenda and notification controls with the v0.1.14 audio/time-sync base.",
-			"Adds the shared changelog, native dashboard resizing and TomTom face/layout/theme presets.",
-			"Windows visual, Store and physical-device acceptance remain outstanding.",
+			"Desktop dashboard rework with responsive sections and local icons.",
+			"Expanded weather descriptions and a song-title fallback for text the device font cannot show.",
+			"Optional Today agenda and notification controls (quiet hours, app allow/block lists, delivery diagnostics).",
+			"Native dashboard resizing, TomTom face/layout/theme presets and this What's new view.",
 		},
 	},
 	{
 		Version: "v0.1.14",
-		Status:  "Latest published prerelease",
+		Status:  "Prerelease",
 		Changes: []string{
 			"Added opt-in Linux/Windows system-audio forwarding with adjustable TomTom output gain.",
 			"Added host-to-device time synchronization and compact Quick settings.",
 		},
 	},
 	{
-		Version: "v0.1.13 Beta",
-		Status:  "In progress; unpublished",
-		Changes: []string{
-			"Native dashboard adjusts to resized windows; Windows visual verification is pending.",
-		},
-	},
-	{
-		Version: "v0.1.12 Beta",
-		Status:  "Unpublished candidate",
-		Changes: []string{
-			"Reorganized the web dashboard with responsive sections and local SVG icons.",
-			"Expanded weather labels for clouds, precipitation, fog, snow and storms.",
-			"Improved song-title fallback for text unsupported by the device font.",
-			"Consolidated the Windows Start menu to one FractureOS dashboard shortcut.",
-			"Added a disabled-by-default Today agenda with bounded recurring calendar summaries.",
-			"Added notification quiet hours, app allow/block filters and delivery diagnostics.",
-		},
-	},
-	{
 		Version: "v0.1.11",
-		Status:  "Latest published stable release",
+		Status:  "Stable",
 		Changes: []string{
 			"Added timed lyrics, grouped Clock tools and Quick settings.",
 			"Added a locally rendered Windows home preview and adaptive information dock.",

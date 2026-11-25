@@ -1,6 +1,6 @@
 # FractureOS v3 task board
 
-Status: v0.1.11 remains the latest stable release and v0.1.14 the latest published prerelease. This branch is a v0.1.15 Beta candidate based on v0.1.14; four platform archives have been built and checksummed locally, but no v0.1.15 GitHub release is published. Store, Windows visual and physical-device gates remain open. See [release validation](docs/RELEASE-VALIDATION.md). Updated for the v0.1.15 integration.
+Status: v0.1.11 remains the latest stable release and v0.1.14 the latest published prerelease. This branch is a v0.1.15 Beta candidate based on v0.1.14; four platform archives have been built and checksummed locally, but no v0.1.15 GitHub release is published. Windows visual and physical-device gates remain open. See [release validation](docs/RELEASE-VALIDATION.md). Updated for the v0.1.15 integration.
 
 Checkboxes mean the stated deliverable is complete, not merely discussed. Design tasks and implementation tasks are tracked separately. Update this file as each deliverable lands; add evidence or a limitation alongside completed implementation tasks. Experimental features remain open until demonstrated on the target hardware or explicitly declined by the owner.
 
@@ -139,7 +139,7 @@ The P-series checkboxes below describe complete target modules. Initial implemen
 
 ## Current handoff
 
-The latest stable release is v0.1.11; v0.1.14 is the latest published prerelease and was installed on the Linux host and TomTom per its 2026-11-11 session record. This `release/v0.1.15-beta` candidate integrates the requested host/device work on the v0.1.14 base. Go/C source builds and focused tests pass; four platform archives and their SHA-256 manifest were generated locally. No v0.1.15 release, Store acceptance, Windows runtime or new TomTom deployment is claimed. The listener implementation and MSIX workflow do not establish Store approval or Windows runtime acceptance. Broader P-series items remain roadmap, not completed implementation.
+The latest stable release is v0.1.11; v0.1.14 is the latest published prerelease and was installed on the Linux host and TomTom per its 2026-11-11 session record. This `release/v0.1.15-beta` candidate integrates the requested host/device work on the v0.1.14 base. Go/C source builds and focused tests pass; four platform archives and their SHA-256 manifest were generated locally. No v0.1.15 release, Store acceptance, Windows runtime or new TomTom deployment is claimed. The listener implementation does not establish Windows runtime acceptance. Broader P-series items remain roadmap, not completed implementation.
 
 ## X — v0.1.11 playback, navigation and local preview
 
@@ -160,13 +160,7 @@ The latest stable release is v0.1.11; v0.1.14 is the latest published prerelease
 - [x] V12-06 Improve exact per-app allow/block controls while retaining an explicit privacy opt-in. Matching supports app display names and Windows app IDs; block rules take precedence.
 - [x] V12-07 Add quick-select face presets for common face/layout/theme combinations in the web Appearance view and on the TomTom.
 - [x] V12-08 Check the battery signal before adding a warning: the current driver/app path exposes charge state but no trustworthy capacity or low-charge threshold. No percentage is inferred from voltage and no low-battery warning is added.
-- [ ] V12-09 Complete the Microsoft Store MSIX submission, install, consent and real WhatsApp end-to-end gates below.
-
-## Windows notification Store submission
-
-- [ ] Obtain the Partner Center package Name, Publisher, and PublisherDisplayName, then dispatch the Windows MSIX packages workflow for version 0.1.15.0. Coordinate the Store account details with the owner.
-- [ ] Submit the generated unsigned MSIX bundle in Partner Center with the `userNotificationListener` capability justification; complete Store policy review and publication.
-- [ ] Set the published Store product ID in the bootstrap, install the Store package on Windows, grant notification access, and verify WhatsApp text/logo forwarding end to end.
+- [ ] V12-09 Verify Windows notification forwarding end to end (needs a packaged build for listener access).
 
 ## v0.1.12 Beta — host and weather polish
 
@@ -175,7 +169,7 @@ The latest stable release is v0.1.11; v0.1.14 is the latest published prerelease
 - [x] B12-03 Replace question-mark corruption in song titles with bounded ASCII transliteration and an explicit fallback for unsupported scripts.
 - [x] B12-04 Consolidate the Windows Start-menu shortcuts into one FractureOS dashboard entry; retain optional tray startup and the standard Installed Apps uninstaller.
 - [x] B12-05 Validate the web dashboard in Chrome, capture a README screenshot, measure host process memory and check collector/preview cleanup. Desktop navigation passed; mobile-specific layout was subsequently dropped per owner request. Visible-view polling and the previous v0.1.11 native-preview unload evidence are recorded in `docs/RELEASE-VALIDATION.md`. The 13,060 KiB RSS figure is a point sample, not a soak result.
-- [ ] B12-06 Obtain Partner Center package identity, build/submit MSIX, pass Store review/signing, install with user consent and test real notifications. These are owner/Store gates; no public publication is claimed here.
+- [ ] B12-06 Test real Windows notification forwarding end to end; no public claim is made until verified.
 
 ## v0.1.13 Beta — native and device refinement
 
