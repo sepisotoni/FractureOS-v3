@@ -33,26 +33,29 @@ import (
 	"time"
 )
 
-const version = "0.1.11"
+const version = "0.1.15"
 
 //go:embed ui.html
 var page string
 
 type Config struct {
-	LyricsEnabled      bool               `json:"lyrics_enabled"`
-	WindowsTemperature bool               `json:"windows_temperature"`
-	Device             string             `json:"device"`
-	Hub                string             `json:"hub"`
-	Listen             string             `json:"listen"`
-	Token              string             `json:"token"`
-	Fingerprint        string             `json:"fingerprint"`
-	HubMetrics         bool               `json:"hub_metrics"`
-	MetricsDisk        string             `json:"metrics_disk"`
-	MetricsInterface   string             `json:"metrics_interface"`
-	MediaEnabled       bool               `json:"media_enabled"`
-	MediaStatus        bool               `json:"media_status"`
-	Weather            WeatherConfig      `json:"weather"`
-	Notifications      NotificationConfig `json:"notifications"`
+	LyricsEnabled        bool               `json:"lyrics_enabled"`
+	WindowsTemperature   bool               `json:"windows_temperature"`
+	Device               string             `json:"device"`
+	Hub                  string             `json:"hub"`
+	Listen               string             `json:"listen"`
+	Token                string             `json:"token"`
+	Fingerprint          string             `json:"fingerprint"`
+	HubMetrics           bool               `json:"hub_metrics"`
+	MetricsDisk          string             `json:"metrics_disk"`
+	MetricsInterface     string             `json:"metrics_interface"`
+	MediaEnabled         bool               `json:"media_enabled"`
+	MediaStatus          bool               `json:"media_status"`
+	WindowsNotifications bool               `json:"windows_notifications"`
+	Audio                AudioConfig        `json:"audio"`
+	Weather              WeatherConfig      `json:"weather"`
+	Agenda               AgendaConfig       `json:"agenda"`
+	Notifications        NotificationConfig `json:"notifications"`
 }
 
 func configDir() string {
@@ -63,7 +66,7 @@ func configDir() string {
 	return filepath.Join(p, "fracture-v3")
 }
 func readConfig() (Config, error) {
-	c := Config{Device: "192.168.101.115", Hub: "https://127.0.0.1:47831", Listen: "127.0.0.1:47831", Weather: defaultWeather(), LyricsEnabled: true}
+	c := Config{Device: "192.168.101.115", Hub: "https://127.0.0.1:47831", Listen: "127.0.0.1:47831", Weather: defaultWeather(), Agenda: defaultAgenda(), LyricsEnabled: true, Audio: defaultAudioConfig()}
 	b, e := os.ReadFile(filepath.Join(configDir(), "config.json"))
 	if errors.Is(e, os.ErrNotExist) {
 		return c, nil
@@ -72,10 +75,26 @@ func readConfig() (Config, error) {
 		return c, e
 	}
 	e = json.Unmarshal(b, &c)
+	if e == nil {
+		if c.Audio.Source == "" {
+			c.Audio = defaultAudioConfig()
+		} else if c.Audio.Volume == 0 {
+			c.Audio.Volume = defaultAudioConfig().Volume
+		}
+		if c.Agenda.MaxEvents == 0 {
+			c.Agenda.MaxEvents = defaultAgenda().MaxEvents
+		}
+	}
 	return c, e
 }
 func saveConfig(c Config) error {
 	if e := validateIntegrations(c.Weather, c.Notifications); e != nil {
+		return e
+	}
+	if e := validateAgenda(c.Agenda); e != nil {
+		return e
+	}
+	if e := validateAudio(c.Audio); e != nil {
 		return e
 	}
 	if c.MetricsDisk != "" && (!filepath.IsAbs(c.MetricsDisk) || len(c.MetricsDisk) > 512) {
@@ -141,8 +160,24 @@ func validateCommand(cmd string) error {
 		return e == nil && v >= lo && v <= hi
 	}
 	switch a[0] {
-	case "forecast-reload", "weather-clear", "media-clear", "status", "face-get", "face-reset", "theme-get", "theme-reset":
+	case "forecast-reload", "weather-clear", "media-clear", "audio-stop", "status", "face-get", "face-reset", "theme-get", "theme-reset", "agenda-clear":
 		if len(a) == 1 {
+			return nil
+		}
+	case "agenda-item":
+		if len(a) == 2 && len(cmd) <= 240 {
+			parts := strings.Split(a[1], ",")
+			if len(parts) == 4 && nAgendaIndex(parts[0]) && mediaTextValid(parts[1]) && mediaTextValid(parts[2]) && mediaTextValid(parts[3]) {
+				timeText, _ := hex.DecodeString(parts[1])
+				title, _ := hex.DecodeString(parts[2])
+				location, _ := hex.DecodeString(parts[3])
+				if len(timeText) > 0 && len(timeText) <= 7 && len(title) > 0 && len(title) <= 48 && len(location) <= 32 {
+					return nil
+				}
+			}
+		}
+	case "audio-start":
+		if len(a) == 2 && regexp.MustCompile(`^[a-f0-9]{32}$`).MatchString(a[1]) {
 			return nil
 		}
 	case "face", "theme", "theme-save":
@@ -362,27 +397,10 @@ func hubCall(c Config, cmd string) (string, error) {
 	return hubRequest(c, "/api/command", map[string]string{"command": cmd})
 }
 func hubRequest(c Config, path string, payload any) (string, error) {
-	if !strings.HasPrefix(c.Hub, "https://") {
-		return "", errors.New("hub requires https://")
+	transport, e := hubTransport(c)
+	if e != nil {
+		return "", e
 	}
-	if c.Token == "" || c.Fingerprint == "" {
-		return "", errors.New("configure hub token and certificate fingerprint in Settings")
-	}
-	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, InsecureSkipVerify: true, VerifyConnection: func(cs tls.ConnectionState) error {
-		if len(cs.PeerCertificates) == 0 {
-			return errors.New("no server certificate")
-		}
-		sum := sha256.Sum256(cs.PeerCertificates[0].Raw)
-		expected, e := hex.DecodeString(c.Fingerprint)
-		if e != nil || subtle.ConstantTimeCompare(sum[:], expected) != 1 {
-			return errors.New("hub certificate fingerprint mismatch")
-		}
-		cert := cs.PeerCertificates[0]
-		if time.Now().Before(cert.NotBefore) || time.Now().After(cert.NotAfter) {
-			return errors.New("hub certificate expired or not yet valid")
-		}
-		return nil
-	}}}
 	defer transport.CloseIdleConnections()
 	requestTimeout := 12 * time.Second
 	if path != "/api/command" {
@@ -418,8 +436,35 @@ func hubRequest(c Config, path string, payload any) (string, error) {
 	return strings.TrimSpace(string(data)), nil
 }
 
+func hubTransport(c Config) (*http.Transport, error) {
+	if !strings.HasPrefix(c.Hub, "https://") {
+		return nil, errors.New("hub requires https://")
+	}
+	if c.Token == "" || c.Fingerprint == "" {
+		return nil, errors.New("configure hub token and certificate fingerprint in Settings")
+	}
+	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, InsecureSkipVerify: true, VerifyConnection: func(cs tls.ConnectionState) error {
+		if len(cs.PeerCertificates) == 0 {
+			return errors.New("no server certificate")
+		}
+		sum := sha256.Sum256(cs.PeerCertificates[0].Raw)
+		expected, err := hex.DecodeString(c.Fingerprint)
+		if err != nil || subtle.ConstantTimeCompare(sum[:], expected) != 1 {
+			return errors.New("hub certificate fingerprint mismatch")
+		}
+		cert := cs.PeerCertificates[0]
+		if time.Now().Before(cert.NotBefore) || time.Now().After(cert.NotAfter) {
+			return errors.New("hub certificate expired or not yet valid")
+		}
+		return nil
+	}}}
+	return transport, nil
+}
+
 type Broker struct {
 	mu                 sync.Mutex
+	audioMu            sync.Mutex
+	audioActive        bool
 	device             string
 	cached             string
 	cachedAt           time.Time
@@ -487,7 +532,9 @@ func serve() error {
 	registerIntegrations(mux, b, c.Token)
 	registerLyrics(mux, b, c.Token)
 	registerForecast(mux, b, c.Token)
+	registerAgenda(mux, b, c.Token)
 	registerPreview(mux, b, c.Token)
+	registerAudio(mux, b, c.Token)
 	mux.HandleFunc("/api/media", func(w http.ResponseWriter, r *http.Request) {
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+c.Token)) != 1 {
 			http.Error(w, "unauthorized", 401)
@@ -495,6 +542,7 @@ func serve() error {
 		}
 		mediaAPI(b, w, r)
 	})
+	registerAudio(mux, b, c.Token)
 	mux.HandleFunc("/api/command", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+c.Token)) != 1 {
@@ -536,7 +584,9 @@ func serve() error {
 	}()
 	go hubBackground(ctx, b)
 	go weatherSupervisor(ctx, b)
+	go agendaSupervisor(ctx, b)
 	go lyricsSupervisor(ctx, b)
+	go audioSupervisor(ctx, b, "linux")
 	log.Printf("FractureOS hub %s listening on https://%s; device %s", version, c.Listen, c.Device)
 	e = srv.ListenAndServeTLS(filepath.Join(configDir(), "hub.crt"), filepath.Join(configDir(), "hub.key"))
 	if errors.Is(e, http.ErrServerClosed) {
@@ -670,6 +720,15 @@ func settings(open bool) error {
 			return
 		}
 		switch r.URL.Path {
+		case "/changelog":
+			if r.Method != "GET" {
+				http.Error(w, "GET required", 405)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			if e = json.NewEncoder(w).Encode(releaseNotes); e != nil {
+				http.Error(w, "could not encode changelog", 500)
+			}
 		case "/update":
 			if r.Method != "POST" {
 				http.Error(w, "POST required", 405)
@@ -722,6 +781,16 @@ func settings(open bool) error {
 				return
 			}
 			fmt.Fprint(w, out)
+		case "/notification-test":
+			if r.Method != "POST" {
+				http.Error(w, "POST required", 405)
+				return
+			}
+			if e := notificationTestForward(); e != nil {
+				http.Error(w, e.Error(), 502)
+				return
+			}
+			fmt.Fprint(w, "OK")
 		case "/config":
 			if r.Method == "GET" {
 				c.Token = ""
@@ -738,10 +807,17 @@ func settings(open bool) error {
 				http.Error(w, "invalid configuration", 400)
 				return
 			}
-			// Hub integrations are edited through /integrations. Preserve the latest
+			// Hub integrations are edited through /integrations. Preserve their latest
 			// values when saving local connection/media settings from an older form.
-			newc.Weather = c.Weather
-			newc.Notifications = c.Notifications
+			current, err := readConfig()
+			if err != nil {
+				http.Error(w, "settings unavailable", 500)
+				return
+			}
+			newc.Weather = current.Weather
+			newc.Agenda = current.Agenda
+			newc.Notifications = current.Notifications
+			newc.Audio = current.Audio
 			if newc.Token == "" {
 				newc.Token = c.Token
 			}
@@ -841,6 +917,12 @@ func main() {
 		}
 	case "temperature-worker":
 		e = windowsTemperatureWorker(false)
+	case "notifications-permission":
+		e = notificationPermission()
+	case "notifications-worker":
+		e = windowsNotificationWorker(false)
+	case "notifications-check":
+		e = windowsNotificationWorker(true)
 	case "pawnio-check":
 		e = windowsTemperatureWorker(true)
 	case "pawnio-modules":
@@ -849,6 +931,8 @@ func main() {
 		e = lyricsWorker()
 	case "weather-worker":
 		e = weatherWorker()
+	case "agenda-worker":
+		e = agendaWorker()
 	case "notify":
 		if len(a) != 4 {
 			e = errors.New("usage: fracture notify APP TITLE BODY")
@@ -863,6 +947,8 @@ func main() {
 		e = platformTray()
 	case "media-worker":
 		e = localMediaWorker()
+	case "audio-worker":
+		e = audioWorkerCommand()
 	case "metrics-worker":
 		e = metricsWorker()
 	case "uninstall":
@@ -983,7 +1069,7 @@ func configCommand(a []string) error {
 	return saveConfig(c)
 }
 func help() {
-	fmt.Println(`FractureOS 0.1.11
+	fmt.Println(`FractureOS 0.1.15
   fracture status | profile minimal|desk|bedside | theme teal|amber|blue
   fracture theme NAME | theme-get | theme-set KEY VALUE | theme-save NEW_NAME | theme-reset
   fracture face NAME | face-get | face-set KEY VALUE | face-reset

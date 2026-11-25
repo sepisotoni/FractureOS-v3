@@ -12,7 +12,6 @@ static void battery_refresh(void){
 
 #endif
 }
-static const char *battery_label(void){return battery_state==1?"Battery charged":battery_state==2?"Battery charging":battery_state==0?"On battery":"Battery unavailable";}
 static void dashboard_chrome(void){battery_refresh();uint16_t bg=appearance_day?rgb(245,247,250):face_color(face.background),c=link_live()?theme_color(theme.accent):theme_color(theme.muted);int x=12,y=2;
  /* Two linked rounded loops, or separated loops with a break. */
  rounded(x,y+7,17,10,5,c);rounded(x+2,y+9,13,6,3,bg);rounded(x+10,y+1,17,10,5,c);rounded(x+12,y+3,13,6,3,bg);

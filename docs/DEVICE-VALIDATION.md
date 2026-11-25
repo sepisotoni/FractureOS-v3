@@ -52,6 +52,8 @@ The build and orchestration scripts are host tools; do not run Python or the cro
 
 The ELF has legacy ARM flags `0x602`, OS/ABI ARM and the old loader; its syscall path matches the legacy kernel. Modern `readelf` labels some historical flag bits confusingly. Do not interpret its “GNU EABI” text as proof that modern arm-linux-gnueabi/glibc binaries run here. The tested legacy binary is the compatibility evidence. `docs/TOOLCHAIN-PROVENANCE.json` records SDK archive/header/source hashes; this is provenance, not a complete hermetic toolchain lock.
 
+Run `python3 tools/verify-legacy-sdk.py --sdk /path/to/LeddaZ-OpenTom` to validate every pinned provenance file, then compile and strip the device app and diagnostic probe twice in isolated temporary directories. The verifier requires the original SDK archive plus its extracted compiler/sysroot and kernel headers; it does not download, redistribute, or package them. This proves repeatability for the verified local inputs, not portability to a fresh machine or runtime compatibility beyond the device evidence above.
+
 `/dev/urandom` returned bytes; that verifies API availability only, not sufficient entropy immediately after cold boot. Temporary file checks ran on the RAM root filesystem, not FAT, so they prove neither power-loss persistence nor updater recovery.
 
 ## Missing utilities and workarounds
@@ -91,4 +93,4 @@ Diagnostic SHA-256: `ad376398a48f9c6eb366c3508d684d873d63f2710dbdfc4703b8d66d83f
 
 ## Remaining gates
 
-No actual touch/button interaction session, framebuffer drawing, brightness writes, audible speaker test, GPS fix, RTC retention/suspend wake, FAT interruption test, boot restoration rehearsal or Windows runtime verification has been performed. Those task boxes remain open. The recovery backup exists, but no claim is made that restoration has been rehearsed. No v3 autostart has been installed.
+No actual touch/button interaction session, framebuffer drawing, brightness writes, audible speaker test, RTC retention/suspend wake, FAT interruption test, boot restoration rehearsal or Windows runtime verification has been performed. A no-samples probe on 2026-11-01 confirmed the OSS driver accepts 16 kHz, signed 16-bit little-endian, stereo output settings; actual speaker playback remains unverified. A bounded GPS test on 2026-11-01 used the original OpenTom `gltt` helper and the existing `/mnt/sdcard/opentom/lib` runtime through a process-scoped `LD_LIBRARY_PATH`; a valid active RMC fix was received. The helper was stopped and its temporary GPS pipe, device link, capture, and runtime marker were removed. No libraries were copied and no persistent configuration or existing GPS logs were changed. Coordinates were provided privately to the owner rounded to two decimal places. The remaining task boxes are open. The recovery backup exists, but no claim is made that restoration has been rehearsed. No v3 autostart has been installed.

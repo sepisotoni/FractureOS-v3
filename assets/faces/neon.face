@@ -21,4 +21,4 @@ digit0=101,42,55,88
 digit1=164,42,55,88
 digit2=101,130,55,88
 digit3=164,130,55,88
-show_seconds=0
+show_seconds=1

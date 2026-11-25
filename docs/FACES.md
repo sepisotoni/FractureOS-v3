@@ -42,6 +42,10 @@ UI themes are independent `.theme` data files in `assets/themes`. Each contains 
 
 ![A custom theme applied to the launcher](images/custom-theme-menu.png)
 
+## Date and seconds defaults
+
+Nunito remains the owner's selected face. Every other supplied face now also shows a centered date above the digits and seconds at the lower right; these are rendered as small text after the face artwork so they remain crisp. Both options remain editable per face.
+
 ## Current Nunito presentation
 
 The owner selected the original 55×88 digit rectangles at x=101/164 and y=42/130, with the date centered above them and seconds at the lower right. `show_seconds=1` updates once per second; set it to 0 for minute-only redraws when nothing else needs updates. Large stacked and horizontal layouts remain selectable. The pure-black `midnight` theme supplies rounded menus and symbols without recoloring the face by default.

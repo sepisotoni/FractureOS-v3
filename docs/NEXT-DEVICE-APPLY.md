@@ -1,4 +1,12 @@
-# Current installation — v0.1.11
+# Last documented installation — v0.1.12 (2026-11-01)
+
+This is the last recorded device deployment, not a live check of the TomTom's current state. The v0.1.12 device build was installed at `192.168.101.115`. The refined Quick settings layout was active from `/mnt/sdcard/fracture-v3/releases/v0.1.12-quicksettings`; the original `/releases/v0.1.12` slot was preserved. Deployment evidence and host-side readback hashes are in ignored `artifacts/deploy-v012-quicksettings-20261101`. The platform self-test passed; the deployment script verified every transferred payload against its local SHA-256 and the device reported version `0.1.12`. The unpublished v0.1.15 candidate has not been deployed.
+
+The existing settings were preserved: minimal profile, blue theme, Nunito face, brightness 100, UTC offset +120, alarm off, telemetry/weather off, notifications/media on, 10-second notification duration and 15-second menu timeout. Quick settings was opened remotely after the refined deployment and confirmed active at device status check. The owner has not yet visually accepted the new layout. It returns to the clock after the configured 15-second menu timeout; tap the clock face to reopen Quick settings. The Nunito face remains selected; other supplied faces now default to date and seconds.
+
+No firmware, kernel, or TomTom notification handler was changed.
+
+# Previous v0.1.11 installation notes — 2026-10-27
 
 The owner's requested v0.1.11 changes are installed on the TomTom; matching Linux production hub is active. There is no pending device application. Do not redeploy either old preview.
 
@@ -7,4 +15,6 @@ The owner's requested v0.1.11 changes are installed on the TomTom; matching Linu
 - Latest observed owner settings: Desk, Amber, Nunito, brightness 100, UTC offset 120, alarm off, telemetry **off**, unusual-only weather, notifications/media on, notification duration 10 seconds, menu timeout 15 seconds. Read fresh state before future changes; do not restore these values automatically.
 - Checks/evidence: `artifacts/manual-v0111` and docs/RELEASE-VALIDATION.md. Includes timed lyric boundary/pause/seek and live Windows-position webhook checks, telemetry grace, Quick settings/Clock navigation, startup animation and exact C home-preview pixels. Temporary lyric overrides were cleared and telemetry preference restored.
 - Accepted Windows build/run: 40499752919 at source `27eb8a3fa2e5c0fcd41b122373cbde69f8e9263c`; local artifacts `artifacts/windows-v0111-accepted`. Both architectures built; only x64 executed. New Windows app is needed for millisecond media samples and the local preview.
-- Remaining: owner-PC visual preview/PawnIO acceptance, ARM64 runtime, full cold boot/power/suspend tests, earlier bootloader/kernel logo replacement and long-duration operation. The application startup animation is implemented; firmware graphics were not replaced.
+- Remaining: owner-PC visual preview, ARM64 runtime, full cold boot/power/suspend tests, earlier bootloader/kernel logo replacement and long-duration operation. The owner reports PawnIO works on their PC. The application startup animation is implemented; firmware graphics were not replaced.
+
+- A candidate `/mnt/sdcard/splash.bmp` was installed and readback verified; a reboot returned to FractureOS 0.1.11. The owner observed that the original TomTom logo appeared and the candidate splash did not. The existing SD-root `system` file was left untouched.

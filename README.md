@@ -1,6 +1,8 @@
 # FractureOS v3
 
-A quiet, customizable clock for a TomTom ONE (v6), with a C device app and Go Linux hub / Windows tray companion. **v0.1.11 adds timed lyrics, Quick settings, grouped Clock tools and a locally rendered Windows home preview.** It uses the existing OpenTom kernel and drivers; installation replaces the application startup, not the bootloader or firmware.
+A quiet, customizable clock for a TomTom ONE (v6), with a C device app and Go Linux hub / Windows tray companion. **v0.1.15 Beta combines the latest v0.1.14 audio and time-sync release with the dashboard, weather, agenda, notification and TomTom preset work.** This candidate is unpublished; Windows Store, native visual, and physical-device acceptance gates remain open. It uses the existing OpenTom kernel and drivers; installation replaces the application startup, not the bootloader or firmware.
+
+**Current development: v0.1.15 Beta candidate.** v0.1.11 remains the latest stable release, and v0.1.14 remains the latest published prerelease. This candidate is based on v0.1.14 and is not published. It combines the reworked desktop web dashboard, expanded weather descriptions, song-title fallback, the optional lazy Today agenda, notification controls, native dashboard resizing, an in-app What's new view and TomTom face/layout presets. Mobile-specific layout is out of scope. Native Windows visual acceptance, physical device validation, and Windows notification Store identity/review/signing, user consent, installation and end-to-end testing remain open.
 
 The original nine faces are now editable FractureOS assets. The blue Nunito face restores its original proportions with a centered date and live seconds, optional larger stacked digits, optional horizontal **HH : MM**, a blinking colon, and an hour-only behavior: **10:00 shows 10 throughout that minute; 10:01 returns to the full time** in either layout. The clock geometry adapts to a compact bottom dock; date and seconds are drawn at their final text size instead of shrinking a completed image. Digits have a configurable 0–2 pixel weight (default 1). The old information sidebar and its application dependencies are absent from the new renderer. Only the selected face's 170 KB digit atlas is resident.
 
@@ -13,7 +15,7 @@ The interface uses pure-black backgrounds, rounded menu highlights, simple metri
 On the **Linux machine connected to the TomTom** (Ubuntu and other Linux distributions, x86-64 or ARM64):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/sepisotoni/FractureOS-v3/v0.1.11/install/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/sepisotoni/FractureOS-v3/v0.1.14/install/install.sh | sh
 ```
 
 Then, with the TomTom reachable over its USB network:
@@ -28,12 +30,16 @@ The installer selects the host architecture, verifies the release SHA-256, insta
 On **64-bit Windows**, paste into PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/sepisotoni/FractureOS-v3/v0.1.11/install/install.ps1 | iex
+irm https://raw.githubusercontent.com/sepisotoni/FractureOS-v3/v0.1.14/install/install.ps1 | iex
 ```
 
-An **Inno Setup `.exe` installer** installs the native dashboard, tray and uninstaller for the current user. Connection and clock configuration live in app Settings. x64 installation, native window/tab navigation, settings persistence, closing and uninstallation were exercised on a Windows runner. ARM64 is cross-built; real Spotify/PawnIO hardware acceptance is still pending. macOS, 32-bit PCs and direct installation from a shell on the TomTom are unsupported.
+The published v0.1.11 Windows release uses an **Inno Setup `.exe` installer** for the native dashboard, tray and uninstaller. Its optional tray-at-login task is unchecked by default. Connection and clock configuration live in app Settings. x64 installation, native window/tab navigation, settings persistence, closing and uninstallation were exercised on a Windows runner. ARM64 is cross-built; the owner reports PawnIO works on their PC; full Spotify acceptance remains pending.
 
-Release archives and checksums: [v0.1.11 downloads](https://github.com/sepisotoni/FractureOS-v3/releases/tag/v0.1.11). You can download and inspect the installer before running it. Checksums verify download integrity; signed release manifests are still on the roadmap.
+Windows notification-listener work is transitioning from Inno Setup to an **unsigned MSIX bundle intended for Microsoft Store submission**. A workflow dispatch requires the Partner Center package `Name`, `Publisher`, `PublisherDisplayName`, and a four-part `Version` matching `host/main.go`. The packaged listener requires the `userNotificationListener` capability and explicit user consent. `install/install.ps1` opens the Store listing only when `FRACTURE_STORE_PRODUCT_ID` is set; no product ID is configured here, so the script intentionally stops rather than installing or opening a listing. Store identity, submission and policy review, and signed Store publication are still gates; installation and runtime behavior have not yet been validated. This notification work is Windows-host-only and does not include TomTom or USB deployment. macOS, 32-bit PCs and direct installation from a shell on the TomTom are unsupported.
+
+The v0.1.15 Beta web dashboard groups controls under Overview, Device, Appearance, Integrations and System and uses local SVG icons. It is desktop-oriented; a mobile-specific layout is intentionally out of scope. Its Windows Start-menu entry is consolidated to a single FractureOS dashboard shortcut; tray startup remains managed by the optional login setting. Non-ASCII song names are transliterated where possible for the device's ASCII-only font; text with no supported characters is labeled rather than rendered as question marks.
+
+Release archives and checksums: [v0.1.14 downloads](https://github.com/sepisotoni/FractureOS-v3/releases/tag/v0.1.14). You can download and inspect the installer before running it. Checksums verify download integrity; signed release manifests are still on the roadmap.
 
 ## Connect Windows to the hub
 
@@ -48,6 +54,29 @@ fracture pair-info
 In Windows **Settings → Hub connection**, enter `https://192.168.101.105:47831` plus the fingerprint and token displayed by `pair-info`. Keep the token private. The hub uses pinned TLS and a bearer token; the device remains at `192.168.101.115` over the trusted USB connection. Restart the hub after changing its listen address, device address or token.
 
 For remote access use a private network/VPN to the Linux hub; no public relay or automatic tunnel setup is included. The TomTom itself has no verified Wi-Fi. It works offline as a bedside clock while powered; network features at a different location require a USB-capable host there. The legacy root Telnet transport is for the trusted device link, not an Internet-facing interface.
+
+## Audio forwarding
+
+Open **Settings → TomTom audio**, choose Linux system output or Windows loopback capture, set the TomTom output level, then enable forwarding. It is off by default, captures output rather than a microphone, and stops when disabled or preempted by an alarm. The digital gain defaults to **5%**; adjust it independently of the source PC's output volume.
+
+Linux capture uses the default PipeWire/PulseAudio output monitor through `parec`. Windows uses WASAPI loopback capture; the Windows builds pass cross-compilation, but that capture path has not been runtime-tested on Windows. The relay sends 16 kHz mono PCM in 20 ms frames. Actual end-to-end latency, CPU use and underrun behavior have not been benchmarked. See [audio validation](docs/AUDIO-VALIDATION.md).
+
+## Time synchronization
+
+The Linux hub sends its current Unix time to the TomTom shortly after startup and resynchronizes every five minutes. The host clock must itself be accurate. The device's configured UTC offset is applied separately for display; automatic daylight-saving changes are not included.
+
+## New in v0.1.14
+
+- Quick settings now use compact 2×2 icon tiles and abbreviated battery/hub status. The supplied non-Nunito faces show date and seconds by default.
+- Opt-in Linux or Windows system-output forwarding to the TomTom speaker has adjustable digital gain. The 5% setting was confirmed comfortable in a brief Linux-to-device playback test; audio remains disabled by default.
+- The Linux host sets device time on hub startup and resynchronizes every five minutes. The device's UTC offset remains a separate display setting; automatic DST is not included.
+- Unrelated in-progress features remain deferred.
+
+## New in v0.1.15 Beta
+
+- Brings the desktop dashboard, expanded weather descriptions, song-text fallback, opt-in Today agenda, notification controls and four TomTom face/layout/theme presets onto the v0.1.14 release base.
+- Adds the changelog view and resize-aware native dashboard. Windows visual/interaction acceptance and physical TomTom validation are not established by this candidate build.
+- Preserves v0.1.14's opt-in Linux/Windows audio forwarding and adjustable TomTom output gain. The Windows listener remains an unsigned Store candidate pending package identity, review/signing, explicit consent, installation and runtime checks.
 
 ## New in v0.1.11
 
@@ -75,7 +104,7 @@ The launcher has **Home, Clock, Media, Weather and Settings**; **Clock** contain
 
 Power gestures act **on release**: below 1.5s selects; 1.5–3s goes back one page; 3–4.5s returns to the clock; 4.5–7s cancels; 7s or longer requests suspend. The optional indicator is green → blue → purple, disappears in the cancel range, then shows “Release to sleep.” A double power press also returns home. Touch hold goes back one page. Settings → Power contains confirmation screens for suspend, restart and shutdown, with Cancel selected first. The owner physically verified the indicator and Back/Home; suspend/wake and reboot/shutdown have not been exercised here.
 
-`fracture dashboard` or `fracture settings` opens a **separate native Windows dashboard** with Clock & faces, Connection, Weather, Notifications and Updates tabs. It uses Go, Win32 and GDI, with no Electron or WebView runtime. Closing it releases the whole dashboard process. `fracture web` opens the independent web dashboard; Linux `fracture settings` opens this web version. **Watch faces** selects a design, changes stacked/horizontal layout, blinking and hour-only behavior, and edits colors, digit rectangles, date placement, 12/24-hour format and atlas choice. Export/import face JSON is supported; a drag-and-drop widget editor is future work. The settings process exits after five idle minutes. The browser has its own resource usage.
+`fracture dashboard` or `fracture settings` opens a **separate native Windows dashboard** with Clock & faces, Connection, Weather, Notifications and Updates tabs. It uses Go, Win32 and GDI, with no Electron or WebView runtime. The current Beta candidate lays out controls as the window is resized; Windows visual and interaction acceptance is still pending. Its Updates view includes recent changes. Closing the dashboard releases the whole process. `fracture web` opens the independent web dashboard; Linux `fracture settings` opens this web version. **Watch faces** selects a design, changes stacked/horizontal layout, blinking and hour-only behavior, and edits colors, digit rectangles, date placement, 12/24-hour format and atlas choice. Four quick presets apply common face/layout/interface-theme combinations while preserving custom face/theme colors. Export/import face JSON is supported; a drag-and-drop widget editor is future work. The **What's new** section lists recent release notes and marks beta entries as unpublished. The settings process exits after five idle minutes. The browser has its own resource usage.
 
 ```sh
 fracture status
@@ -117,13 +146,14 @@ Enable **Settings → Windows media → Share and control Spotify**, keep the tr
 
 On the TomTom, open **Media → Player** for track/artist, album thumbnail, progress, previous/play-pause/next and a volume editor. Volume changes require selecting Volume, adjusting, then applying; it controls the **Windows default audio output**, including other apps. Spotify must expose the requested controls through its Windows session. Missing capabilities stay unavailable. No browser scripting, private Spotify API, account credentials or PowerShell runtime is used.
 
-**Windows runtime acceptance is pending**: x64/ARM64 builds exist, but playback/artwork and volume must be checked on a real Windows 10 1809+ machine. Linux hub → TomTom media/artwork transport and control queue were tested with explicitly labeled fixture data. Lyrics are now supplied through the hub; YouTube and playing audio through the TomTom speaker remain pending. Album art currently occupies an unobscured square beside the controls.
+**Windows media runtime acceptance is pending**: x64/ARM64 builds exist, but Spotify playback/artwork and volume must be checked on a real Windows 10 1809+ machine. Linux hub → TomTom media/artwork transport and control queue were tested with explicitly labeled fixture data. Lyrics are now supplied through the hub; YouTube remains pending. Album art currently occupies an unobscured square beside the controls.
 
 Desk mode shows CPU load, RAM usage, **CPU temperature instead of disk usage**, and one traffic reading: the larger of upload/download. Its thermometer and combined traffic icons are drawn in C. Linux temperature uses CPU-specific hwmon sensors, preferring package/Tdie. Unavailable/stale readings disappear. Four statistics occupy two rows; when media/weather is present, those rows narrow to the left and the other information appears on the right. Timer, stopwatch and alarm share one measured strip. The clock uses wide HH : MM when the dock needs more room. Notification cards temporarily cover the dock, rather than creating additional rows.
 
 On-device **Settings → Faces / Themes** previews the supplied designs. Tap cycles, Power keeps, Back/Home cancels. Only one atlas is retained; switching has a transient allocation while the replacement loads. **Appearance** offers night, high-contrast day, or automatic 07:00–19:00 using the clock's configured offset. Bedside stays dark. The new **neon** face adapts the supplied dashboard reference using existing font assets, with a chain-link connection indicator and actual charging state. It never invents a battery percentage. Day colors are a shared readable palette; independently editable per-face day palettes remain future work.
 
 ![Native Windows dashboard (offline validation)](docs/images/windows-dashboard.png)
+![v0.1.15 Beta desktop dashboard](docs/images/web-dashboard-v015-beta.png)
 
 ### Weather
 
@@ -131,17 +161,21 @@ Weather runs on the Linux hub, never as an HTTP client on the TomTom. Enable it 
 
 Open-Meteo current conditions are fetched every 15 minutes while the clock is visible. A small cache prevents refetching when opening/closing menus. The worker exits when disabled, when the device is disconnected, or when neither the clock nor the Weather app requests weather. Normal conditions stay hidden in unusual-only mode. Thunderstorms, heavy/freezing rain, heavy snow, temperatures at/above 35°C or at/below 0°C, and gusts at/above 60 km/h count as unusual; temperature/wind thresholds are editable. The alternative is **Always**. Stale/missing readings disappear. Weather occupies one small icon/text row; no weather bitmap pack is installed on the TomTom.
 
-Open **Apps → Weather** for current cached conditions. Choose **Hourly** or **7 days**. Tap advances the selected entry and scrolls through four entries at a time; Power switches hourly/week views; hold Power 1.5 seconds to go back. The cache stores 24 hours and seven days, with temperature, weather symbols and available rain probability. Its age is shown, including offline. The device reads its tiny SD cache only while Weather is open, and releases the forecast array when leaving.
+Open **Apps → Weather** for current cached conditions. Current condition labels distinguish clear/mostly clear, partly cloudy, overcast, multiple intensities of drizzle/rain/snow, freezing precipitation, fog, showers, hail and thunderstorms. Choose **Hourly** or **7 days**. Tap advances the selected entry and scrolls through four entries at a time; Power switches hourly/week views; hold Power 1.5 seconds to go back. The cache stores 24 hours and seven days, with temperature, weather symbols and available rain probability. Its age is shown, including offline. The device reads its tiny SD cache only while Weather is open, and releases the forecast array when leaving.
 
 ![Stored hourly forecast](docs/images/weather-hourly.png) ![Stored seven-day forecast](docs/images/weather-weekly.png)
 
 Data: [Open-Meteo](https://open-meteo.com/) under CC BY 4.0; [API documentation](https://open-meteo.com/en/docs). These are modeled current conditions, not an official emergency warning service. The free endpoint is intended for non-commercial use.
 
+### Today agenda
+
+The optional read-only agenda is off until configured. In **Settings → Integrations → Today agenda**, enter an HTTPS ICS feed URL, choose a 1–8 event limit (five by default), and optionally include locations. Do not share private feed URLs. The URL is kept in the host's local configuration; the feed is fetched only while **Apps → Today** is open, refreshed every 15 minutes, and never written to a calendar cache or log. The host expands daily/weekly recurrence, RDATE and EXDATE, filters to upcoming events for the host-local day, and sends only bounded titles, start-time labels, and opted-in locations. Data is cleared from device memory when leaving Today. A live personal feed and physical TomTom rendering still require owner configuration/acceptance.
+
 ### Optional Windows CPU temperature (PawnIO)
 
 In the native app's **Connection** tab: **Get sensor modules**, then **Check sensor**. If PawnIO is already installed and reports access denied, choose **Authorize sensor** and approve the Windows UAC prompt. Only the separate temperature helper is elevated; the dashboard stays at ordinary user permissions. If the driver is missing, the driver button opens the [official PawnIO site](https://pawnio.eu/); install its signed edition. The sensor-module button downloads the upstream signed 0.2.11 package with a pinned SHA-256 and extracts only IntelMSR and AMDFamily17. No driver is silently installed by FractureOS setup. Then enable **Use this PC's CPU temperature** and Save connection; keep the tray running.
 
-The Go worker uses the documented device IO-control interface directly, so no monitoring application or DLL is needed. It supports Intel thermal registers and AMD Zen's temperature sensor on Windows x64, with the required shared PCI mutex for AMD. It starts only when enabled and the TomTom clock requests telemetry; disabling it unloads the process. The approved helper sends only bounded temperature samples to a temporary authenticated loopback receiver. It validates pinned signed module hashes before loading them, does not receive the hub token, releases hardware handles while idle and exits after its idle grace period or when sharing is disabled. Keep the tray running. A valid PC reading temporarily takes priority over the Linux temperature and is labeled **PC** on the clock. CPU load/RAM still describe the Linux hub. Windows ARM64 temperature, general Windows resource collection and real PawnIO hardware acceptance remain pending. An unavailable sensor stays hidden.
+The Go worker uses the documented device IO-control interface directly, so no monitoring application or DLL is needed. It supports Intel thermal registers and AMD Zen's temperature sensor on Windows x64, with the required shared PCI mutex for AMD. It starts only when enabled and the TomTom clock requests telemetry; disabling it unloads the process. The approved helper sends only bounded temperature samples to a temporary authenticated loopback receiver. It validates pinned signed module hashes before loading them, does not receive the hub token, releases hardware handles while idle and exits after its idle grace period or when sharing is disabled. Keep the tray running. A valid PC reading temporarily takes priority over the Linux temperature and is labeled **PC** on the clock. CPU load/RAM still describe the Linux hub. The owner reports PawnIO works on their PC; Windows ARM64 temperature and general Windows resource collection remain pending. An unavailable sensor stays hidden.
 
 ### Lyrics
 
@@ -157,13 +191,13 @@ Use `text` for plain lyrics. `operation: "clear-provided"` with the same title/a
 
 ### Notifications and feature switches
 
-**Settings → Features** on the TomTom controls telemetry, weather, notifications and media; paired PC controls can re-enable them. The web/native dashboards configure the authenticated notification endpoint and excluded app names. Example from a paired PC:
+**Settings → Features** on the TomTom controls telemetry, weather, notifications and media; paired PC controls can re-enable them. The web/native dashboards configure the authenticated notification endpoint, exact case-insensitive app block rules, and an optional allow-list-only mode. Block rules take precedence; a Windows app can match by display name or app ID. Example from a paired PC:
 
 ```sh
 fracture notify "My application" "Task finished" "Your export is ready"
 ```
 
-Or send `{ "app": "My application", "title": "Task finished", "body": "Your export is ready" }` to `POST /api/notifications` over pinned HTTPS with the hub bearer token. App exclusions are exact, case-insensitive names. Messages are bounded, displayed for 10 seconds by default, and rate-limited to one every two seconds. Notifications accept optional `artwork` as base64 PNG/JPEG (maximum 256 KiB), resized by the hub to a 48×48 RGB565 thumbnail. An optional `seconds` value overrides the configured duration, up to 120 seconds. Notifications are silent. Automatic forwarding of Windows toast notifications is **not** included: Windows requires a packaged listener and explicit consent. Notification audio and its sound toggle remain pending.
+Or send `{ "app": "My application", "title": "Task finished", "body": "Your export is ready" }` to `POST /api/notifications` over pinned HTTPS with the hub bearer token. Messages are bounded, displayed for 10 seconds by default, and rate-limited to one every two seconds. Notifications accept optional `artwork` as base64 PNG/JPEG (maximum 256 KiB), resized by the hub to a 48×48 RGB565 thumbnail. An optional `seconds` value overrides the configured duration, up to 120 seconds. Notifications are silent. Optional quiet hours apply to automatic Windows capture using Windows local time; suppressed notices are not replayed. User-triggered test/webhook notifications are not quiet-hour suppressed. The native dashboard shows listener/permission and delivery status, including the last successful delivery, and can send a synthetic test notification. Automatic forwarding of Windows toast notifications is not yet validated. The packaged Windows listener requires `userNotificationListener` and explicit user consent; its unsigned MSIX/Store path and remaining validation gates are described above. Notification audio and its sound toggle remain pending.
 
 ### This host's network
 
@@ -171,14 +205,14 @@ Linux/hub: **192.168.101.105**. TomTom USB: **192.168.101.115**. TomTom LAN alia
 
 ## What works now
 
-| Component | Available in v0.1.11 |
+| Component | Available in the v0.1.15 Beta candidate |
 |---|---|
-| TomTom | Direct framebuffer clock; nine reused faces plus neon; face/theme previews; weather summary; feature switches; editable layout/colors; stacked/horizontal/hour-only modes; switch-operated menu; minimal/desk/bedside; countdown, stopwatch and silent visual daily alarm; persisted settings |
-| Linux | TLS hub, CLI, settings UI, optional CPU/RAM/temperature/network worker that starts only in Desk mode and exits when unused; time sync; weather worker; notification webhook; device deployment and restoration |
-| Windows | Native tray, separate native dashboard/settings with locally rendered home preview, and web dashboard; Inno installer/uninstaller checked on Windows x64; optional PawnIO worker (hardware verification pending) |
-| Installation | Prebuilt Linux x86-64/ARM64 and Windows x64/ARM64 archives; checksum verification; versioned device payloads; original startup/icon backup; recovery to OpenTom |
+| TomTom | Direct framebuffer clock; nine reused faces plus neon; face/theme previews and four quick presets; weather summary and forecast; opt-in Today agenda; feature switches; editable layout/colors; stacked/horizontal/hour-only modes; switch-operated menu; minimal/desk/bedside; countdown, stopwatch and silent visual daily alarm; persisted settings |
+| Linux | TLS hub, CLI, settings UI, optional CPU/RAM/temperature/network worker that starts only in Desk mode and exits when unused; demand-driven weather and agenda workers; notification webhook; opt-in system-audio forwarding and device deployment/restoration |
+| Windows | Native tray, separate resize-aware native dashboard/settings with locally rendered home preview, and web dashboard; published v0.1.11 Inno installer/uninstaller checked on Windows x64; unsigned MSIX notification-listener candidate is not yet install/runtime validated; optional PawnIO worker (owner reports it works on their PC) |
+| Installation | v0.1.15 candidate package scripts support Linux x86-64/ARM64 and Windows x64/ARM64; checksum verification; versioned device payloads; original startup/icon backup; recovery to OpenTom. No v0.1.15 package is published. |
 
-This is not all 23 planned modules. Full Windows playback-control/PawnIO acceptance, automatic Windows toast capture, audio forwarding, mirroring/true monitor extension, calendar, automatic Windows notifications, Windows metrics/activity switching, arbitrary widget composition, GPS, signed automatic updates and a general module loader remain on the [task board](TASKS.md). Core clock/menu/timer code is currently one small binary; Linux metrics/weather and Windows media/temperature run in separate processes only when enabled and requested. Full dynamic unloading of every core feature is not implemented.
+This is not all 23 planned modules. Windows toast capture is implemented in the beta candidate, but remains gated on the packaged listener's Store path, user consent and runtime validation. Full Windows playback-control acceptance, audio forwarding, mirroring/true monitor extension, Windows metrics/activity switching, arbitrary widget composition, GPS, signed automatic updates and a general module loader remain on the [task board](TASKS.md). Core clock/menu/timer code is currently one small binary; Linux metrics/weather/agenda and Windows media/temperature run in separate processes only when enabled and requested. Full dynamic unloading of every core feature is not implemented.
 
 Alarms require the device to remain powered and running; no sound or suspend wakeup is implemented. Timers and stopwatch state do not survive restart. Time uses a configured UTC offset; RTC retention and automatic DST are not validated. Brightness settings are persisted; the PWM driver allows only one opener, and effective brightness writes need a dedicated measurement rather than a second concurrent probe.
 
@@ -201,7 +235,7 @@ On Windows use **Installed Apps → FractureOS → Uninstall**. Removing a host 
 - [Current implementation](docs/IMPLEMENTATION.md) — release architecture and deviations from the design.
 - [Product vision](docs/PRODUCT-VISION.md), [architecture design](docs/ARCHITECTURE.md), [module specifications](docs/MODULES.md) — long-term scope, not claims of completed features.
 
-Host code uses only the Go standard library. Release builds use the verified toolchain recorded in [`docs/HOST-TOOLCHAIN.json`](docs/HOST-TOOLCHAIN.json), obtained from the [official Go downloads feed](https://go.dev/dl/?mode=json). Device builds require the compatible GCC 3.3.4/glibc 2.3.2 OpenTom SDK; modern ARM EABI binaries do not run on this device. Set `FRACTURE_SDK` to its directory. Toolchain provenance is recorded; the legacy SDK is not bundled.
+Host code is mostly standard library; the optional ICS agenda uses pinned iCalendar parsing and recurrence-expansion modules. Release builds use the verified toolchain recorded in [`docs/HOST-TOOLCHAIN.json`](docs/HOST-TOOLCHAIN.json), obtained from the [official Go downloads feed](https://go.dev/dl/?mode=json). Device builds require the compatible GCC 3.3.4/glibc 2.3.2 OpenTom SDK; modern ARM EABI binaries do not run on this device. Set `FRACTURE_SDK` to its directory. Run `python3 tools/verify-legacy-sdk.py` to check the pinned SDK inputs and repeat the ARMv5 device builds. The legacy SDK is not bundled; see [toolchain provenance](docs/TOOLCHAIN-PROVENANCE.json).
 
 ```sh
 sh tools/build-device.sh

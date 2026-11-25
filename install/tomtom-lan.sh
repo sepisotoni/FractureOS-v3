@@ -8,12 +8,12 @@ case "$usb" in ''|*[!a-zA-Z0-9_.-]*) echo 'Invalid USB interface' >&2; exit 1;; 
 case "${1:-}" in
  start)
   # The gadget MAC (and hence its enx name) changes after reconnecting.
-  # Restrict this host-specific mapping to the known TomTom USB port/device.
+  # Match the TomTom gadget by USB identity so it can move between host ports.
   properties=$(udevadm info -q property "/sys/class/net/$usb")
-  echo "$properties" | grep -qx 'ID_PATH=pci-0000:00:14.0-usb-0:10:1.0'
   echo "$properties" | grep -qx 'ID_VENDOR_ID=0525'
   echo "$properties" | grep -qx 'ID_MODEL_ID=a4a1'
   ip link show "$usb" >/dev/null
+  ip link set dev "$usb" up
   ip addr replace 192.168.101.105/32 dev "$usb"
   ip route replace 192.168.101.115/32 dev "$usb" src 192.168.101.105
   ip route replace 192.168.101.114/32 dev "$usb" src 192.168.101.105
