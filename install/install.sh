@@ -2,7 +2,7 @@
 # FractureOS per-user installer. No root privileges or package-manager changes.
 set -eu
 version=${FRACTURE_VERSION:-v0.1.18}
-case "$version" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo 'Invalid version' >&2; exit 1;; esac
+case "$version" in v[0-9]*.[0-9]*.[0-9]*|v[0-9]*.[0-9]*.[0-9]*.[0-9]*) ;; *) echo 'Invalid version' >&2; exit 1;; esac
 case "$version" in *[!a-zA-Z0-9._-]*) exit 1;; esac
 os=$(uname -s)
 case "$os" in
