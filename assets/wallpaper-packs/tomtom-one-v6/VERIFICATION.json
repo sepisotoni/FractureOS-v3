@@ -1,0 +1,20 @@
+{
+  "target": "TomTom ONE v6",
+  "display": {
+    "width": 320,
+    "height": 240
+  },
+  "newImageGenWallpapers": [
+    "wallpapers/ai-generated/01-purple-blue-ribbon-flow.jpg",
+    "wallpapers/ai-generated/02-midnight-sweep.jpg",
+    "wallpapers/ai-generated/03-dual-current.jpg"
+  ],
+  "archivedPreviousFive": [
+    "Aurora Rift",
+    "Midnight Circuit",
+    "Violet Eclipse",
+    "Deep Blue Minimal",
+    "Signal Bloom"
+  ],
+  "note": "Full PNG/BMP/source export and all five archived concepts are in the companion ZIP. This repository commit contains the three new device-size JPGs and the removable SVG logo overlay."
+}
