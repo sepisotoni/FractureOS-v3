@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"unsafe"
 )
@@ -46,7 +47,19 @@ func platformUninstall() error {
 	if _, err := os.Stat(filepath.Join(filepath.Dir(exe), "unins000.exe")); err == nil {
 		return exec.Command(filepath.Join(filepath.Dir(exe), "unins000.exe")).Start()
 	}
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(filepath.Dir(exe), "uninstall.ps1"))
+	legacyScript := filepath.Join(filepath.Dir(exe), "uninstall.ps1")
+	if _, err := os.Stat(legacyScript); err == nil {
+		return exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", legacyScript).Start()
+	}
+	script := `$exe = [IO.Path]::GetFullPath($env:FRACTURE_EXE)
+$packages = @(Get-AppxPackage | Where-Object {
+  $root = [IO.Path]::GetFullPath($_.InstallLocation).TrimEnd('\') + '\'
+  $exe.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)
+})
+if ($packages.Count -ne 1) { throw 'FractureOS Store package was not found' }
+Remove-AppxPackage -Package $packages[0].PackageFullName`
+	cmd := exec.Command("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script)
+	cmd.Env = append(os.Environ(), "FRACTURE_EXE="+exe)
 	return cmd.Start()
 }
 
@@ -92,6 +105,9 @@ func platformTray() error {
 	tempDone := make(chan struct{})
 	go func() { defer close(tempDone); windowsTemperatureSupervisor(mediaContext) }()
 	defer func() { stopMedia(); <-tempDone }()
+	notificationDone := make(chan struct{})
+	go func() { defer close(notificationDone); windowsNotificationSupervisor(mediaContext) }()
+	defer func() { stopMedia(); <-notificationDone }()
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	mutex, _, last := kernel32.NewProc("CreateMutexW").Call(0, 0, uintptr(unsafe.Pointer(wide("Local\\FractureOS-v3-tray"))))
@@ -129,6 +145,9 @@ func platformTray() error {
 			}
 			if lparam == 0x205 {
 				menu, _, _ := user32.NewProc("CreatePopupMenu").Call()
+				status := strings.NewReplacer("\r", " ", "\n", " ").Replace(notificationStatus())
+				status = noticeText(status, 96)
+				user32.NewProc("AppendMenuW").Call(menu, 0x3, 0, uintptr(unsafe.Pointer(wide("Notifications: "+status))))
 				for i, label := range []string{"Dashboard & settings", "Minimal clock", "Desk clock", "Bedside clock", "Exit"} {
 					user32.NewProc("AppendMenuW").Call(menu, 0, uintptr(i+1), uintptr(unsafe.Pointer(wide(label))))
 				}

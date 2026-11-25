@@ -11,11 +11,17 @@ import (
 )
 
 type NotificationConfig struct {
-	Enabled  bool     `json:"enabled"`
-	Excluded []string `json:"excluded"`
+	Enabled           bool     `json:"enabled"`
+	Excluded          []string `json:"excluded"`
+	Allowed           []string `json:"allowed"`
+	AllowListOnly     bool     `json:"allow_list_only"`
+	QuietHoursEnabled bool     `json:"quiet_hours_enabled"`
+	QuietStart        string   `json:"quiet_start"`
+	QuietEnd          string   `json:"quiet_end"`
 }
 type Notification struct {
 	Artwork []byte `json:"artwork,omitempty"`
+	AppID   string `json:"app_id,omitempty"`
 	Seconds int    `json:"seconds,omitempty"`
 	App     string `json:"app"`
 	Title   string `json:"title"`
@@ -26,6 +32,7 @@ type IntegrationSettings struct {
 	Operation     string             `json:"operation"`
 	Audio         *AudioConfig       `json:"audio,omitempty"`
 	Weather       WeatherConfig      `json:"weather"`
+	Agenda        *AgendaConfig      `json:"agenda,omitempty"`
 	Notifications NotificationConfig `json:"notifications"`
 	HubMetrics    bool               `json:"hub_metrics"`
 }
@@ -70,10 +77,17 @@ func registerIntegrations(mux *http.ServeMux, b *Broker, token string) {
 				c.Audio = *q.Audio
 			}
 			c.Weather = q.Weather
+			if q.Agenda != nil {
+				c.Agenda = *q.Agenda
+			}
 			c.Notifications = q.Notifications
 			c.HubMetrics = q.HubMetrics
 			if q.LyricsEnabled != nil {
 				c.LyricsEnabled = *q.LyricsEnabled
+			}
+			if e = validateAgenda(c.Agenda); e != nil {
+				http.Error(w, e.Error(), http.StatusBadRequest)
+				return
 			}
 			if e = saveConfig(c); e != nil {
 				http.Error(w, e.Error(), 400)
@@ -87,7 +101,7 @@ func registerIntegrations(mux *http.ServeMux, b *Broker, token string) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(IntegrationSettings{LyricsEnabled: &c.LyricsEnabled, Audio: &c.Audio, Weather: c.Weather, Notifications: c.Notifications, HubMetrics: c.HubMetrics})
+		_ = json.NewEncoder(w).Encode(IntegrationSettings{LyricsEnabled: &c.LyricsEnabled, Audio: &c.Audio, Weather: c.Weather, Agenda: &c.Agenda, Notifications: c.Notifications, HubMetrics: c.HubMetrics})
 	})
 	mux.HandleFunc("/api/notifications", func(w http.ResponseWriter, r *http.Request) {
 		if !auth(w, r) {
@@ -97,7 +111,7 @@ func registerIntegrations(mux *http.ServeMux, b *Broker, token string) {
 		var q Notification
 		dec := json.NewDecoder(r.Body)
 		dec.DisallowUnknownFields()
-		if dec.Decode(&q) != nil || len(q.App) == 0 || len(q.App) > 160 || len(q.Title) > 256 || len(q.Body) > 1024 || len(q.Artwork) > 256*1024 || q.Seconds < 0 || q.Seconds > 120 {
+		if dec.Decode(&q) != nil || len(strings.TrimSpace(q.App)) == 0 || len(q.App) > 160 || len(q.AppID) > 512 || len(q.Title) > 256 || len(q.Body) > 1024 || len(q.Artwork) > 256*1024 || q.Seconds < 0 || q.Seconds > 120 {
 			http.Error(w, "invalid notification", 400)
 			return
 		}
@@ -110,11 +124,9 @@ func registerIntegrations(mux *http.ServeMux, b *Broker, token string) {
 			fmt.Fprint(w, "disabled")
 			return
 		}
-		for _, app := range c.Notifications.Excluded {
-			if strings.EqualFold(strings.TrimSpace(app), strings.TrimSpace(q.App)) {
-				fmt.Fprint(w, "excluded")
-				return
-			}
+		if !notificationPermitted(windowsNotice{AppID: q.AppID, Notification: q}, c.Notifications) {
+			fmt.Fprint(w, "excluded")
+			return
 		}
 		mu.Lock()
 		defer mu.Unlock()
@@ -170,6 +182,11 @@ func integrationGet(c Config) (IntegrationSettings, error) {
 func integrationSave(c Config, q IntegrationSettings) error {
 	if e := validateIntegrations(q.Weather, q.Notifications); e != nil {
 		return e
+	}
+	if q.Agenda != nil {
+		if e := validateAgenda(*q.Agenda); e != nil {
+			return e
+		}
 	}
 	if q.Audio != nil {
 		if e := validateAudio(*q.Audio); e != nil {

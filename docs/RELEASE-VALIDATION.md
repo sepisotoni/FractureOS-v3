@@ -1,4 +1,59 @@
+# v0.1.15 Beta candidate status
+
+The `release/v0.1.15-beta` branch is based on the v0.1.14 published prerelease and integrates the requested host/device work. Source builds and focused tests passed; the four Linux/Windows amd64/arm64 archives were generated locally and checksummed, but no v0.1.15 release tag or GitHub release is published. Earlier validation records below refer to their named commits/branches only and do not validate the combined candidate. No new Store installation, Windows runtime, personal agenda feed or TomTom deployment is claimed.
+
+- Chrome rendered the v0.1.15 web dashboard against an isolated static server and mocked status/integration responses; no hub or TomTom was contacted. The desktop screenshot at `docs/images/web-dashboard-v015-beta.png` shows the current layout without a top-right Connected badge. The audio gain control was exercised in the mock UI and serialized the selected volume.
+- `go test ./host`, `go test -race ./host`, `go vet ./host`, `go mod verify`, Linux/Windows amd64/arm64 Go cross-builds, the ARMv5 legacy-SDK device build, native C core/face tests, Python protocol/syntax checks and embedded JavaScript syntax checks passed after integration. Windows resources were regenerated as 0.1.15.0; current x64 and arm64 preview DLLs compiled, and the package script generated all four archives with verified SHA-256 checksums. A broad `go test ./...` is not usable in this workspace because the ignored legacy Go toolchain source under `build/toolchain/go` is discovered as project packages; the scoped `./host` tests pass. The MSIX workflow, Windows-native visual/runtime acceptance, Store gates and physical-device validation remain open.
+
+## v0.1.12 Beta notification settings — 2026-11-25
+
+- Added Windows-local quiet hours, app-ID/display-name allow/block filters, delivery-status timestamps and a synthetic test-forward action. Quiet-period notifications are not replayed later. The installer offers an unchecked tray-at-login task.
+- Added four web Appearance quick presets. Chrome confirmed the preset controls render; their device commands were not exercised to avoid changing the connected TomTom during validation.
+- `go test -count=1 -race ./host`, `go vet ./host`, Windows amd64/arm64 cross-builds and `git diff --check` passed. Chrome visually inspected the desktop Integrations view; no mobile-specific layout is supported.
+- No Windows runtime, MSIX installation, Store publication, user-consent or WhatsApp end-to-end check was performed. These gates remain open.
+
+## v0.1.14 prerelease record — 2026-11-11
+
+- GitHub release `v0.1.14` is confirmed published as a prerelease on 2026-11-11 from the separate `release/v0.1.14-combined` branch. It is not the source of this older local `main` worktree.
+- The prior session record reports Linux/Windows packages and installers were published, checksums and the Windows installer workflow passed, and the Linux host and TomTom were updated to v0.1.14. Audio forwarding was left off. This session did not repeat those runtime or package checks; Windows app runtime was not demonstrated.
+
+## v0.1.12 Beta web dashboard — 2026-11-25
+
+- The configurable read-only Today agenda is implemented and covered by Go tests for local-day filtering, daily recurrence, RDATE/EXDATE, moved recurrence instances, all-day entries, optional locations, URL validation and payload bounds. The device core test also checks the appended Apps → Today page, status field, bounded item decoder and clear command. Linux amd64 and Windows amd64/ARM64 host builds and an ARMv5 target compile with the legacy SDK passed.
+- No personal feed URL was entered, no live calendar provider was contacted, and no new binary was installed on the TomTom. The agenda remains off by default; live feed behavior and physical rendering still need owner configuration/acceptance. The feed URL is stored only in local host configuration, fetched on demand while Today is open, and not logged or cached as event data.
+- Chrome navigation was checked across Overview, Device, Appearance, Integrations and System. Mobile emulation at 390×844 had no horizontal overflow. The 1440×760 capture is published at `docs/images/web-dashboard-v012-beta.png` and embedded in the README.
+- Device-status polling is limited to the visible Overview view. The native preview unload lifecycle was previously checked for v0.1.11; it was not re-tested as part of this web dashboard pass.
+- The localhost settings process measured **13,060 KiB RSS** after about 74 seconds. This is a single process sample, not an idle baseline, peak, or soak measurement.
+- `go test ./host`, `go test -race ./host`, Linux host build, Windows amd64/arm64 cross-builds, `sh tools/build-device.sh`, and native C core tests passed. The native C run omitted `-Werror` because the existing code reports compact-code and unused-variable warnings. The ASCII fallback benchmark measured approximately **313.5 ns/op, 96 B/op, 2 allocs/op**.
+- No Windows runtime, Store installation, notification consent, or end-to-end notification test was performed. These remain owner/Store gates below.
+
+## v0.1.13 Beta native dashboard — implementation check
+
+- The Win32 dashboard now lays out its navigation and controls from the current client width, sizes the overview cards to the available space, and enforces a 760×710 minimum tracking size. Layout unit tests cover widths 760, 906, 1200 and 1600 pixels.
+- `go test ./host`, `go test -race ./host`, and Windows amd64/arm64 cross-builds passed.
+- This is compile/layout-helper evidence only. Native Windows visual, interaction and resize acceptance has not been run; the dashboard redesign remains open pending that check.
+- A shared Go release-note list powers the web **What's new** view and native Updates panel. The browser displayed the stable and unpublished Beta entries at 390×844 with no horizontal overflow. Beta entries explicitly show their unpublished status.
+
+## v0.1.13 Beta device presets — implementation check
+
+- Added four TomTom Settings presets that apply a supplied face, theme and layout. The C core test exercises navigation and applies/persists all four presets.
+- Native C core and face tests passed, and `sh tools/build-device.sh` produced the ARMv5 device binary with the legacy SDK.
+- No binary was deployed to the TomTom; physical rendering and persistence acceptance remain unverified. The battery driver/app path exposes charge state only, not a trustworthy capacity or low-charge threshold, so no low-battery warning is inferred.
+
+- The nine supplied non-Nunito faces now default to a date above the digits and seconds at lower right. Nunito retains its existing presentation. Quick settings now use a compact two-by-two icon-led tile layout and abbreviated battery/hub status.
+- `sh tools/build-device.sh`, the C core/face tests, and `go test ./host` passed. The face test loads all ten supplied faces and exercises Quick settings navigation.
+- Deployed on 2026-11-01 to the TomTom at `.115` as v0.1.12. The device platform self-test passed, the deployment script verified host/device readback hashes for all payloads, and status confirmed version 0.1.12 with existing settings preserved. Quick settings was opened and confirmed active by status; owner visual acceptance remains pending. Private evidence: `artifacts/deploy-v012-20261101`.
+- Refined the Quick settings layout to move battery/link status icons to the upper-right and center the four tiles. Installed the updated binary under `/mnt/sdcard/fracture-v3/releases/v0.1.12-quicksettings`, preserving the original v0.1.12 slot; the app still reports version 0.1.12. Repeat platform self-test and payload readback/hash checks passed, settings remained unchanged, and Quick settings was opened and confirmed active (`menu=24`). Owner visual acceptance remains pending. Private evidence: `artifacts/deploy-v012-quicksettings-20261101`.
+- Earlier handoff note (superseded by the agenda implementation above): the owner selected a read-only ICS feed as the proposed Today agenda source. Quiet hours, opt-in Windows login startup, notification diagnostics/test forwarding, clearer per-app controls and web face presets were still planned at that point. The battery signal check now confirms there is no trustworthy level or low-charge threshold to support a warning.
+- The Windows notification MSIX still requires Partner Center identity, package build/submission, Store review/publication, user consent, and Windows runtime testing; see the gate below.
+
+# Windows notification listener — validation gate (2026-11-01)
+
+The notification-listener package is transitioning from Inno Setup to an unsigned MSIX bundle intended for Microsoft Store submission. Workflow dispatch requires the Partner Center package `Name`, `Publisher`, `PublisherDisplayName`, and a four-part `Version` matching `host/main.go`. It requires the `userNotificationListener` capability and explicit user consent. `install/install.ps1` opens the Store listing only when `FRACTURE_STORE_PRODUCT_ID` is set; no product ID is configured here, so it intentionally stops without opening a listing or installing. Store identity, submission and policy review, and signed Store publication are still outstanding gates, so MSIX installation and notification-listener runtime validation have not been performed. The previously tested Inno installer evidence below applies to the published v0.1.11 release, not this candidate. No TomTom or USB deployment is part of this notification task.
+
 # v0.1.11 validation — 2026-10-27
+
+After the v0.1.11 release, the owner reported that PawnIO works on their Windows PC. This is owner-reported acceptance; the specific CPU and authorization path were not independently inspected.
 
 - Final device slot `/mnt/sdcard/fracture-v3/releases/v0.1.11` activated, with every payload and the corrected root icon SHA-256 verified. The C binary is **81,104 bytes**, hash `bb3ce1eaa817e024703d643b7957e0af0cc0f9cb4e80eca2324f4a73f9c2e5b7`. Original startup/icon and firmware backups were retained; firmware/kernel/bootloader were not written. Private deployment evidence: `artifacts/deploy-v0111-final`.
 - Manual on-device input checks covered Home touch → Quick settings, Home Power → Apps, Clock → Timer/Stopwatch/Alarm and Back, Media → Spotify, and title-based Lyrics. Existing owner settings were retained; the owner's newer telemetry-off preference was preserved rather than restoring an earlier snapshot.

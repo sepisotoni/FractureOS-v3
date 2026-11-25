@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verified deployment of the 0.1.14 application environment, not firmware flashing."""
+"""Verified deployment of the 0.1.15 application environment, not firmware flashing."""
 import argparse
 import datetime
 import hashlib
@@ -14,7 +14,7 @@ from tomtom import TomTom
 
 ROOT = '/mnt/sdcard/fracture-v3'
 START = '/mnt/sdcard/opentom/start.sh'
-VERSION = 'v0.1.14'
+VERSION = 'v0.1.15'
 
 
 def control(device, cmd):
@@ -151,7 +151,7 @@ def main():
             # If there is a stopped/restored old v3 supervisor, its PID may now run
             # OpenTom. Start a fresh v3 wrapper only when there is no active clock.
             code,out = device.command('/bin/sh '+ROOT+'/control.sh status')
-            if code == 0 and (json.loads(out).get('version') != VERSION[1:] or previous_current != VERSION):
+            if code == 0 and (json.loads(out).get('version') != VERSION[1:] or previous_current != args.slot):
                 device.checked('kill $(cat /tmp/fracture-v3.pid)')
             elif code:
                 device.checked('sh '+ROOT+'/boot.sh </dev/null >/tmp/fracture-v3.log 2>&1 &')

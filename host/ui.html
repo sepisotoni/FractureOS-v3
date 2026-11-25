@@ -1,60 +1,789 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FractureOS Dashboard</title><link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" href="/fracture.svg" type="image/svg+xml">
-<style>:root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"SF Compact","Segoe UI",system-ui,sans-serif;background:#000;color:#f5f5f7}*{box-sizing:border-box}body{max-width:850px;margin:48px auto;padding:0 24px}h1{letter-spacing:-.045em;font-size:44px;font-weight:650;margin-bottom:4px}p{color:#98989f;line-height:1.6}section{background:#000;border:1px solid #28282a;border-radius:28px;padding:26px;margin:22px 0}h2{font-size:21px;font-weight:600;margin-top:0;letter-spacing:-.025em}label{display:block;margin:14px 0 6px;color:#b8b8c0;font-size:14px}input,select,button{font:inherit;padding:11px 14px;border-radius:14px;border:1px solid #303033;background:#111113;color:#f5f5f7}input,select{width:100%}input[type=checkbox]{width:auto;accent-color:#0a84ff}input[type=color]{height:44px;padding:5px;border-radius:14px}button{cursor:pointer;margin:16px 6px 0 0;background:#0a84ff;color:white;border:0;border-radius:999px;font-size:14px;font-weight:600;transition:background .15s,transform .15s}button:hover{background:#409cff}button:active{transform:scale(.97)}button:disabled{opacity:.4}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.muted{font-size:13px;color:#8e8e93}#message{position:sticky;top:12px;padding:16px;border-radius:18px;background:#1c1c1e;white-space:pre-wrap;display:none;z-index:2}.brand{color:#0a84ff;font-size:12px;font-weight:600;letter-spacing:.14em}details summary{cursor:pointer;padding:10px 0}code{word-break:break-all}a{color:#409cff}.section-icon{display:inline-flex;width:28px;height:28px;align-items:center;justify-content:center;color:#0a84ff;margin-right:9px;font-size:23px;vertical-align:middle}@media(prefers-reduced-motion:reduce){*{transition:none!important}}@media(max-width:550px){.grid{grid-template-columns:1fr}body{padding:0 16px}section{padding:20px}}</style>
-<div class="brand" style="display:flex;align-items:center;gap:12px"><img src="/fracture.svg" width="38" height="38" alt="FractureOS logo">FRACTURE OS / V3</div><h1>Your clock. Your space.</h1><p>A quiet clock, with control when you need it.</p><div id="message" role="status"></div>
-<section id="dashboard"><h2>Dashboard</h2><div class="grid"><div><div id="dashTime" style="font-size:64px;font-weight:650;letter-spacing:-.05em">--:--</div><p id="dashDate"></p><p id="dashMode"></p></div><div id="dashMetrics"></div></div><div id="dashWeather"></div><p id="dashTimer"></p><p class="muted">Live while this page is visible. Unavailable readings are hidden.</p></section>
-<section><h2><span class="section-icon" aria-hidden="true">◷</span>Clock</h2><div class="grid"><div><label>Mode</label><select id="profile"><option value="minimal">Minimal</option><option value="desk">Desk with hub metrics</option><option value="bedside">Bedside — dim and quiet</option></select></div><div><label>Color</label><input id="theme" list="themeNames" value="teal"><datalist id="themeNames"><option value="midnight"><option value="teal"><option value="amber"><option value="blue"></datalist></div><div><label>Brightness (1–100)</label><input id="brightness" type="number" min="1" max="100" value="30"></div><div><label>UTC offset in minutes</label><input id="offset" type="number" min="-720" max="840" value="0"></div></div><button id="apply">Apply clock settings</button><button id="refresh">Refresh status</button><p id="status" class="muted">Connect to your hub to read the clock.</p><p class="muted">Tap anywhere to move through the menu. Short power press opens/selects; double press returns home. Hold 1.5 seconds for Back, 3 seconds for Home, 4.5–7 seconds to cancel, or at least 7 seconds then release to suspend. Bedside mode uses brightness 5.</p></section>
-<section><h2><span class="section-icon" aria-hidden="true">◴</span>Watch faces</h2><p>Your original designs, with editable artwork, colors and layout.</p><label>Face</label><select id="face"><option value="blue-outline">Blue Outline</option><option value="aqua">Aqua</option><option value="lavender">Lavender</option><option value="sunset">Sunset</option><option value="weather-blue">Weather Blue</option><option value="numerals-duo">Numerals Duo</option><option value="roboto">Roboto</option><option value="ubuntu">Ubuntu</option><option value="nunito">Nunito</option><option value="neon">Neon dashboard</option></select><button id="selectFace">Use face</button><button id="readFace">Load editor</button><div class="grid"><div><label>Layout</label><select id="layout"><option value="stacked">Large stacked</option><option value="horizontal">Horizontal HH : MM</option><option value="custom">Keep custom layout</option></select></div><div><label><input id="hourOnly" type="checkbox" checked> Show only the hour at :00</label><label><input id="blinkColon" type="checkbox" checked> Blink the colon</label></div></div><button id="applyLayout">Apply layout &amp; behavior</button><details open><summary>Edit selected face</summary><p class="muted">Digit rectangles use x,y,width,height on a 320 × 240 canvas. Colors are six hexadecimal digits. Save changes to the device; Reset restores the supplied design. No sidebar is included.</p><div class="grid" id="faceFields"></div><button id="saveFace">Save face changes</button><button id="resetFace">Reset selected face</button><button id="exportFace">Export face JSON</button><label>Import face JSON (review before saving)</label><input id="importFace" type="file" accept="application/json,.json"></details></section>
-<section><h2><span class="section-icon" aria-hidden="true">◐</span>Appearance</h2><p>Customize the menus and information area. Keep a face’s original colors, or recolor it with your theme.</p><button id="readTheme">Load theme editor</button><div class="grid" id="themeFields"></div><label><input id="themeFaceColors" type="checkbox"> Apply theme colors to the clock face</label><button id="saveTheme">Save theme changes</button><button id="resetTheme">Reset built-in theme</button><label>Save a new preset (lowercase letters, numbers, hyphens)</label><input id="newTheme" placeholder="my-night-theme"><button id="cloneTheme">Save as new theme</button><p class="muted">To switch later, enter its name in the Clock color field and apply. Bedside mode dims the selected colors. Saved themes survive updates.</p></section>
-<section><h2><span class="section-icon" aria-hidden="true">◷</span>Timers &amp; visual alarm</h2><div class="grid"><div><label>Countdown in minutes</label><input id="minutes" type="number" min="1" max="1440" value="25"><button id="timer">Start timer</button><button id="cancelTimer">Cancel timer</button></div><div><label>Daily alarm</label><input id="alarm" type="time" value="07:00"><button id="setAlarm">Set visual alarm</button><button id="alarmOff">Disable alarm</button></div></div><p class="muted">Alarms are visual and silent in this release. Keep the device powered and awake.</p></section>
-<section><h2>Device features</h2><div class="grid"><div><label><input id="featureTelemetry" type="checkbox"> Telemetry</label><label><input id="featureMedia" type="checkbox"> Media</label><label><input id="featureNotifications" type="checkbox"> Notifications</label></div><div><label>Menu timeout (seconds; 0 disables)</label><input id="menuTimeout" type="number" min="0" max="600" value="30"><label>Appearance</label><select id="appearance"><option value="0">Night</option><option value="1">Day</option><option value="2">Automatic: day 07:00–19:00</option></select></div></div><button id="saveFeatures">Apply device features</button></section>
-<section><h2>Weather</h2><label><input id="weatherEnabled" type="checkbox"> Fetch weather on the Linux hub</label><div class="grid"><div><label>Latitude</label><input id="weatherLatitude" type="number" step="0.0001" min="-90" max="90"></div><div><label>Longitude</label><input id="weatherLongitude" type="number" step="0.0001" min="-180" max="180"></div></div><label>Show on the clock</label><select id="weatherMode"><option value="0">Off</option><option value="1">Unusual conditions only</option><option value="2">Always</option></select><details><summary>Unusual weather thresholds</summary><div class="grid"><div><label>Hot temperature (°C)</label><input id="weatherHot" type="number"></div><div><label>Cold temperature (°C)</label><input id="weatherCold" type="number"></div><div><label>Strong gusts (km/h)</label><input id="weatherWind" type="number" min="1"></div></div><p class="muted">Thunderstorms, heavy rain, freezing rain and heavy snow also count. These are modeled conditions, not official emergency alerts.</p></details><button id="saveWeather">Save weather</button><p class="muted">Initial location: Johannesburg; change coordinates to your location. Data from <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a>, CC BY 4.0. Weather refreshes every 15 minutes while the clock is visible. Disabled weather has no worker or network requests.</p></section>
-<section><h2>Notification forwarding</h2><label><input id="notificationsEnabled" type="checkbox"> Enable the authenticated notification webhook</label><label>Display duration (seconds)</label><input id="noticeDuration" type="number" min="1" max="120" value="10"><label>Excluded app names (one per line)</label><textarea id="notificationsExcluded" rows="5" style="width:100%;background:#111113;color:#fff;border:1px solid #303033;border-radius:14px;padding:12px"></textarea><button id="saveNotifications">Save notifications</button><p class="muted">Send from the paired Windows app using <code>fracture notify APP TITLE BODY</code>, or POST app, title and body to <code>/api/notifications</code> with your hub token. Notifications are silent. Automatic Windows toast capture requires a packaged, consented listener and is not included in this build.</p></section>
-<section><h2><span class="section-icon" aria-hidden="true">♫</span>Windows media</h2><p>Connect the Spotify desktop app through Windows media sessions. No Spotify developer account, client ID or Spotify login is needed.</p><label><input id="media_enabled" type="checkbox"> Share and control Spotify from this Windows PC</label><label><input id="media_status" type="checkbox"> Show the current track in the clock status bar</label><label><input id="windows_temperature" type="checkbox"> Use this Windows PC's CPU temperature (PawnIO)</label><p class="muted">In the native app: Connection → Get sensor modules, then Check sensor. If access is denied, choose Authorize sensor in the native app. Supports Intel and AMD Zen on x64; requires the official signed driver. The PC temperature is labeled PC on the clock and takes priority while its worker is active.</p><label><input id="lyricsEnabled" type="checkbox" checked> Look up lyrics when the TomTom Lyrics page is open</label><button id="saveLyrics">Save lyrics setting</button><p class="muted">Uses LRCLIB, or lyrics supplied to the authenticated lyrics webhook. Lookups send song title, artist, album and duration. Lyrics availability and timing vary by track.</p><button id="saveMedia">Save PC sharing settings</button><p class="muted">Keep the Windows tray app running and open Spotify. The media worker starts only while its player or an enabled status-bar widget is visible. Track details and artwork travel through your paired hub. Play/pause and previous/next target Spotify; volume controls the Windows default audio output, affecting other apps too.</p><p class="muted">Requires Windows 10 1809 or later and a Spotify app that publishes a Windows media session. Lyrics can show synchronized or plain text through the hub. YouTube support is not included. Windows media runtime verification is still pending. TomTom audio is configured separately under TomTom audio.</p></section>
-<section><h2><span class="section-icon" aria-hidden="true">⌘</span>Hub connection &amp; privacy</h2><p>Use the connection details shown by <code>fracture pair-info</code> on your Linux hub. Keep its token private.</p><label>Hub URL</label><input id="hub" placeholder="https://192.168.101.105:47831"><label>Certificate fingerprint (SHA-256)</label><input id="fingerprint" autocomplete="off"><label>Access token (leave blank to keep saved token)</label><input id="token" type="password" autocomplete="off"><label><input id="hub_metrics" type="checkbox"> Enable hub CPU, RAM, CPU temperature and traffic while Desk mode is visible</label><details><summary>Linux hub settings</summary><label>Disk mount path (blank uses /)</label><input id="metrics_disk" placeholder="/"><label>Traffic interface (blank uses IPv4 default-route interfaces)</label><input id="metrics_interface" placeholder="Automatic"><p class="muted">Disk shows used space. Traffic shows the larger of download / upload in KiB/s, excluding duplicate container/USB traffic unless that interface is selected.</p><label>TomTom USB address</label><input id="device"><label>Hub listen address (restart hub after changing)</label><input id="listen"></details><button id="saveConnection">Save connection settings</button><p class="muted">The metrics switch affects the hub when changed on that machine. Windows metrics collection is not included in 0.1.9.</p></section>
-<section><h2>Updates</h2><p>Check GitHub for the latest FractureOS release and update this installation while keeping its settings.</p><button id="checkUpdate">Check for updates</button><button id="installUpdate">Update FractureOS</button><p id="updateStatus" class="muted"></p></section>
-<p class="muted">FractureOS 0.1.14 · This settings process exits after five minutes without use. Open Settings again from the tray or CLI. Windows Spotify sharing is optional. Windows audio capture still needs runtime verification; end-to-end latency has not been benchmarked.</p>
-<script>
-const session=location.hash.slice(1);history.replaceState(null,'',location.pathname);const $=id=>document.getElementById(id);let config={},integrations=null,lastStatus=null;
-function show(text){$('message').textContent=text;$('message').style.display='block'}
-async function api(path,data){const response=await fetch(path,{method:data?'POST':'GET',headers:{'X-Fracture-Session':session,'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});const text=await response.text();if(!response.ok)throw Error(text);return text}
-async function cmd(command){return api('/command',{command})}
-async function refresh(){const s=JSON.parse(await cmd('status'));for(const k of ['profile','theme','brightness','offset','face'])$(k).value=s[k];lastStatus=s;updateDashboard(s);for(const [id,key] of [['featureTelemetry','telemetry'],['featureMedia','media_enabled'],['featureNotifications','notifications']])$(id).checked=!!s[key];$('weatherMode').value=s.weather;$('appearance').value=s.appearance;$('menuTimeout').value=s.menu_timeout;$('noticeDuration').value=s.notification_seconds;$('status').textContent=`Connected · device ${s.version} · ${s.profile} · ${s.timer_seconds}s left on timer`;}
-function action(id,fn){$(id).onclick=async()=>{try{$(id).disabled=true;await fn();show('Done.')}catch(e){show(e.message)}finally{$(id).disabled=false}}}
-function updateDashboard(s){const d=new Date(Date.now()+s.offset*60000);$('dashTime').textContent=d.toISOString().slice(11,16);$('dashDate').textContent=d.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long',timeZone:'UTC'});$('dashMode').textContent=s.profile+' / '+s.face;$('dashMetrics').replaceChildren();for(const [key,name,unit] of [['cpu','CPU','%'],['ram','RAM','%'],['cpu_temp_tenths','CPU temperature',' °C'],['traffic','Traffic',' KiB/s']])if(s[key]>=0){const p=document.createElement('p');p.textContent=name+'  '+(key==='cpu_temp_tenths'?(s[key]/10).toFixed(1):s[key])+unit;$('dashMetrics').append(p)}$('dashWeather').textContent=s.weather_live?(s.weather_unusual?'⚡ ':'☁ ')+(s.temperature_tenths/10).toFixed(1)+' °C'+(s.weather_unusual?' · Unusual conditions':''):'';$('dashTimer').textContent=s.timer_seconds?'Timer · '+Math.floor(s.timer_seconds/60)+':'+String(s.timer_seconds%60).padStart(2,'0'):''}
-let polling=false;setInterval(async()=>{if(document.hidden||polling)return;polling=true;try{const s=JSON.parse(await cmd('status'));lastStatus=s;updateDashboard(s)}catch(e){$('dashMode').textContent='Disconnected';$('dashMetrics').replaceChildren();$('dashWeather').textContent='';$('dashTimer').textContent=''}finally{polling=false}},5000);
-action('saveFeatures',async()=>{for(const [id,key] of [['featureTelemetry','telemetry'],['featureMedia','media'],['featureNotifications','notifications']])await cmd('feature '+key+' '+Number($(id).checked));await cmd('feature appearance '+$('appearance').value);await cmd('ui-timeout menu '+$('menuTimeout').value)});
-async function loadIntegrations(){integrations=JSON.parse(await api('/integrations'));const w=integrations.weather;for(const key of ['Latitude','Longitude','Hot','Cold','Wind'])$('weather'+key).value=w[key.toLowerCase()];$('weatherEnabled').checked=w.enabled;$('notificationsEnabled').checked=integrations.notifications.enabled;$('lyricsEnabled').checked=integrations.lyrics_enabled!==false;$('notificationsExcluded').value=(integrations.notifications.excluded||[]).join('\n')}
-action('saveWeather',async()=>{if(!integrations)throw Error('Connect to the hub first');let q=JSON.parse(await api('/integrations'));q.weather.enabled=$('weatherEnabled').checked;for(const key of ['Latitude','Longitude','Hot','Cold','Wind'])q.weather[key.toLowerCase()]=Number($('weather'+key).value);await api('/integrations',q);await cmd('feature weather '+$('weatherMode').value);integrations=q});
-action('saveNotifications',async()=>{let q=JSON.parse(await api('/integrations'));q.notifications={enabled:$('notificationsEnabled').checked,excluded:$('notificationsExcluded').value.split('\n').map(s=>s.trim()).filter(Boolean)};await api('/integrations',q);await cmd('ui-timeout notification '+$('noticeDuration').value);integrations=q});
-action('refresh',refresh);action('apply',async()=>{for(const k of ['profile','theme','brightness','offset'])await cmd(k+' '+$(k).value);await refresh()});action('timer',()=>cmd('timer '+Math.round(Number($('minutes').value)*60)));action('cancelTimer',()=>cmd('timer 0'));action('setAlarm',()=>{let [h,m]=$('alarm').value.split(':');return cmd(`alarm ${Number(h)} ${Number(m)}`)});action('alarmOff',()=>cmd('alarm off'));
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0b1018">
+  <title>FractureOS — Clock dashboard</title>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/fracture.svg" type="image/svg+xml">
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: #111016;
+      color: #eef3fa;
+      font-synthesis: none;
+      --panel: rgba(31, 26, 34, .68);
+      --panel-raised: rgba(48, 39, 49, .86);
+      --line: rgba(235, 219, 225, .16);
+      --muted: #b6aab6;
+      --accent: #f18a66;
+      --violet: #b0a2ff;
+      --good: #70d6a1;
+      --bad: #ff9a91;
+    }
+    * { box-sizing: border-box }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(ellipse at 83% 3%, rgba(119, 60, 67, .78) 0, transparent 36rem),
+        radial-gradient(ellipse at 7% 41%, rgba(69, 48, 70, .8) 0, transparent 37rem),
+        radial-gradient(ellipse at 72% 83%, rgba(34, 65, 83, .72) 0, transparent 42rem),
+        #111016;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0 0 auto auto;
+      width: min(52vw, 780px);
+      height: 500px;
+      pointer-events: none;
+      opacity: .26;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='480' height='360' viewBox='0 0 480 360'%3E%3Cg fill='none' stroke='%23f5b69a' stroke-opacity='.34'%3E%3Cpath d='M-40 90c62-52 103-45 152-10s89 44 139 3 98-71 165-35 77 17 106-2M-34 124c69-52 106-47 153-12s91 45 140 4 96-70 161-35 79 16 107-3M-30 159c70-53 109-49 155-13s92 45 142 4 95-69 158-35 80 15 108-3M-24 194c72-54 111-50 157-14s94 45 143 4 94-69 157-34 81 14 108-4M-20 230c75-54 113-51 160-15s94 45 145 4 94-68 155-34 82 14 109-4M-16 266c77-55 116-51 163-15s96 44 146 4 93-68 153-34 84 14 110-4'/%3E%3C/g%3E%3C/svg%3E") center/cover no-repeat;
+      mask-image: linear-gradient(black, transparent);
+    }
+    button, input, select, textarea { font: inherit }
+    button, a, input, select, textarea { accent-color: var(--accent) }
+    button { cursor: pointer }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px }
+    .skip { position: fixed; left: 12px; top: -60px; z-index: 20; padding: 10px 14px; background: var(--panel-raised); border-radius: 8px }
+    .skip:focus { top: 12px }
+    .shell { min-height: 100vh }
+    .sidebar {
+      position: fixed;
+      inset: 0 auto 0 0;
+      z-index: 5;
+      display: flex;
+      width: 246px;
+      flex-direction: column;
+      padding: 26px 18px 18px;
+      border-right: 1px solid rgba(240, 218, 223, .14);
+      background: rgba(19, 17, 23, .76);
+      -webkit-backdrop-filter: blur(24px) saturate(135%);
+      backdrop-filter: blur(24px) saturate(135%);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; padding: 0 9px 26px }
+    .brand img { width: 40px; height: 40px }
+    .brand-name { font-size: 15px; font-weight: 720; letter-spacing: -.025em }
+    .brand-sub { margin-top: 3px; color: var(--muted); font-size: 11px; letter-spacing: .07em; text-transform: uppercase }
+    .nav-label { padding: 14px 11px 8px; color: #75869a; font-size: 10px; font-weight: 700; letter-spacing: .15em; text-transform: uppercase }
+    .nav { display: grid; gap: 4px }
+    .nav button {
+      display: flex;
+      width: 100%;
+      align-items: center;
+      gap: 12px;
+      padding: 11px 12px;
+      border: 0;
+      border-radius: 9px;
+      color: #b7c3d0;
+      text-align: left;
+      background: transparent;
+      transition: background .16s ease, color .16s ease;
+    }
+    .nav button:hover { color: #fff7f2; background: rgba(255, 232, 224, .08) }
+    .nav button[aria-current="page"] { color: #fff7f2; background: rgba(241, 138, 102, .16); box-shadow: inset 3px 0 var(--accent) }
+    .nav svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round }
+    .release-entry + .release-entry { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line) }
+    .release-version { margin: 0; font-size: 16px; font-weight: 650 }
+    .release-meta { margin: 5px 0 0; color: var(--muted); font-size: 12px }
+    .release-list { margin: 12px 0 0; padding-left: 20px; color: #d7d0d8; line-height: 1.7 }
+    .connection {
+      margin-top: auto;
+      padding: 13px 14px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: rgba(30, 25, 33, .58);
+      -webkit-backdrop-filter: blur(18px);
+      backdrop-filter: blur(18px);
+    }
+    .connection-title { color: #8293a5; font-size: 11px }
+    #status { margin: 6px 0 0; color: #e0e8f0; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere }
+    .content { max-width: 1500px; margin-left: 246px; padding: 38px clamp(24px, 4vw, 62px) 68px }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 30px }
+    .eyebrow { color: var(--accent); font-size: 10px; font-weight: 750; letter-spacing: .17em; text-transform: uppercase }
+    h1 { margin: 7px 0 0; font-size: clamp(26px, 3vw, 36px); letter-spacing: -.045em; font-weight: 660 }
+    .view { display: none }
+    .view.active { display: block; animation: appear .2s ease-out }
+    @keyframes appear { from { opacity: .4; transform: translateY(4px) } to { opacity: 1; transform: none } }
+    .hero {
+      position: relative;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(250px, .75fr);
+      gap: 20px;
+      min-height: 290px;
+      padding: clamp(25px, 4vw, 44px);
+      border: 1px solid rgba(238, 216, 225, .24);
+      border-radius: 16px;
+      background:
+        linear-gradient(118deg, rgba(61, 43, 53, .78), rgba(31, 37, 51, .58) 58%, rgba(49, 39, 67, .72)),
+        radial-gradient(ellipse at 86% 20%, rgba(241, 138, 102, .22), transparent 55%);
+      box-shadow: 0 24px 70px rgba(2, 4, 10, .34), inset 0 1px rgba(255, 255, 255, .09);
+      -webkit-backdrop-filter: blur(26px) saturate(135%);
+      backdrop-filter: blur(26px) saturate(135%);
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      top: -110px;
+      right: -85px;
+      width: 380px;
+      height: 380px;
+      border: 1px solid rgba(241, 196, 176, .17);
+      border-radius: 50%;
+      box-shadow: 0 0 0 28px rgba(241, 196, 176, .035), 0 0 0 64px rgba(241, 196, 176, .025);
+      pointer-events: none;
+    }
+    .hero-main, .hero-side { position: relative; z-index: 1 }
+    .hero-kicker { color: #afc8d6; font-size: 12px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase }
+    #dashTime { margin: 13px 0 0; font-size: clamp(64px, 10vw, 104px); line-height: .98; font-variant-numeric: tabular-nums; letter-spacing: -.075em; font-weight: 620 }
+    #dashDate { margin: 14px 0 0; color: #c3d0dd; font-size: 15px }
+    #dashMode { margin: 9px 0 0; color: #94a8b9; font-size: 13px }
+    .hero-side { display: flex; flex-direction: column; justify-content: center; gap: 12px }
+    .summary-card { padding: 15px 16px; border: 1px solid rgba(239, 220, 229, .2); border-radius: 11px; background: rgba(22, 23, 33, .52); box-shadow: inset 0 1px rgba(255,255,255,.06); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px) }
+    .summary-label { color: #c3aebb; font-size: 11px; letter-spacing: .07em; text-transform: uppercase }
+    .summary-value { margin-top: 8px; color: #f1f5f8; font-size: 18px; font-weight: 620 }
+    #dashWeather { font-size: 15px }
+    .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 16px 0 34px }
+    .metric { min-height: 94px; padding: 17px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); box-shadow: inset 0 1px rgba(255,255,255,.05); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px) }
+    .metric-label { color: var(--muted); font-size: 12px }
+    .metric-value { margin-top: 10px; font-size: 22px; font-weight: 630; font-variant-numeric: tabular-nums }
+    .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 14px; margin: 0 0 15px }
+    .section-heading h2 { margin: 0; font-size: 20px; letter-spacing: -.025em }
+    .section-heading p { max-width: 580px; margin: 5px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5 }
+    .card {
+      margin: 0 0 16px;
+      padding: clamp(19px, 2.5vw, 27px);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+      box-shadow: 0 12px 35px rgba(3, 4, 9, .18), inset 0 1px rgba(255,255,255,.055);
+      -webkit-backdrop-filter: blur(20px) saturate(120%);
+      backdrop-filter: blur(20px) saturate(120%);
+    }
+    .card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px }
+    .card-icon { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid rgba(241, 138, 102, .3); border-radius: 9px; color: var(--accent); background: rgba(241, 138, 102, .1) }
+    .card-icon svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round }
+    .card-title { margin: 0; font-size: 16px; font-weight: 640 }
+    .card-description { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5 }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px }
+    .field { min-width: 0 }
+    .field label, label { display: block; margin: 0 0 7px; color: #bdc8d4; font-size: 12px; font-weight: 570 }
+    .field .help, .help { margin: 6px 0 0; color: #8293a5; font-size: 11px; line-height: 1.55 }
+    input:not([type=checkbox]), select, textarea {
+      width: 100%;
+      min-height: 41px;
+      padding: 9px 11px;
+      border: 1px solid rgba(235, 219, 225, .17);
+      border-radius: 8px;
+      outline: none;
+      color: #f0f4f8;
+      background: rgba(15, 15, 22, .58);
+      -webkit-backdrop-filter: blur(10px);
+      backdrop-filter: blur(10px);
+      transition: border-color .15s, box-shadow .15s;
+    }
+    input:focus, select:focus, textarea:focus { border-color: #6cbfd2; box-shadow: 0 0 0 3px #73d5ec1c }
+    input[type=color] { height: 42px; padding: 4px }
+    input[type=checkbox] { width: 16px; height: 16px; margin: 0 8px 0 0; vertical-align: -3px }
+    .check-row { display: flex; align-items: start; gap: 7px; margin: 13px 0; color: #c3cdd8; font-size: 13px; line-height: 1.45 }
+    .check-row input { flex: none }
+    .buttons { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 18px }
+    .button {
+      min-height: 38px;
+      padding: 9px 14px;
+      border: 1px solid rgba(235, 219, 225, .19);
+      border-radius: 8px;
+      color: #f2eaf0;
+      background: rgba(220, 211, 227, .09);
+      font-size: 12px;
+      font-weight: 650;
+      transition: background .15s, border-color .15s, transform .15s;
+    }
+    .button:hover { border-color: rgba(255, 221, 206, .45); background: rgba(231, 220, 230, .15) }
+    .button:active { transform: translateY(1px) }
+    .button.primary { border-color: rgba(255, 210, 192, .55); color: #24120f; background: linear-gradient(135deg, #ffad7c, #ed795f) }
+    .button.primary:hover { background: linear-gradient(135deg, #ffc39e, #f58f72) }
+    .button:disabled { opacity: .55; cursor: wait }
+    .button.subtle { background: transparent }
+    .message { display: none; margin: 0 0 18px; padding: 12px 14px; border: 1px solid #415267; border-radius: 9px; color: #e4edf5; background: #16212e; font-size: 13px; line-height: 1.5; white-space: pre-wrap }
+    .message.visible { display: block }
+    .message.error { border-color: #754a4a; color: #ffd1ca; background: #271b20 }
+    details { margin-top: 16px; border-top: 1px solid #293644 }
+    details summary { padding: 14px 0 3px; color: #c4d2df; font-size: 12px; font-weight: 620; cursor: pointer }
+    .status-line { min-height: 18px; margin: 12px 0 0; color: var(--muted); font-size: 12px }
+    code { color: #b6e3ed; overflow-wrap: anywhere }
+    a { color: #83d8ed }
+    .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 11px }
+    .field-grid > div { min-width: 0 }
+    .field-grid input { width: 100% }
+    .footer { margin-top: 32px; color: #758598; font-size: 11px; line-height: 1.6 }
+    .section-icon-template { display: none }
+    @media (max-width: 980px) {
+      .sidebar { width: 210px; padding-inline: 12px }
+      .content { margin-left: 210px; padding-inline: 24px }
+      .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <svg class="section-icon-template" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="i-overview" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-face" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 14a4 4 0 0 0 8 0M9 9h.01M15 9h.01"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .4-8A6 6 0 0 0 6 9a4.5 4.5 0 0 0 1 9Z"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7M14 11a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h10M18 18h2"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></symbol>
+    <symbol id="i-system" viewBox="0 0 24 24"><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4m0-12.8L17 7M7 17l-1.4 1.4"/><circle cx="12" cy="12" r="6"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9A7 7 0 0 1 18 6l2 2M4 16l2 2a7 7 0 0 0 12.4-3"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"/><path d="M3 3v5h5m4-1v5l3 2"/></symbol>
+  </svg>
+  <div class="shell">
+    <aside class="sidebar" aria-label="Main navigation">
+      <div class="brand">
+        <img src="/fracture.svg" alt="">
+        <div><div class="brand-name">FractureOS</div><div class="brand-sub">TomTom companion</div></div>
+      </div>
+      <div class="nav-label">Workspace</div>
+      <nav class="nav" aria-label="Dashboard sections">
+        <button type="button" data-page="dashboard" aria-current="page"><svg><use href="#i-overview"/></svg>Overview</button>
+        <button type="button" data-page="device"><svg><use href="#i-clock"/></svg>Device</button>
+        <button type="button" data-page="appearance"><svg><use href="#i-face"/></svg>Appearance</button>
+        <button type="button" data-page="integrations"><svg><use href="#i-cloud"/></svg>Integrations</button>
+        <button type="button" data-page="system"><svg><use href="#i-system"/></svg>System</button>
+        <button type="button" data-page="changelog"><svg><use href="#i-history"/></svg>What's new</button>
+      </nav>
+      <div class="connection">
+        <div class="connection-title">Device connection</div>
+        <p id="status" role="status">Connecting to your hub…</p>
+      </div>
+    </aside>
+    <main class="content" id="main">
+      <header class="topbar">
+        <div><div class="eyebrow">FractureOS · TomTom ONE</div><h1 id="pageTitle">Overview</h1></div>
+      </header>
+      <div id="message" class="message" role="status" aria-live="polite"></div>
+      <div class="view active" data-view="dashboard">
+        <section class="hero" aria-label="Live clock overview">
+          <div class="hero-main">
+            <div class="hero-kicker">Your clock, at a glance</div>
+            <div id="dashTime">--:--</div>
+            <p id="dashDate">Waiting for device status</p>
+            <p id="dashMode">Device details appear when connected.</p>
+          </div>
+          <div class="hero-side">
+            <div class="summary-card"><div class="summary-label">Weather</div><div class="summary-value" id="dashWeather">Unavailable</div></div>
+            <div class="summary-card"><div class="summary-label">Countdown</div><div class="summary-value" id="dashTimer">No active timer</div></div>
+          </div>
+        </section>
+        <div class="metric-grid" id="dashMetrics" aria-label="Live device metrics"></div>
+        <section class="card">
+          <div class="card-head"><div class="card-icon"><svg><use href="#i-refresh"/></svg></div><div><h2 class="card-title">Device status</h2><p class="card-description">Readings refresh while this page is visible. Missing or stale metrics are not shown.</p></div></div>
+          <div class="buttons"><button class="button primary" id="refresh" type="button">Refresh status</button><button class="button" type="button" data-go="device">Device settings</button><button class="button" type="button" data-go="integrations">Manage integrations</button></div>
+        </section>
+      </div>
+      <div class="view" data-view="device">
+        <div class="section-heading"><div><h2>Device</h2><p>Clock behavior, timers and optional features for your TomTom.</p></div></div>
+        <section class="card">
+          <div class="card-head"><div class="card-icon"><svg><use href="#i-clock"/></svg></div><div><h2 class="card-title">Clock and local time</h2><p class="card-description">Choose how the clock behaves on the device.</p></div></div>
+          <div class="grid">
+            <div class="field"><label for="profile">Clock mode</label><select id="profile"><option value="minimal">Minimal</option><option value="desk">Desk with hub metrics</option><option value="bedside">Bedside — dim and quiet</option></select></div>
+            <div class="field"><label for="theme">Color theme</label><input id="theme" list="themeNames" value="teal"><datalist id="themeNames"><option value="midnight"><option value="teal"><option value="amber"><option value="blue"></datalist></div>
+            <div class="field"><label for="brightness">Brightness (1–100)</label><input id="brightness" type="number" min="1" max="100" value="30"></div>
+            <div class="field"><label for="offset">UTC offset in minutes</label><input id="offset" type="number" min="-720" max="840" value="0"><p class="help">Automatic daylight-saving transitions are not available yet.</p></div>
+          </div>
+          <div class="buttons"><button class="button primary" id="apply" type="button">Apply clock settings</button></div>
+          <p class="help">Power gestures: short press selects; 1.5 seconds goes back; 3 seconds returns home; 4.5–7 seconds cancels; 7 seconds or longer requests suspend. Suspend and wake have not been validated on every device.</p>
+        </section>
+        <section class="card">
+          <div class="card-head"><div class="card-icon"><svg><use href="#i-sliders"/></svg></div><div><h2 class="card-title">Device features</h2><p class="card-description">Disable optional services you do not use.</p></div></div>
+          <div class="grid">
+            <div><label class="check-row"><input id="featureTelemetry" type="checkbox">Telemetry</label><label class="check-row"><input id="featureMedia" type="checkbox">Media controls</label><label class="check-row"><input id="featureNotifications" type="checkbox">Notifications on the clock</label></div>
+            <div class="field"><label for="menuTimeout">Menu timeout (seconds; 0 disables)</label><input id="menuTimeout" type="number" min="0" max="600" value="30"><label for="appearance" style="margin-top:14px">Display appearance</label><select id="appearance"><option value="0">Night</option><option value="1">Day</option><option value="2">Automatic: 07:00–19:00</option></select></div>
+          </div>
+          <div class="buttons"><button class="button primary" id="saveFeatures" type="button">Save device features</button></div>
+        </section>
+        <section class="card">
+          <div class="card-head"><div class="card-icon"><svg><use href="#i-clock"/></svg></div><div><h2 class="card-title">Timers and visual alarm</h2><p class="card-description">Alarms are visual and silent in this release. Keep the device powered and awake.</p></div></div>
+          <div class="grid">
+            <div class="field"><label for="minutes">Countdown duration (minutes)</label><input id="minutes" type="number" min="1" max="1440" value="25"><div class="buttons"><button class="button primary" id="timer" type="button">Start timer</button><button class="button" id="cancelTimer" type="button">Cancel timer</button></div></div>
+            <div class="field"><label for="alarm">Daily alarm</label><input id="alarm" type="time" value="07:00"><div class="buttons"><button class="button primary" id="setAlarm" type="button">Set visual alarm</button><button class="button" id="alarmOff" type="button">Disable alarm</button></div></div>
+          </div>
+        </section>
+      </div>
+      <div class="view" data-view="appearance">
+        <div class="section-heading"><div><h2>Appearance</h2><p>Customize supplied clock faces and the colors used by the on-device interface.</p></div></div>
+        <section class="card">
+          <div class="card-head"><div class="card-icon"><svg><use href="#i-face"/></svg></div><div><h2 class="card-title">Quick presets</h2><p class="card-description">Apply a ready-made face, layout and interface theme combination.</p></div></div>
+          <div class="buttons">
+            <button class="button" id="presetClassic" data-preset="blue-outline,stacked,blue" type="button">Classic blue</button>
+            <button class="button" id="presetSunset" data-preset="sunset,stacked,amber" type="button">Warm sunset</button>
+            <button class="button" id="presetAqua" data-preset="aqua,horizontal,teal" type="button">Cool aqua</button>
+            <button class="button" id="presetNeon" data-preset="neon,horizontal,midnight" type="button">Neon compact</button>
+          </div>
+          <p class="help">Presets keep your face's original palette and do not overwrite custom face or theme colors.</p>
+        </section>
+        <section class="card">
+          <div class="card-head"><div class="card-icon"><svg><use href="#i-face"/></svg></div><div><h2 class="card-title">Watch faces</h2><p class="card-description">Edits are saved to the device; reset restores the selected supplied design.</p></div></div>
+          <div class="grid">
+            <div class="field"><label for="face">Face</label><select id="face"><option value="blue-outline">Blue Outline</option><option value="aqua">Aqua</option><option value="lavender">Lavender</option><option value="sunset">Sunset</option><option value="weather-blue">Weather Blue</option><option value="numerals-duo">Numerals Duo</option><option value="roboto">Roboto</option><option value="ubuntu">Ubuntu</option><option value="nunito">Nunito</option><option value="neon">Neon dashboard</option></select></div>
+            <div class="field"><label for="layout">Layout</label><select id="layout"><option value="stacked">Large stacked</option><option value="horizontal">Horizontal HH : MM</option><option value="custom">Keep custom layout</option></select></div>
+          </div>
+          <div class="grid" style="margin-top:14px"><div><label class="check-row"><input id="hourOnly" type="checkbox" checked>Show only the hour at :00</label><label class="check-row"><input id="blinkColon" type="checkbox" checked>Blink the colon</label></div></div>
+          <div class="buttons"><button class="button primary" id="selectFace" type="button">Use selected face</button><button class="button" id="applyLayout" type="button">Apply layout and behavior</button><button class="button" id="readFace" type="button">Load face editor</button></div>
+          <details><summary>Edit selected face</summary><p class="help">Digit rectangles use x, y, width, height on a 320 × 240 canvas. Colors are six hexadecimal digits. No sidebar is included in the clock face.</p><div class="field-grid" id="faceFields"></div><div class="buttons"><button class="button primary" id="saveFace" type="button">Save face changes</button><button class="button" id="resetFace" type="button">Reset selected face</button><button class="button" id="exportFace" type="button">Export face JSON</button></div><div class="field" style="margin-top:16px"><label for="importFace">Import face JSON (review before saving)</label><input id="importFace" type="file" accept="application/json,.json"></div></details>
+        </section>
+        <section class="card">
+          <div class="card-head"><div class="card-icon"><svg><use href="#i-sun"/></svg></div><div><h2 class="card-title">Theme colors</h2><p class="card-description">Keep each face's original palette, or optionally apply theme colors to it.</p></div></div>
+          <div class="buttons" style="margin-top:0"><button class="button" id="readTheme" type="button">Load theme editor</button></div>
+          <div class="field-grid" id="themeFields" style="margin-top:16px"></div>
+          <label class="check-row" style="margin-top:16px"><input id="themeFaceColors" type="checkbox">Apply theme colors to the clock face</label>
+          <div class="buttons"><button class="button primary" id="saveTheme" type="button">Save theme changes</button><button class="button" id="resetTheme" type="button">Reset built-in theme</button></div>
+          <div class="field" style="max-width:380px;margin-top:18px"><label for="newTheme">Save a new preset (lowercase letters, numbers, hyphens)</label><input id="newTheme" placeholder="my-night-theme"><div class="buttons"><button class="button" id="cloneTheme" type="button">Save as new theme</button></div></div>
+          <p class="help">Named themes survive updates. Bedside mode dims the selected colors.</p>
+        </section>
+      </div>
+      <div class="view" data-view="integrations">
+        <div class="section-heading"><div><h2>Integrations</h2><p>Choose what the hub shares with the device. Provider requests run only when enabled and needed.</p></div></div>
+        <section class="card">
+          <div class="card-head"><div class="card-icon"><svg><use href="#i-cloud"/></svg></div><div><h2 class="card-title">Weather</h2><p class="card-description">Current conditions and forecast are supplied by Open-Meteo; the TomTom does not make internet requests.</p></div></div>
+          <label class="check-row"><input id="weatherEnabled" type="checkbox">Fetch weather on the Linux hub</label>
+          <div class="grid">
+            <div class="field"><label for="weatherLatitude">Latitude</label><input id="weatherLatitude" type="number" step="0.0001" min="-90" max="90"></div>
+            <div class="field"><label for="weatherLongitude">Longitude</label><input id="weatherLongitude" type="number" step="0.0001" min="-180" max="180"></div>
+            <div class="field"><label for="weatherMode">Show on the clock</label><select id="weatherMode"><option value="0">Off</option><option value="1">Unusual conditions only</option><option value="2">Always</option></select></div>
+          </div>
+          <details><summary>Unusual weather thresholds</summary><div class="grid" style="margin-top:14px"><div class="field"><label for="weatherHot">Hot temperature (°C)</label><input id="weatherHot" type="number"></div><div class="field"><label for="weatherCold">Cold temperature (°C)</label><input id="weatherCold" type="number"></div><div class="field"><label for="weatherWind">Strong gusts (km/h)</label><input id="weatherWind" type="number" min="1"></div></div><p class="help">Thunderstorms, heavy/freezing rain and heavy snow also count. Conditions are modeled estimates, not official emergency alerts.</p></details>
+          <div class="buttons"><button class="button primary" id="saveWeather" type="button">Save weather settings</button></div>
+          <p class="help">Data from <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a> under CC BY 4.0. Default coordinates are Johannesburg; set your own location here.</p>
+        </section>
+        <section class="card">
+          <div class="card-head"><div class="card-icon"><svg><use href="#i-clock"/></svg></div><div><h2 class="card-title">Today agenda</h2><p class="card-description">A private, read-only calendar summary. Nothing is fetched until the TomTom Today page is open.</p></div></div>
+          <label class="check-row"><input id="agendaEnabled" type="checkbox">Enable the agenda feed</label>
+          <div class="field"><label for="agendaURL">ICS feed URL (HTTPS)</label><input id="agendaURL" type="url" autocomplete="off" placeholder="https://calendar.example/calendar.ics"><p class="help">The URL is saved only in the host's local settings and is not included in logs. Keep any private feed URL confidential.</p></div>
+          <div class="grid" style="margin-top:14px">
+            <div class="field"><label for="agendaLimit">Upcoming events to show (1–8)</label><input id="agendaLimit" type="number" min="1" max="8" value="5"></div>
+            <div><label class="check-row"><input id="agendaLocation" type="checkbox">Include event locations</label></div>
+          </div>
+          <p class="help">Shows today's upcoming event titles and start times using the host's local timezone. All-day events are labeled. Recurring events, date additions and exclusions are expanded. Event details stay on the device only while the Today page is open.</p>
+          <div class="buttons"><button class="button primary" id="saveAgenda" type="button">Save agenda settings</button></div>
+        </section>
+        <section class="card">
+          <div class="card-head"><div class="card-icon"><svg><use href="#i-bell"/></svg></div><div><h2 class="card-title">Notifications</h2><p class="card-description">Forwarding is opt-in. The app keeps no notification history; new text and app logos go to your paired hub and TomTom.</p></div></div>
+          <label class="check-row"><input id="notificationsEnabled" type="checkbox">Enable the authenticated notification webhook</label>
+          <div class="grid">
+            <div class="field"><label for="notificationsExcluded">Block these apps (names or Windows app IDs)</label><textarea id="notificationsExcluded" rows="4" placeholder="Example: Calendar"></textarea></div>
+            <div class="field"><label for="notificationsAllowed">Allow-list apps</label><textarea id="notificationsAllowed" rows="4" placeholder="Example: WhatsApp"></textarea></div>
+            <div class="field"><label for="noticeDuration">Display duration (seconds)</label><input id="noticeDuration" type="number" min="1" max="120" value="10"></div>
+          </div>
+          <label class="check-row"><input id="notificationsAllowListOnly" type="checkbox">Only forward apps in the allow list</label>
+          <label class="check-row"><input id="quietHoursEnabled" type="checkbox">Quiet hours (Windows local time)</label>
+          <div class="grid">
+            <div class="field"><label for="quietHoursStart">Quiet hours start</label><input id="quietHoursStart" type="time" value="22:00"></div>
+            <div class="field"><label for="quietHoursEnd">Quiet hours end</label><input id="quietHoursEnd" type="time" value="07:00"></div>
+          </div>
+          <p class="help">Quiet hours suppress automatic Windows forwarding and do not replay suppressed notifications later. Block rules take precedence; allow-list-only mode forwards nothing until an app is listed.</p>
+          <div class="buttons"><button class="button primary" id="saveNotifications" type="button">Save notification settings</button><button class="button" id="testNotifications" type="button">Send test notification</button></div>
+          <p class="help">On Windows, automatic capture additionally requires the MSIX package with the <code>userNotificationListener</code> capability, Windows access consent, and forwarding enabled in the native dashboard. The Store identity, certification, signed publication, install and end-to-end checks remain outstanding. Until then, use <code>fracture notify APP TITLE BODY</code> or authenticated <code>/api/notifications</code>.</p>
+        </section>
+        <section class="card">
+          <div class="card-head"><div class="card-icon"><svg><use href="#i-link"/></svg></div><div><h2 class="card-title">Windows media and lyrics</h2><p class="card-description">Share media-session details from the Windows PC without Spotify account credentials.</p></div></div>
+          <label class="check-row"><input id="media_enabled" type="checkbox">Share and control Spotify from this Windows PC</label>
+          <label class="check-row"><input id="media_status" type="checkbox">Show the current track in the clock status bar</label>
+          <label class="check-row"><input id="windows_temperature" type="checkbox">Use this Windows PC's CPU temperature (PawnIO)</label>
+          <label class="check-row"><input id="lyricsEnabled" type="checkbox" checked>Look up lyrics when the TomTom Lyrics page is open</label>
+          <div class="buttons"><button class="button primary" id="saveMedia" type="button">Save PC sharing settings</button><button class="button" id="saveLyrics" type="button">Save lyrics setting</button></div>
+          <p class="help">Keep the Windows tray app running and open Spotify. Temperature needs the official signed driver and is currently supported on x64. Lyrics use LRCLIB or the authenticated lyrics endpoint; availability varies.</p>
+        </section>
+        <section class="card">
+          <div class="card-head"><div class="card-icon"><svg><use href="#i-system"/></svg></div><div><h2 class="card-title">TomTom audio</h2><p class="card-description">System-output capture is disabled until enabled. A microphone is never used.</p></div></div>
+          <label class="check-row"><input id="audioEnabled" type="checkbox">Enable low-latency audio forwarding</label>
+          <div class="field" style="max-width:420px"><label for="audioSource">Capture system output from</label><select id="audioSource"><option value="windows">Windows PC output</option><option value="linux">Linux hub output</option></select></div>
+          <div class="field" style="max-width:420px"><label for="audioVolume">TomTom output level: <span id="audioVolumeValue">5%</span></label><input id="audioVolume" type="range" min="1" max="100" value="5"></div>
+          <div class="buttons"><button class="button primary" id="saveAudio" type="button">Save audio settings</button></div>
+          <p class="help">Uses 16 kHz mono PCM in 20 ms frames. Audio is relayed in memory only; the TomTom alarm takes priority.</p>
+        </section>
+      </div>
+      <div class="view" data-view="system">
+        <div class="section-heading"><div><h2>System</h2><p>Connection details, host behavior and application updates.</p></div></div>
+        <section class="card">
+          <div class="card-head"><div class="card-icon"><svg><use href="#i-link"/></svg></div><div><h2 class="card-title">Hub connection and privacy</h2><p class="card-description">Use the connection details printed by <code>fracture pair-info</code> on your Linux hub. Keep the access token private.</p></div></div>
+          <div class="grid">
+            <div class="field"><label for="hub">Hub URL</label><input id="hub" placeholder="https://192.168.101.105:47831"></div>
+            <div class="field"><label for="fingerprint">Certificate fingerprint (SHA-256)</label><input id="fingerprint" autocomplete="off"></div>
+            <div class="field"><label for="token">Access token (leave blank to keep saved token)</label><input id="token" type="password" autocomplete="off"></div>
+            <div><label class="check-row"><input id="hub_metrics" type="checkbox">Enable hub CPU, RAM, CPU temperature and traffic while Desk mode is visible</label></div>
+          </div>
+          <details><summary>Advanced Linux hub settings</summary><div class="grid" style="margin-top:14px"><div class="field"><label for="metrics_disk">Disk mount path (blank uses /)</label><input id="metrics_disk" placeholder="/"></div><div class="field"><label for="metrics_interface">Traffic interface (blank uses automatic IPv4 route)</label><input id="metrics_interface" placeholder="Automatic"></div><div class="field"><label for="device">TomTom USB address</label><input id="device"></div><div class="field"><label for="listen">Hub listen address (restart hub after changing)</label><input id="listen"></div></div><p class="help">Disk shows used space. Traffic shows the larger upload/download direction; container and USB duplicate traffic is excluded unless selected.</p></details>
+          <div class="buttons"><button class="button primary" id="saveConnection" type="button">Save connection settings</button></div>
+          <p class="help">For remote access, use a private network or VPN. Do not expose the hub or the legacy device Telnet connection directly to the Internet.</p>
+        </section>
+        <section class="card">
+          <div class="card-head"><div class="card-icon"><svg><use href="#i-refresh"/></svg></div><div><h2 class="card-title">Updates</h2><p class="card-description">Checks GitHub, verifies downloaded checksums and preserves your settings.</p></div></div>
+          <div class="buttons" style="margin-top:0"><button class="button" id="checkUpdate" type="button">Check for updates</button><button class="button primary" id="installUpdate" type="button">Update this app</button></div>
+          <p id="updateStatus" class="status-line" role="status"></p>
+        </section>
+        <p class="footer">FractureOS 0.1.15 Beta. Device release and Windows Store acceptance remain separate from host-app updates.</p>
+      </div>
+      <div class="view" data-view="changelog">
+        <div class="section-heading"><div><h2>What's new</h2><p>Recent changes and their release status. Beta entries are not published releases.</p></div></div>
+        <section class="card" aria-live="polite" id="changelogList">Loading release notes…</section>
+      </div>
+    </main>
+  </div>
+  <script>
+    const session = location.hash.slice(1);
+    history.replaceState(null, "", location.pathname);
+    const $ = id => document.getElementById(id);
+    let config = {}, integrations = null, lastStatus = null;
+    const titles = {dashboard: "Overview", device: "Device", appearance: "Appearance", integrations: "Integrations", system: "System", changelog: "What's new"};
+    let changelogLoaded = false;
 
+    function show(text, error = false) {
+      const box = $("message");
+      box.textContent = text;
+      box.classList.toggle("error", error);
+      box.classList.add("visible");
+    }
+    async function api(path, data) {
+      const response = await fetch(path, {
+        method: data ? "POST" : "GET",
+        headers: {"X-Fracture-Session": session, "Content-Type": "application/json"},
+        body: data ? JSON.stringify(data) : undefined
+      });
+      const text = await response.text();
+      if (!response.ok) throw Error(text);
+      return text;
+    }
+    async function loadChangelog() {
+      const entries = JSON.parse(await api("/changelog"));
+      const list = $("changelogList");
+      list.replaceChildren();
+      for (const entry of entries) {
+        const article = document.createElement("article");
+        article.className = "release-entry";
+        const title = document.createElement("h3");
+        title.className = "release-version";
+        title.textContent = entry.version;
+        const status = document.createElement("p");
+        status.className = "release-meta";
+        status.textContent = entry.status;
+        const changes = document.createElement("ul");
+        changes.className = "release-list";
+        for (const change of entry.changes) {
+          const item = document.createElement("li");
+          item.textContent = change;
+          changes.append(item);
+        }
+        article.append(title, status, changes);
+        list.append(article);
+      }
+      changelogLoaded = true;
+    }
+    async function cmd(command) { return api("/command", {command}); }
+    function setView(name) {
+      document.querySelectorAll(".view").forEach(view => view.classList.toggle("active", view.dataset.view === name));
+      document.querySelectorAll("[data-page]").forEach(button => {
+        if (button.dataset.page === name) button.setAttribute("aria-current", "page");
+        else button.removeAttribute("aria-current");
+      });
+      $("pageTitle").textContent = titles[name] || titles.dashboard;
+      window.scrollTo({top: 0, behavior: "smooth"});
+      if (name === "changelog" && !changelogLoaded) loadChangelog().catch(error => show("Could not load release notes: " + error.message, true));
+      if (name === "dashboard") refresh().catch(error => {
+        $("status").textContent = error.message;
+      });
+    }
+    document.querySelectorAll("[data-page]").forEach(button => button.addEventListener("click", () => setView(button.dataset.page)));
+    document.querySelectorAll("[data-go]").forEach(button => button.addEventListener("click", () => setView(button.dataset.go)));
+    function weatherName(code) {
+      return ({0:"Clear",1:"Mostly clear",2:"Partly cloudy",3:"Overcast",45:"Fog",48:"Rime fog",51:"Light drizzle",53:"Drizzle",55:"Heavy drizzle",56:"Light freezing drizzle",57:"Heavy freezing drizzle",61:"Light rain",63:"Rain",65:"Heavy rain",66:"Light freezing rain",67:"Heavy freezing rain",71:"Light snow",73:"Snow",75:"Heavy snow",77:"Snow grains",80:"Light rain showers",81:"Rain showers",82:"Heavy rain showers",85:"Snow showers",86:"Heavy snow showers",95:"Thunderstorm",96:"Thunderstorm with hail",99:"Thunderstorm with heavy hail"})[code] || "Unknown";
+    }
+    async function refresh() {
+      const s = JSON.parse(await cmd("status"));
+      for (const key of ["profile", "theme", "brightness", "offset", "face"]) $(key).value = s[key];
+      lastStatus = s;
+      updateDashboard(s);
+      for (const [id, key] of [["featureTelemetry", "telemetry"], ["featureMedia", "media_enabled"], ["featureNotifications", "notifications"]]) $(id).checked = !!s[key];
+      $("weatherMode").value = s.weather;
+      $("appearance").value = s.appearance;
+      $("menuTimeout").value = s.menu_timeout;
+      $("noticeDuration").value = s.notification_seconds;
+      $("status").textContent = `${s.profile} · ${s.face}`;
+    }
+    function metric(label, value) {
+      const node = document.createElement("div");
+      node.className = "metric";
+      const title = document.createElement("div");
+      title.className = "metric-label";
+      title.textContent = label;
+      const number = document.createElement("div");
+      number.className = "metric-value";
+      number.textContent = value;
+      node.append(title, number);
+      return node;
+    }
+    function updateDashboard(s) {
+      const date = new Date(Date.now() + s.offset * 60000);
+      $("dashTime").textContent = date.toISOString().slice(11, 16);
+      $("dashDate").textContent = date.toLocaleDateString(undefined, {weekday:"long", day:"numeric", month:"long", timeZone:"UTC"});
+      $("dashMode").textContent = `${s.profile} mode · ${s.face} face`;
+      const metrics = $("dashMetrics");
+      metrics.replaceChildren();
+      for (const [key, name, suffix] of [["cpu","CPU load","%"],["ram","Memory","%"],["cpu_temp_tenths","CPU temperature"," °C"],["traffic","Network traffic"," KiB/s"]]) {
+        if (s[key] < 0) continue;
+        const value = key === "cpu_temp_tenths" ? `${(s[key] / 10).toFixed(1)}${suffix}` : `${s[key]}${suffix}`;
+        metrics.append(metric(name, value));
+      }
+      $("dashWeather").textContent = s.weather_live ? `${weatherName(s.weather_code)} · ${(s.temperature_tenths / 10).toFixed(1)} °C` : "No fresh reading";
+      $("dashTimer").textContent = s.timer_seconds ? `${Math.floor(s.timer_seconds / 60)}:${String(s.timer_seconds % 60).padStart(2, "0")} remaining` : "No active timer";
+    }
+    let polling = false;
+    setInterval(async () => {
+      if (document.hidden || polling || !document.querySelector('[data-view="dashboard"].active')) return;
+      polling = true;
+      try {
+        const s = JSON.parse(await cmd("status"));
+        lastStatus = s;
+        updateDashboard(s);
+      } catch {
+        $("dashMode").textContent = "Reconnect the hub to refresh device readings.";
+      } finally { polling = false; }
+    }, 5000);
+    function action(id, fn) {
+      $(id).onclick = async () => {
+        try {
+          $(id).disabled = true;
+          $("message").classList.remove("visible");
+          await fn();
+          show("Settings saved.");
+        } catch (e) { show(e.message, true); }
+        finally { $(id).disabled = false; }
+      };
+    }
+    action("saveFeatures", async () => {
+      for (const [id, key] of [["featureTelemetry","telemetry"],["featureMedia","media"],["featureNotifications","notifications"]]) await cmd(`feature ${key} ${Number($(id).checked)}`);
+      await cmd(`feature appearance ${$("appearance").value}`);
+      await cmd(`ui-timeout menu ${$("menuTimeout").value}`);
+    });
+    async function loadIntegrations() {
+      integrations = JSON.parse(await api("/integrations"));
+      const weather = integrations.weather, audio = integrations.audio || {enabled:false, source:"windows", volume:5};
+      const agenda = integrations.agenda || {enabled:false, feed_url:"", max_events:5, show_location:false};
+      for (const key of ["Latitude","Longitude","Hot","Cold","Wind"]) $("weather"+key).value = weather[key.toLowerCase()];
+      $("weatherEnabled").checked = weather.enabled;
+      $("agendaEnabled").checked = !!agenda.enabled;
+      $("agendaURL").value = agenda.feed_url || "";
+      $("agendaLimit").value = agenda.max_events || 5;
+      $("agendaLocation").checked = !!agenda.show_location;
+      $("notificationsEnabled").checked = integrations.notifications.enabled;
+      $("lyricsEnabled").checked = integrations.lyrics_enabled !== false;
+      $("notificationsExcluded").value = (integrations.notifications.excluded || []).join("\n");
+      $("notificationsAllowed").value = (integrations.notifications.allowed || []).join("\n");
+      $("notificationsAllowListOnly").checked = !!integrations.notifications.allow_list_only;
+      $("quietHoursEnabled").checked = !!integrations.notifications.quiet_hours_enabled;
+      $("quietHoursStart").value = integrations.notifications.quiet_start || "22:00";
+      $("quietHoursEnd").value = integrations.notifications.quiet_end || "07:00";
+      $("audioEnabled").checked = !!audio.enabled;
+      $("audioSource").value = audio.source || "windows";
+      $("audioVolume").value = audio.volume || 5;
+      $("audioVolumeValue").textContent = $("audioVolume").value + "%";
+    }
+    action("saveWeather", async () => {
+      if (!integrations) throw Error("Connect to the hub before saving weather settings.");
+      const next = JSON.parse(await api("/integrations"));
+      next.weather.enabled = $("weatherEnabled").checked;
+      for (const key of ["Latitude","Longitude","Hot","Cold","Wind"]) next.weather[key.toLowerCase()] = Number($("weather"+key).value);
+      await api("/integrations", next);
+      await cmd(`feature weather ${$("weatherMode").value}`);
+      integrations = next;
+    });
+    action("saveAgenda", async () => {
+      const next = JSON.parse(await api("/integrations"));
+      next.agenda = {
+        enabled:$("agendaEnabled").checked,
+        feed_url:$("agendaURL").value.trim(),
+        max_events:Number($("agendaLimit").value),
+        show_location:$("agendaLocation").checked
+      };
+      await api("/integrations", next);
+      integrations = next;
+    });
+    action("saveNotifications", async () => {
+      const next = JSON.parse(await api("/integrations"));
+      next.notifications = {
+        enabled:$("notificationsEnabled").checked,
+        excluded:$("notificationsExcluded").value.split("\n").map(value => value.trim()).filter(Boolean),
+        allowed:$("notificationsAllowed").value.split("\n").map(value => value.trim()).filter(Boolean),
+        allow_list_only:$("notificationsAllowListOnly").checked,
+        quiet_hours_enabled:$("quietHoursEnabled").checked,
+        quiet_start:$("quietHoursStart").value,
+        quiet_end:$("quietHoursEnd").value
+      };
+      await api("/integrations", next);
+      await cmd(`ui-timeout notification ${$("noticeDuration").value}`);
+      integrations = next;
+    });
+    action("testNotifications", async () => {
+      await api("/notification-test", {});
+    });
+    action("refresh", refresh);
+    action("apply", async () => {
+      for (const key of ["profile","theme","brightness","offset"]) await cmd(`${key} ${$(key).value}`);
+      await refresh();
+    });
+    action("timer", () => cmd(`timer ${Math.round(Number($("minutes").value) * 60)}`));
+    action("cancelTimer", () => cmd("timer 0"));
+    action("setAlarm", () => {
+      const [hour, minute] = $("alarm").value.split(":");
+      return cmd(`alarm ${Number(hour)} ${Number(minute)}`);
+    });
+    action("alarmOff", () => cmd("alarm off"));
 
-let themeData={};
-async function readTheme(){themeData=JSON.parse(await cmd('theme-get'));$('themeFields').replaceChildren();for(const [key,value] of Object.entries(themeData)){if(key==='face_colors')continue;const div=document.createElement('div'),label=document.createElement('label'),input=document.createElement('input');label.textContent=key.replaceAll('_',' ');input.id='theme_'+key;input.type='color';input.value='#'+value;div.append(label,input);$('themeFields').append(div)}$('themeFaceColors').checked=!!themeData.face_colors}
-action('readTheme',readTheme);action('saveTheme',async()=>{if(!Object.keys(themeData).length)throw Error('Load the theme editor first');for(const [k,v] of Object.entries(themeData)){const value=k==='face_colors'?Number($('themeFaceColors').checked):$('theme_'+k).value.slice(1);if(String(v)!==String(value))await cmd('theme-set '+k+' '+value)}await readTheme()});
-action('cloneTheme',async()=>{await cmd('theme-save '+$('newTheme').value);await refresh();await readTheme()});action('resetTheme',async()=>{await cmd('theme-reset');await readTheme()});
+    let themeData = {};
+    async function readTheme() {
+      themeData = JSON.parse(await cmd("theme-get"));
+      $("themeFields").replaceChildren();
+      for (const [key, value] of Object.entries(themeData)) {
+        if (key === "face_colors") continue;
+        const wrapper = document.createElement("div"), label = document.createElement("label"), input = document.createElement("input");
+        label.textContent = key.replaceAll("_", " ");
+        input.id = "theme_" + key; input.type = "color"; input.value = "#" + value;
+        wrapper.append(label, input); $("themeFields").append(wrapper);
+      }
+      $("themeFaceColors").checked = !!themeData.face_colors;
+    }
+    action("readTheme", readTheme);
+    action("saveTheme", async () => {
+      if (!Object.keys(themeData).length) throw Error("Load the theme editor first.");
+      for (const [key, oldValue] of Object.entries(themeData)) {
+        const value = key === "face_colors" ? Number($("themeFaceColors").checked) : $("theme_"+key).value.slice(1);
+        if (String(oldValue) !== String(value)) await cmd(`theme-set ${key} ${value}`);
+      }
+      await readTheme();
+    });
+    action("cloneTheme", async () => { await cmd(`theme-save ${$("newTheme").value}`); await refresh(); await readTheme(); });
+    action("resetTheme", async () => { await cmd("theme-reset"); await readTheme(); });
 
-let faceData={};
-function showFace(data){$('faceFields').replaceChildren();faceData=data;for(const [key,value] of Object.entries(data)){const div=document.createElement('div'),label=document.createElement('label'),input=document.createElement('input');label.textContent=key.replaceAll('_',' ');input.id='face_'+key;input.value=value;div.append(label,input);$('faceFields').append(div)}}
-async function readFace(){showFace(JSON.parse(await cmd('face-get')));$('layout').value=faceData.layout;$('hourOnly').checked=!!faceData.hour_only;$('blinkColon').checked=!!faceData.blink}
-action('applyLayout',async()=>{await cmd('face-set layout '+$('layout').value);await cmd('face-set hour_only '+Number($('hourOnly').checked));await cmd('face-set blink '+Number($('blinkColon').checked));await readFace()});
-action('selectFace',async()=>{await cmd('face '+$('face').value);await readFace();await refresh()});action('readFace',readFace);
-action('saveFace',async()=>{for(const [k,v] of Object.entries(faceData)){const value=$('face_'+k).value;if(String(v)!==value)await cmd('face-set '+k+' '+value)}await readFace()});
-action('resetFace',async()=>{await cmd('face-reset');await readFace()});
-action('exportFace',async()=>{const data={};for(const k of Object.keys(faceData))data[k]=$('face_'+k).value;const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=$('face').value+'.json';a.click();URL.revokeObjectURL(url)});
-$('importFace').onchange=async()=>{try{const f=$('importFace').files[0];if(!f||f.size>4096)throw Error('Face JSON must be under 4 KB');const data=JSON.parse(await f.text());if(!Object.keys(faceData).length)await readFace();for(const [k,v] of Object.entries(data)){if(!Object.hasOwn(faceData,k)||!['number','string'].includes(typeof v))throw Error('Unknown face field');$('face_'+k).value=v}show('Imported for review. Save face changes to apply.')}catch(e){show(e.message)}};
+    let faceData = {};
+    function showFace(data) {
+      $("faceFields").replaceChildren(); faceData = data;
+      for (const [key, value] of Object.entries(data)) {
+        const wrapper = document.createElement("div"), label = document.createElement("label"), input = document.createElement("input");
+        label.textContent = key.replaceAll("_", " "); input.id = "face_"+key; input.value = value;
+        wrapper.append(label, input); $("faceFields").append(wrapper);
+      }
+    }
+    async function readFace() {
+      showFace(JSON.parse(await cmd("face-get")));
+      $("layout").value = faceData.layout;
+      $("hourOnly").checked = !!faceData.hour_only;
+      $("blinkColon").checked = !!faceData.blink;
+    }
+    action("applyLayout", async () => {
+      await cmd(`face-set layout ${$("layout").value}`);
+      await cmd(`face-set hour_only ${Number($("hourOnly").checked)}`);
+      await cmd(`face-set blink ${Number($("blinkColon").checked)}`);
+      await readFace();
+    });
+    action("selectFace", async () => { await cmd(`face ${$("face").value}`); await readFace(); await refresh(); });
+    document.querySelectorAll("[data-preset]").forEach(button => action(button.id, async () => {
+      const [face, layout, theme] = button.dataset.preset.split(",");
+      await cmd(`face ${face}`);
+      await cmd(`face-set layout ${layout}`);
+      await cmd(`theme ${theme}`);
+      $("face").value = face;
+      $("layout").value = layout;
+      await readFace();
+      await refresh();
+    }));
+    action("readFace", readFace);
+    action("saveFace", async () => {
+      for (const [key, oldValue] of Object.entries(faceData)) {
+        const value = $("face_"+key).value;
+        if (String(oldValue) !== value) await cmd(`face-set ${key} ${value}`);
+      }
+      await readFace();
+    });
+    action("resetFace", async () => { await cmd("face-reset"); await readFace(); });
+    action("exportFace", async () => {
+      const data = {};
+      for (const key of Object.keys(faceData)) data[key] = $("face_"+key).value;
+      const url = URL.createObjectURL(new Blob([JSON.stringify(data,null,2)], {type:"application/json"}));
+      const link = document.createElement("a"); link.href = url; link.download = $("face").value + ".json"; link.click();
+      URL.revokeObjectURL(url);
+    });
+    $("importFace").onchange = async () => {
+      try {
+        const file = $("importFace").files[0];
+        if (!file || file.size > 4096) throw Error("Face JSON must be under 4 KB.");
+        const data = JSON.parse(await file.text());
+        if (!Object.keys(faceData).length) await readFace();
+        for (const [key, value] of Object.entries(data)) {
+          if (!Object.hasOwn(faceData,key) || !["number","string"].includes(typeof value)) throw Error("Unknown face field.");
+          $("face_"+key).value = value;
+        }
+        show("Imported face values for review. Save changes to apply.");
+      } catch (error) { show(error.message, true); }
+    };
 
-action('checkUpdate',async()=>{const q=JSON.parse(await api('/update',{action:'check'}));$('updateStatus').textContent=q.available?'Available: '+q.version:'Already up to date: '+q.current});
-action('installUpdate',async()=>{$('updateStatus').textContent='Checking and downloading...';$('updateStatus').textContent=await api('/update',{action:'install'})});
-action('saveLyrics',async()=>{let q=JSON.parse(await api('/integrations'));q.lyrics_enabled=$('lyricsEnabled').checked;await api('/integrations',q);integrations=q});
-action('saveMedia',async()=>{config.windows_temperature=$('windows_temperature').checked;config.media_enabled=$('media_enabled').checked;config.media_status=$('media_status').checked;await api('/config',config)});
-action('saveConnection',async()=>{for(const k of ['hub','fingerprint','token','device','listen','metrics_disk','metrics_interface'])config[k]=$(k).value;config.hub_metrics=$('hub_metrics').checked;await api('/config',config);$('token').value='';await refresh()});
-(async()=>{try{config=JSON.parse(await api('/config'));for(const k of ['hub','fingerprint','device','listen','metrics_disk','metrics_interface'])$(k).value=config[k]||'';$('hub_metrics').checked=config.hub_metrics;$('media_enabled').checked=!!config.media_enabled;$('windows_temperature').checked=!!config.windows_temperature;$('media_status').checked=!!config.media_status;try{await refresh()}catch(e){$('status').textContent=e.message}try{await loadIntegrations()}catch(e){show(e.message)}}catch(e){show(e.message)}})();
-</script>
-<section><h2>TomTom audio</h2><p>Forward system output to the TomTom speaker. Capture is off until enabled and never uses a microphone.</p><label><input id="audioEnabled" type="checkbox"> Enable low-latency audio forwarding</label><label>Capture system output from</label><select id="audioSource"><option value="linux">Linux output (this hub)</option><option value="windows">Windows output (paired tray app)</option></select><label>TomTom output level: <span id="audioVolumeValue">5%</span></label><input id="audioVolume" type="range" min="1" max="100" value="5"><button id="saveAudio">Save audio setting</button><p id="audioStatus" class="muted"></p><p class="muted">The output level scales PCM before sending it to the TomTom. Use one source at a time. Protected audio is not bypassed; playback stops when disabled or preempted by an alarm.</p></section>
-<script>
-async function loadAudioSettings(){const q=JSON.parse(await api('/integrations'));integrations=q;const a=q.audio||{enabled:false,source:'windows',volume:5};$('audioEnabled').checked=!!a.enabled;$('audioSource').value=a.source||'windows';$('audioVolume').value=a.volume||5;$('audioVolumeValue').textContent=$('audioVolume').value+'%'}
-$('audioVolume').oninput=()=>$('audioVolumeValue').textContent=$('audioVolume').value+'%';
-action('saveAudio',async()=>{const q=JSON.parse(await api('/integrations'));q.audio={enabled:$('audioEnabled').checked,source:$('audioSource').value,volume:Number($('audioVolume').value)};integrations=JSON.parse(await api('/integrations',q));$('audioStatus').textContent='Saved. Forwarding starts only when the selected source is available.'});
-loadAudioSettings().catch(e=>{$('audioStatus').textContent=e.message});
-</script></html>
+    action("checkUpdate", async () => {
+      const result = JSON.parse(await api("/update", {action:"check"}));
+      $("updateStatus").textContent = result.available ? "Available: " + result.version : "Already up to date: " + result.current;
+    });
+    action("installUpdate", async () => {
+      $("updateStatus").textContent = "Checking and downloading…";
+      $("updateStatus").textContent = await api("/update", {action:"install"});
+    });
+    action("saveLyrics", async () => {
+      const next = JSON.parse(await api("/integrations"));
+      next.lyrics_enabled = $("lyricsEnabled").checked;
+      await api("/integrations", next); integrations = next;
+    });
+    action("saveAudio", async () => {
+      const next = JSON.parse(await api("/integrations"));
+      next.audio = {enabled:$("audioEnabled").checked, source:$("audioSource").value, volume:Number($("audioVolume").value)};
+      await api("/integrations", next); integrations = next;
+    });
+    $("audioVolume").addEventListener("input", () => {
+      $("audioVolumeValue").textContent = $("audioVolume").value + "%";
+    });
+    action("saveMedia", async () => {
+      config.windows_temperature = $("windows_temperature").checked;
+      config.media_enabled = $("media_enabled").checked;
+      config.media_status = $("media_status").checked;
+      await api("/config", config);
+    });
+    action("saveConnection", async () => {
+      for (const key of ["hub","fingerprint","token","device","listen","metrics_disk","metrics_interface"]) config[key] = $(key).value;
+      config.hub_metrics = $("hub_metrics").checked;
+      await api("/config", config);
+      $("token").value = "";
+      await refresh();
+    });
+    (async () => {
+      try {
+        config = JSON.parse(await api("/config"));
+        for (const key of ["hub","fingerprint","device","listen","metrics_disk","metrics_interface"]) $(key).value = config[key] || "";
+        $("hub_metrics").checked = config.hub_metrics;
+        $("media_enabled").checked = !!config.media_enabled;
+        $("windows_temperature").checked = !!config.windows_temperature;
+        $("media_status").checked = !!config.media_status;
+        try { await refresh(); } catch (error) {
+          $("status").textContent = error.message;
+        }
+        try { await loadIntegrations(); } catch (error) { show(error.message, true); }
+      } catch (error) { show(error.message, true); }
+    })();
+  </script>
+</body>
+</html>

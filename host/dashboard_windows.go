@@ -3,7 +3,6 @@ package main
 // Native Win32/GDI dashboard. This is an on-demand process: no embedded browser,
 // WebView runtime, UI polling in the tray, or retained dashboard after closing.
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -20,6 +19,10 @@ import (
 var gdi32 = syscall.NewLazyDLL("gdi32.dll")
 
 type winRect struct{ Left, Top, Right, Bottom int32 }
+type winPoint struct{ X, Y int32 }
+type winMinMaxInfo struct {
+	Reserved, MaxSize, MaxPosition, MinTrackSize, MaxTrackSize winPoint
+}
 type winDrawItem struct {
 	Type, ID, Item, Action, State uint32
 	Window, DC                    uintptr
@@ -82,13 +85,16 @@ func platformDashboard() error {
 		return v
 	}
 	normal := font(-18, 400)
+	navFont := font(-14, 600)
 	titleFont := font(-32, 600)
 	clockFont := font(-66, 600)
 	defer gdi32.NewProc("DeleteObject").Call(normal)
+	defer gdi32.NewProc("DeleteObject").Call(navFont)
 	defer gdi32.NewProc("DeleteObject").Call(titleFont)
 	defer gdi32.NewProc("DeleteObject").Call(clockFont)
 	var hwnd uintptr
 	var children []uintptr
+	childBounds := map[uintptr]dashboardBounds{}
 	fields := map[int]uintptr{}
 	pageIndex := 0
 	var renderer homeRenderer
@@ -171,10 +177,26 @@ func platformDashboard() error {
 	}
 	control := func(class, label string, id, x, y, w, h int, style uintptr) uintptr {
 		v, _, _ := user32.NewProc("CreateWindowExW").Call(0, uintptr(unsafe.Pointer(wide(class))), uintptr(unsafe.Pointer(wide(label))), 0x50000000|style, uintptr(x), uintptr(y), uintptr(w), uintptr(h), hwnd, uintptr(id), instance, 0)
-		user32.NewProc("SendMessageW").Call(v, 0x30, normal, 1)
+		controlFont := normal
+		if id >= 100 && id <= 105 {
+			controlFont = navFont
+		}
+		user32.NewProc("SendMessageW").Call(v, 0x30, controlFont, 1)
 		children = append(children, v)
 		fields[id] = v
+		childBounds[v] = dashboardBounds{x: x, y: y, width: w, height: h}
 		return v
+	}
+	layoutChildren := func(clientWidth int) {
+		for i, v := range children {
+			bounds := childBounds[v]
+			if i < 6 {
+				bounds = dashboardTabBounds(i, clientWidth)
+			} else {
+				bounds = dashboardControlBounds(bounds.x, bounds.y, bounds.width, bounds.height, clientWidth)
+			}
+			user32.NewProc("MoveWindow").Call(v, uintptr(bounds.x), uintptr(bounds.y), uintptr(bounds.width), uintptr(bounds.height), 1)
+		}
 	}
 	label := func(s string, x, y int) { control("STATIC", s, 0, x, y, 620, 25, 0) }
 	edit := func(id int, value string, x, y, w int, password bool) {
@@ -233,6 +255,7 @@ func platformDashboard() error {
 			user32.NewProc("DestroyWindow").Call(v)
 		}
 		children = nil
+		childBounds = map[uintptr]dashboardBounds{}
 		fields = map[int]uintptr{}
 		for i, s := range []string{"Dashboard", "Clock & faces", "Connection", "Weather", "Notifications", "Updates"} {
 			button(100+i, s, 20+i*146, 76, 138)
@@ -317,23 +340,39 @@ func platformDashboard() error {
 			label("Weather data: Open-Meteo.com (CC BY 4.0). Not official emergency alerts.", 36, 528)
 			label("Initial location: Johannesburg. Change the coordinates here for your location.", 36, 562)
 		case 4:
+			quietStart, quietEnd := q.Notifications.QuietStart, q.Notifications.QuietEnd
+			if quietStart == "" {
+				quietStart = "22:00"
+			}
+			if quietEnd == "" {
+				quietEnd = "07:00"
+			}
 			check(250, "Enable authenticated notification webhook", q.Notifications.Enabled, 36, 140)
-			label("Excluded applications (one exact app name per line)", 36, 190)
-			control("EDIT", strings.Join(q.Notifications.Excluded, "\r\n"), 251, 36, 225, 824, 170, 0x10000|0x800000|0x200000|4|0x40|0x1000)
-			check(252, "Allow notifications on the TomTom", st.Notifications != 0, 36, 420)
-			label("Display seconds", 300, 435)
-			edit(254, strconv.Itoa(st.NoticeSeconds), 300, 470, 150, false)
-			button(253, "Save notifications", 36, 470, 230)
-			label("Forward using fracture notify APP TITLE BODY, or the authenticated API.", 36, 530)
-			label("Silent. Automatic Windows toast capture is not included in this build.", 36, 564)
+			label("Block these apps (names or Windows app IDs)", 36, 190)
+			control("EDIT", strings.Join(q.Notifications.Excluded, "\r\n"), 251, 36, 220, 390, 125, 0x10000|0x800000|0x200000|4|0x40|0x1000)
+			label("Allow-list apps", 450, 190)
+			control("EDIT", strings.Join(q.Notifications.Allowed, "\r\n"), 284, 450, 220, 390, 125, 0x10000|0x800000|0x200000|4|0x40|0x1000)
+			check(280, "Only forward apps in the allow list", q.Notifications.AllowListOnly, 36, 355)
+			check(281, "Quiet hours (Windows local time)", q.Notifications.QuietHoursEnabled, 450, 355)
+			label("From", 450, 391)
+			edit(282, quietStart, 500, 385, 110, false)
+			label("Until", 630, 391)
+			edit(283, quietEnd, 680, 385, 110, false)
+			check(252, "Allow notifications on the TomTom", st.Notifications != 0, 36, 430)
+			label("Display seconds", 300, 445)
+			edit(254, strconv.Itoa(st.NoticeSeconds), 300, 480, 150, false)
+			button(253, "Save notifications", 36, 480, 230)
+			check(255, "Forward new Windows notifications to the TomTom (opt-in)", c.WindowsNotifications, 36, 520)
+			button(256, "Set up Windows access", 36, 558, 210)
+			button(257, "Windows permission settings", 260, 558, 245)
+			button(258, "Send test notification", 525, 558, 230)
+			label("Text isn't saved by this app.", 36, 600)
 		case 5:
-			label("Installed app: "+version, 36, 140)
-			label("Connected TomTom: "+st.Version, 36, 180)
-			label("Download the latest release and update this app, keeping your settings.", 36, 240)
-			button(270, "Check for updates", 36, 302, 240)
-			button(271, "Update FractureOS", 302, 302, 250)
-			label("The app closes during installation and reopens when it is ready.", 36, 370)
-			label("On Linux, open the web settings on the hub to update that installation.", 36, 410)
+			label("Recent changes", 36, 140)
+			label("Installed app: "+version+"  ·  TomTom: "+st.Version, 36, 455)
+			button(270, "Open Microsoft Store updates", 36, 505, 280)
+			label("Microsoft Store manages Windows app updates.", 36, 550)
+			label("Connection and pairing settings remain in your user profile.", 36, 585)
 		}
 		invalidate()
 	}
@@ -348,6 +387,10 @@ func platformDashboard() error {
 	}
 	callback := syscall.NewCallback(func(wnd uintptr, m uint32, wp, lp uintptr) uintptr {
 		switch m {
+		case 0x24:
+			info := (*winMinMaxInfo)(unsafe.Pointer(lp))
+			info.MinTrackSize = winPoint{X: dashboardMinimumWidth, Y: 710}
+			return 0
 		case 0x111:
 			id := int(wp & 0xffff)
 			if wp>>16 != 0 {
@@ -448,18 +491,16 @@ func platformDashboard() error {
 					return "Approve the sensor helper in Windows, then use Check sensor. The app stays open.", e
 				})
 			case 270:
-				async(func() (string, error) {
-					offer, e := checkUpdate(context.Background())
-					if e != nil {
-						return "", e
-					}
-					if offer.Available {
-						return "Available: " + offer.Version + ". Click Update FractureOS to install.", nil
-					}
-					return "Already up to date (" + version + ")", nil
-				})
-			case 271:
-				async(func() (string, error) { return installUpdate(context.Background()) })
+				if e := openURL("ms-windows-store://downloadsandupdates"); e != nil {
+					mu.Lock()
+					message = e.Error()
+					mu.Unlock()
+				} else {
+					mu.Lock()
+					message = "Microsoft Store manages Windows app updates."
+					mu.Unlock()
+				}
+				invalidate()
 			case 239:
 				if authorizedSensorRunning() {
 					mu.Lock()
@@ -527,10 +568,37 @@ func platformDashboard() error {
 						q.Notifications.Excluded = append(q.Notifications.Excluded, v)
 					}
 				}
+				q.Notifications.Allowed = nil
+				for _, v := range strings.Split(get(284), "\n") {
+					if v = strings.TrimSpace(v); v != "" {
+						q.Notifications.Allowed = append(q.Notifications.Allowed, v)
+					}
+				}
+				q.Notifications.AllowListOnly = checked(280)
+				q.Notifications.QuietHoursEnabled = checked(281)
+				q.Notifications.QuietStart = strings.TrimSpace(get(282))
+				q.Notifications.QuietEnd = strings.TrimSpace(get(283))
+				if e := validateIntegrations(q.Weather, q.Notifications); e != nil {
+					mu.Lock()
+					message = e.Error()
+					mu.Unlock()
+					invalidate()
+					return 0
+				}
 				bit := 0
 				if checked(252) {
 					bit = 1
 				}
+				next := c
+				next.WindowsNotifications = checked(255)
+				if e := saveConfig(next); e != nil {
+					mu.Lock()
+					message = e.Error()
+					mu.Unlock()
+					invalidate()
+					return 0
+				}
+				c = next
 				async(func() (string, error) {
 					conf, e := readConfig()
 					if e != nil {
@@ -550,13 +618,44 @@ func platformDashboard() error {
 					}
 					return "Notification settings saved", nil
 				})
+			case 256:
+				async(func() (string, error) {
+					e := notificationPermission()
+					if e != nil {
+						return "", e
+					}
+					return "Windows access allowed. Enable forwarding above and save notification settings.", nil
+				})
+			case 257:
+				if e := openURL("ms-settings:privacy-notifications"); e != nil {
+					mu.Lock()
+					message = e.Error()
+					mu.Unlock()
+					invalidate()
+				}
+			case 258:
+				async(func() (string, error) {
+					if e := notificationTestForward(); e != nil {
+						return "", e
+					}
+					recordNotificationTestDelivered()
+					return "Test notification sent to the hub and TomTom", nil
+				})
 			}
 			return 0
 		case 5: // WM_SIZE: release the optional preview while minimized.
+			var client winRect
+			user32.NewProc("GetClientRect").Call(wnd, uintptr(unsafe.Pointer(&client)))
+			if client.Right > 0 {
+				layoutChildren(int(client.Right))
+			}
 			mu.Lock()
+			wasVisible := previewVisible
 			previewVisible = pageIndex == 0 && wp != 1
-			previewGeneration++
-			if !previewVisible {
+			if wasVisible != previewVisible {
+				previewGeneration++
+			}
+			if !previewVisible && wasVisible {
 				preview = homePreviewPacket{}
 			}
 			mu.Unlock()
@@ -570,6 +669,11 @@ func platformDashboard() error {
 				if timerTicks%3 == 0 {
 					refresh()
 				} else {
+					invalidate()
+				}
+			} else if minimized == 0 && pageIndex == 4 {
+				timerTicks++
+				if timerTicks%3 == 0 {
 					invalidate()
 				}
 			}
@@ -622,12 +726,13 @@ func platformDashboard() error {
 			var client winRect
 			user32.NewProc("GetClientRect").Call(wnd, uintptr(unsafe.Pointer(&client)))
 			user32.NewProc("FillRect").Call(dc, uintptr(unsafe.Pointer(&client)), brush)
+			clientWidth, clientHeight := int(client.Right), int(client.Bottom)
 			draw := func(s string, x, y, w, h int, f, col uintptr) {
 				old, _, _ := gdi32.NewProc("SelectObject").Call(dc, f)
 				gdi32.NewProc("SetTextColor").Call(dc, col)
 				gdi32.NewProc("SetBkMode").Call(dc, 1)
 				r := winRect{int32(x), int32(y), int32(x + w), int32(y + h)}
-				user32.NewProc("DrawTextW").Call(dc, uintptr(unsafe.Pointer(wide(s))), ^uintptr(0), uintptr(unsafe.Pointer(&r)), 0x800|0x20)
+				user32.NewProc("DrawTextW").Call(dc, uintptr(unsafe.Pointer(wide(s))), ^uintptr(0), uintptr(unsafe.Pointer(&r)), 0x800|0x20|0x10)
 				gdi32.NewProc("SelectObject").Call(dc, old)
 			}
 			card := func(x, y, w, h int) {
@@ -640,34 +745,38 @@ func platformDashboard() error {
 			}
 			user32.NewProc("DrawIconEx").Call(dc, 25, 24, brandIcon, 32, 32, 0, 0, 3)
 			draw("FractureOS", 72, 20, 450, 48, titleFont, foreground)
-			draw("Your desk, at a glance", 575, 31, 300, 28, normal, muted)
+			draw("Your desk, at a glance", max(72, clientWidth-330), 31, 300, 28, normal, muted)
 			mu.Lock()
 			st := state
 			note := message
 			last := lastSuccess
 			mu.Unlock()
 			if pageIndex == 0 {
-				card(25, 135, 420, 247)
-				card(465, 135, 410, 247)
+				leftCard, rightCard := dashboardCardBounds(clientWidth)
+				card(leftCard.x, leftCard.y, leftCard.width, leftCard.height)
+				card(rightCard.x, rightCard.y, rightCard.width, rightCard.height)
 				mu.Lock()
 				packet := preview
 				mu.Unlock()
-				if e := renderer.draw(dc, 75, 139, packet); e != nil {
-					draw(e.Error(), 49, 210, 360, 100, normal, muted)
+				previewX := leftCard.x + (leftCard.width-320)/2
+				if e := renderer.draw(dc, previewX, 139, packet); e != nil {
+					draw(e.Error(), leftCard.x+20, 210, leftCard.width-40, 100, normal, muted)
 				}
 				summary := "Home preview / drawn on this PC"
 				if last.IsZero() || time.Since(last) > 10*time.Second {
 					summary = "TomTom offline / last home preview"
 				}
-				draw(summary, 49, 383, 450, 25, normal, muted)
+				draw(summary, leftCard.x+20, 385, leftCard.width-40, 25, normal, muted)
 				value := func(n int, unit string) string {
 					if last.IsZero() || time.Since(last) > 10*time.Second || n < 0 {
 						return "Unavailable"
 					}
 					return fmt.Sprintf("%d%s", n, unit)
 				}
-				draw("Hub resources", 488, 153, 350, 40, titleFont, foreground)
-				draw("CPU   "+value(st.CPU, "%")+"      RAM   "+value(st.RAM, "%"), 488, 212, 365, 30, normal, accent)
+				contentX := rightCard.x + 22
+				contentWidth := rightCard.width - 44
+				draw("Hub resources", contentX, 153, contentWidth, 40, titleFont, foreground)
+				draw("CPU   "+value(st.CPU, "%")+"      RAM   "+value(st.RAM, "%"), contentX, 212, contentWidth, 30, normal, accent)
 				draw(func() string {
 					if st.TemperaturePC {
 						return "PC temp   "
@@ -678,7 +787,8 @@ func platformDashboard() error {
 						return -1
 					}
 					return st.TemperatureCPU / 10
-				}(), " C")+"      Traffic   "+value(st.Traffic, " KiB/s"), 488, 253, 365, 30, normal, muted)
+				}(), " C"), contentX, 253, contentWidth, 30, normal, muted)
+				draw("Traffic   "+value(st.Traffic, " KiB/s"), contentX, 286, contentWidth, 30, normal, muted)
 				weather := "Weather hidden or unavailable"
 				if st.WeatherLive && time.Since(last) < 10*time.Second {
 					weather = fmt.Sprintf("%.1f C  ·  %s", float64(st.Temperature)/10, weatherDescription(st.WeatherCode))
@@ -686,10 +796,25 @@ func platformDashboard() error {
 						weather += "  !"
 					}
 				}
-				draw(weather, 488, 302, 365, 50, normal, accent)
-				draw(fmt.Sprintf("Countdown: %d:%02d", st.Timer/60, st.Timer%60), 490, 417, 350, 36, normal, foreground)
+				draw(weather, contentX, 321, contentWidth, 50, normal, accent)
+				draw(fmt.Sprintf("Countdown: %d:%02d", st.Timer/60, st.Timer%60), rightCard.x+24, 417, contentWidth, 36, normal, foreground)
 			}
-			draw(note, 25, 610, 850, 44, normal, muted)
+			if pageIndex == 5 {
+				y := 182
+				for _, entry := range releaseNotes[:2] {
+					draw(entry.Version+"  ·  "+entry.Status, 36, y, clientWidth-72, 30, titleFont, accent)
+					y += 36
+					for _, change := range entry.Changes {
+						draw("• "+change, 48, y, clientWidth-96, 32, normal, foreground)
+						y += 34
+					}
+					y += 8
+				}
+			}
+			draw(note, 25, clientHeight-54, clientWidth-50, 44, normal, muted)
+			if pageIndex == 4 {
+				draw(notificationStatus(), 25, clientHeight-84, clientWidth-50, 28, normal, accent)
+			}
 			user32.NewProc("EndPaint").Call(wnd, uintptr(unsafe.Pointer(&ps)))
 			return 0
 		case 2:
@@ -731,6 +856,9 @@ func platformDashboard() error {
 	buildPage()
 	user32.NewProc("ShowWindow").Call(hwnd, 1)
 	user32.NewProc("UpdateWindow").Call(hwnd)
+	var initialClient winRect
+	user32.NewProc("GetClientRect").Call(hwnd, uintptr(unsafe.Pointer(&initialClient)))
+	layoutChildren(int(initialClient.Right))
 	user32.NewProc("SetTimer").Call(hwnd, 1, 1000, 0)
 	initialConfig := c
 	async(func() (string, error) {

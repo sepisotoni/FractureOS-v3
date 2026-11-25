@@ -1,0 +1,9 @@
+[Match]
+Driver=cdc_ether
+Property=ID_VENDOR_ID=0525 ID_MODEL_ID=a4a1
+
+[Network]
+Address=192.168.101.105/32
+
+[Route]
+Destination=192.168.101.115/32

@@ -134,7 +134,7 @@ The owner explicitly chose the Spotify client on Windows instead of developer/AP
 
 ## M21 — Audio forwarding experiment
 
-**Owner:** Go Windows capture worker → hub relay → C audio sink worker. Use [WASAPI loopback](https://learn.microsoft.com/en-gb/windows/win32/coreaudio/loopback-recording) for an explicitly selected output device; capture only while session active. Start with 16 kHz mono signed 16-bit PCM, host resampling, 20 ms blocks (640 bytes), bounded 200 ms jitter buffer, sequence/time stamps and drop-old overflow behavior. Probe actual OSS/hardware output compatibility before choosing final parameters. No microphone recording or raw content storage by default.
+**Owner:** Go Windows/Linux output-capture worker → hub relay → C audio sink worker. Use [WASAPI loopback](https://learn.microsoft.com/en-gb/windows/win32/coreaudio/loopback-recording) or the selected PulseAudio/PipeWire output monitor; capture only while the matching host source is enabled and the session is active. Start with 16 kHz mono signed 16-bit PCM, host resampling, 20 ms blocks (640 bytes), bounded 200 ms jitter buffer, sequence/time stamps and drop-old overflow behavior. Probe actual OSS/hardware output compatibility before choosing final parameters. No microphone recording or raw content storage by default.
 
 **Acceptance gate:** audible demonstration, measured CPU/latency/underruns, audio format support and stable reconnect. Stop on no heartbeat, profile quiet request or session close; alarm sound preempts stream. Protected content is not bypassed; fidelity and latency are measured, not promised. No always-loaded codec engine. Higher fidelity/compression is a later measured option.
 

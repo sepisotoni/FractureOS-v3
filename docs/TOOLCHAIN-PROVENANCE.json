@@ -1,6 +1,6 @@
 {
   "sdk": "/home/sepisotoni/projects/LeddaZ-OpenTom",
-  "scope": "provenance of tested local SDK; not a complete hermetic toolchain lock",
+  "scope": "checksums for tested local SDK inputs, verified by tools/verify-legacy-sdk.py; not a packaged or hermetic toolchain",
   "files": {
     "Downloads/toolchain_redhat_gcc-3.3.4_glibc-2.3.2-20060131a.tar.gz": "87bde84ae58e2df8ae6a1ddeb14e9f64da14164dfe709e7f7694bd36f89c37ff",
     "gcc-3.3.4_glibc-2.3.2/bin/arm-linux-gcc": "dd45b2c6ced9b8af757e7fbcda8ce4cec8d760a5da4ba099234361eff72485ec",

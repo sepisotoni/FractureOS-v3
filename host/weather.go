@@ -39,11 +39,26 @@ func validateIntegrations(w WeatherConfig, n NotificationConfig) error {
 		return errors.New("invalid weather location or thresholds")
 	}
 	if len(n.Excluded) > 64 {
-		return errors.New("at most 64 excluded apps")
+		return errors.New("at most 64 blocked apps")
 	}
 	for _, app := range n.Excluded {
-		if len(app) > 160 {
-			return errors.New("application name too long")
+		if len(app) == 0 || len(app) > 512 {
+			return errors.New("application name must contain 1 to 512 bytes")
+		}
+	}
+	if len(n.Allowed) > 64 {
+		return errors.New("at most 64 allowed apps")
+	}
+	for _, app := range n.Allowed {
+		if len(app) == 0 || len(app) > 512 {
+			return errors.New("application name must contain 1 to 512 bytes")
+		}
+	}
+	if n.QuietHoursEnabled {
+		start, startOK := clockMinutes(n.QuietStart)
+		end, endOK := clockMinutes(n.QuietEnd)
+		if !startOK || !endOK || start == end {
+			return errors.New("quiet hours must use different 24-hour times such as 22:00 and 07:00")
 		}
 	}
 	return nil

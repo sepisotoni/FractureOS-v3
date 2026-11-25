@@ -33,27 +33,29 @@ import (
 	"time"
 )
 
-const version = "0.1.14"
+const version = "0.1.15"
 
 //go:embed ui.html
 var page string
 
 type Config struct {
-	LyricsEnabled      bool               `json:"lyrics_enabled"`
-	WindowsTemperature bool               `json:"windows_temperature"`
-	Device             string             `json:"device"`
-	Hub                string             `json:"hub"`
-	Listen             string             `json:"listen"`
-	Token              string             `json:"token"`
-	Fingerprint        string             `json:"fingerprint"`
-	HubMetrics         bool               `json:"hub_metrics"`
-	MetricsDisk        string             `json:"metrics_disk"`
-	MetricsInterface   string             `json:"metrics_interface"`
-	MediaEnabled       bool               `json:"media_enabled"`
-	MediaStatus        bool               `json:"media_status"`
-	Audio              AudioConfig        `json:"audio"`
-	Weather            WeatherConfig      `json:"weather"`
-	Notifications      NotificationConfig `json:"notifications"`
+	LyricsEnabled        bool               `json:"lyrics_enabled"`
+	WindowsTemperature   bool               `json:"windows_temperature"`
+	Device               string             `json:"device"`
+	Hub                  string             `json:"hub"`
+	Listen               string             `json:"listen"`
+	Token                string             `json:"token"`
+	Fingerprint          string             `json:"fingerprint"`
+	HubMetrics           bool               `json:"hub_metrics"`
+	MetricsDisk          string             `json:"metrics_disk"`
+	MetricsInterface     string             `json:"metrics_interface"`
+	MediaEnabled         bool               `json:"media_enabled"`
+	MediaStatus          bool               `json:"media_status"`
+	WindowsNotifications bool               `json:"windows_notifications"`
+	Audio                AudioConfig        `json:"audio"`
+	Weather              WeatherConfig      `json:"weather"`
+	Agenda               AgendaConfig       `json:"agenda"`
+	Notifications        NotificationConfig `json:"notifications"`
 }
 
 func configDir() string {
@@ -64,7 +66,7 @@ func configDir() string {
 	return filepath.Join(p, "fracture-v3")
 }
 func readConfig() (Config, error) {
-	c := Config{Device: "192.168.101.115", Hub: "https://127.0.0.1:47831", Listen: "127.0.0.1:47831", Weather: defaultWeather(), LyricsEnabled: true, Audio: defaultAudioConfig()}
+	c := Config{Device: "192.168.101.115", Hub: "https://127.0.0.1:47831", Listen: "127.0.0.1:47831", Weather: defaultWeather(), Agenda: defaultAgenda(), LyricsEnabled: true, Audio: defaultAudioConfig()}
 	b, e := os.ReadFile(filepath.Join(configDir(), "config.json"))
 	if errors.Is(e, os.ErrNotExist) {
 		return c, nil
@@ -79,11 +81,17 @@ func readConfig() (Config, error) {
 		} else if c.Audio.Volume == 0 {
 			c.Audio.Volume = defaultAudioConfig().Volume
 		}
+		if c.Agenda.MaxEvents == 0 {
+			c.Agenda.MaxEvents = defaultAgenda().MaxEvents
+		}
 	}
 	return c, e
 }
 func saveConfig(c Config) error {
 	if e := validateIntegrations(c.Weather, c.Notifications); e != nil {
+		return e
+	}
+	if e := validateAgenda(c.Agenda); e != nil {
 		return e
 	}
 	if e := validateAudio(c.Audio); e != nil {
@@ -152,9 +160,21 @@ func validateCommand(cmd string) error {
 		return e == nil && v >= lo && v <= hi
 	}
 	switch a[0] {
-	case "forecast-reload", "weather-clear", "media-clear", "audio-stop", "status", "face-get", "face-reset", "theme-get", "theme-reset":
+	case "forecast-reload", "weather-clear", "media-clear", "audio-stop", "status", "face-get", "face-reset", "theme-get", "theme-reset", "agenda-clear":
 		if len(a) == 1 {
 			return nil
+		}
+	case "agenda-item":
+		if len(a) == 2 && len(cmd) <= 240 {
+			parts := strings.Split(a[1], ",")
+			if len(parts) == 4 && nAgendaIndex(parts[0]) && mediaTextValid(parts[1]) && mediaTextValid(parts[2]) && mediaTextValid(parts[3]) {
+				timeText, _ := hex.DecodeString(parts[1])
+				title, _ := hex.DecodeString(parts[2])
+				location, _ := hex.DecodeString(parts[3])
+				if len(timeText) > 0 && len(timeText) <= 7 && len(title) > 0 && len(title) <= 48 && len(location) <= 32 {
+					return nil
+				}
+			}
 		}
 	case "audio-start":
 		if len(a) == 2 && regexp.MustCompile(`^[a-f0-9]{32}$`).MatchString(a[1]) {
@@ -512,6 +532,7 @@ func serve() error {
 	registerIntegrations(mux, b, c.Token)
 	registerLyrics(mux, b, c.Token)
 	registerForecast(mux, b, c.Token)
+	registerAgenda(mux, b, c.Token)
 	registerPreview(mux, b, c.Token)
 	registerAudio(mux, b, c.Token)
 	mux.HandleFunc("/api/media", func(w http.ResponseWriter, r *http.Request) {
@@ -521,6 +542,7 @@ func serve() error {
 		}
 		mediaAPI(b, w, r)
 	})
+	registerAudio(mux, b, c.Token)
 	mux.HandleFunc("/api/command", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+c.Token)) != 1 {
@@ -562,6 +584,7 @@ func serve() error {
 	}()
 	go hubBackground(ctx, b)
 	go weatherSupervisor(ctx, b)
+	go agendaSupervisor(ctx, b)
 	go lyricsSupervisor(ctx, b)
 	go audioSupervisor(ctx, b, "linux")
 	log.Printf("FractureOS hub %s listening on https://%s; device %s", version, c.Listen, c.Device)
@@ -697,6 +720,15 @@ func settings(open bool) error {
 			return
 		}
 		switch r.URL.Path {
+		case "/changelog":
+			if r.Method != "GET" {
+				http.Error(w, "GET required", 405)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			if e = json.NewEncoder(w).Encode(releaseNotes); e != nil {
+				http.Error(w, "could not encode changelog", 500)
+			}
 		case "/update":
 			if r.Method != "POST" {
 				http.Error(w, "POST required", 405)
@@ -749,6 +781,16 @@ func settings(open bool) error {
 				return
 			}
 			fmt.Fprint(w, out)
+		case "/notification-test":
+			if r.Method != "POST" {
+				http.Error(w, "POST required", 405)
+				return
+			}
+			if e := notificationTestForward(); e != nil {
+				http.Error(w, e.Error(), 502)
+				return
+			}
+			fmt.Fprint(w, "OK")
 		case "/config":
 			if r.Method == "GET" {
 				c.Token = ""
@@ -765,11 +807,17 @@ func settings(open bool) error {
 				http.Error(w, "invalid configuration", 400)
 				return
 			}
-			// Hub integrations are edited through /integrations. Preserve the latest
+			// Hub integrations are edited through /integrations. Preserve their latest
 			// values when saving local connection/media settings from an older form.
-			newc.Weather = c.Weather
-			newc.Notifications = c.Notifications
-			newc.Audio = c.Audio
+			current, err := readConfig()
+			if err != nil {
+				http.Error(w, "settings unavailable", 500)
+				return
+			}
+			newc.Weather = current.Weather
+			newc.Agenda = current.Agenda
+			newc.Notifications = current.Notifications
+			newc.Audio = current.Audio
 			if newc.Token == "" {
 				newc.Token = c.Token
 			}
@@ -869,6 +917,12 @@ func main() {
 		}
 	case "temperature-worker":
 		e = windowsTemperatureWorker(false)
+	case "notifications-permission":
+		e = notificationPermission()
+	case "notifications-worker":
+		e = windowsNotificationWorker(false)
+	case "notifications-check":
+		e = windowsNotificationWorker(true)
 	case "pawnio-check":
 		e = windowsTemperatureWorker(true)
 	case "pawnio-modules":
@@ -877,6 +931,8 @@ func main() {
 		e = lyricsWorker()
 	case "weather-worker":
 		e = weatherWorker()
+	case "agenda-worker":
+		e = agendaWorker()
 	case "notify":
 		if len(a) != 4 {
 			e = errors.New("usage: fracture notify APP TITLE BODY")
@@ -1013,7 +1069,7 @@ func configCommand(a []string) error {
 	return saveConfig(c)
 }
 func help() {
-	fmt.Println(`FractureOS 0.1.14
+	fmt.Println(`FractureOS 0.1.15
   fracture status | profile minimal|desk|bedside | theme teal|amber|blue
   fracture theme NAME | theme-get | theme-set KEY VALUE | theme-save NEW_NAME | theme-reset
   fracture face NAME | face-get | face-set KEY VALUE | face-reset

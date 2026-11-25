@@ -29,9 +29,9 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/time.h>
-#include <sys/reboot.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <sys/reboot.h>
 #include <linux/fb.h>
 #include <linux/input.h>
 #ifdef __arm__
@@ -45,7 +45,7 @@
 #endif
 #endif /* device platform includes */
 #ifndef FRACTURE_VERSION
-#define FRACTURE_VERSION "0.1.14"
+#define FRACTURE_VERSION "0.1.15"
 #endif
 #define W 320
 #define H 240
@@ -155,6 +155,7 @@ static void brightness(void){
 #include "weather.h"
 #include "media.h"
 #ifndef FRACTURE_RENDER_ONLY
+#include "agenda.h"
 #include "forecast.h"
 #include "navigation.h"
 #include "power.h"
@@ -243,9 +244,10 @@ static int audio_start(const char *token){
 }
 static void command(char *line,char *reply,size_t cap){char *name,*a,*b,*extra;int n,m,i;Settings old=cfg;struct tm t;
  name=strtok(line," \r\n");a=strtok(NULL," \r\n");b=strtok(NULL," \r\n");extra=strtok(NULL," \r\n");snprintf(reply,cap,"ERR invalid command\n");if(!name||extra)return;
- if(weather_command(name,a,b)||media_command(name,a,b)){dirty=1;snprintf(reply,cap,"OK\n");return;}
+ if(weather_command(name,a,b)||media_command(name,a,b)||agenda_command(name,a)){dirty=1;snprintf(reply,cap,"OK\n");return;}
  if(!strcmp(name,"status")&&!a){localtime_now(&t);snprintf(reply,cap,"{\"version\":\"%s\",\"profile\":\"%s\",\"theme\":\"%s\",\"face\":\"%s\",\"face_loaded\":%s,\"brightness\":%d,\"offset\":%d,\"alarm_hour\":%d,\"alarm_minute\":%d,\"timer_seconds\":%d,\"menu\":%d,\"selection\":%d,\"frames\":%d,\"time_valid\":%s,\"hold_live\":%s,\"power_down\":%d,\"stopwatch_seconds\":%d,\"stopwatch_running\":%s,\"media_view\":%s,\"media_art_loaded\":%d,\"media_seq\":%u,\"media_action\":\"%s\",\"media_arg\":%d,\"media_pending\":%s}\n",FRACTURE_VERSION,profiles[cfg.profile],cfg.theme_name,cfg.face,face_ready?"true":"false",cfg.brightness,cfg.offset,cfg.alarm_hour,cfg.alarm_minute,timer_end>mono()?(int)(timer_end-mono()):0,menu,selected,frame_count,t.tm_year>=120?"true":"false",power_regs?"true":"false",power_down,(int)(watch_elapsed+(watch_start?mono()-watch_start:0)),watch_start?"true":"false",menu==PAGE_PLAYER||menu==PAGE_MEDIA_MORE||menu==PAGE_LYRICS||(menu==PAGE_EDIT&&edit_parent==PAGE_PLAYER)?"true":"false",media_art_loaded,media_sequence,media_action,media_argument,media_sequence!=media_ack&&mono()-media_action_at<10?"true":"false");
- {size_t used=strlen(reply);if(used>=2){snprintf(reply+used-2,cap-used+2,",\"telemetry\":%d,\"weather\":%d,\"notifications\":%d,\"media_enabled\":%d,\"appearance\":%d,\"cpu\":%d,\"ram\":%d,\"disk\":%d,\"traffic\":%d,\"weather_live\":%s,\"weather_code\":%d,\"temperature_tenths\":%d,\"weather_unusual\":%s,\"weather_visible\":%s,\"cpu_temp_tenths\":%d,\"cpu_temp_pc\":%s,\"notification_seconds\":%d,\"menu_timeout\":%d,\"notification_active\":%s,\"lyrics_view\":%s,\"lyrics_page\":%d,\"weather_view\":%s,\"lyrics_index\":%d,\"lyrics_buffer\":%d,\"forecast_saved_at\":%ld}\n",cfg.telemetry,cfg.weather,cfg.notifications,cfg.media,cfg.appearance,metrics_live()?cpu:-1,metrics_live()?ram:-1,metrics_live()?disk_usage:-1,metrics_live()?(net_up>net_down?net_up:net_down):-1,weather_live()?"true":"false",weather_code,weather_temp,weather_unusual?"true":"false",weather_visible()?"true":"false",temperature_live()?cpu_temp:-1000,temp_pc?"true":"false",cfg.notice_seconds,cfg.menu_timeout,notice_live()?"true":"false",menu==PAGE_LYRICS?"true":"false",lyrics_page,weather_page(menu)?"true":"false",lyrics_index,lyrics_window?lyrics_window->count:0,forecast_saved);}}return;}
+ {size_t used=strlen(reply);if(used>=2){snprintf(reply+used-2,cap-used+2,",\"telemetry\":%d,\"weather\":%d,\"notifications\":%d,\"media_enabled\":%d,\"appearance\":%d,\"cpu\":%d,\"ram\":%d,\"disk\":%d,\"traffic\":%d,\"weather_live\":%s,\"weather_code\":%d,\"temperature_tenths\":%d,\"weather_unusual\":%s,\"weather_visible\":%s,\"cpu_temp_tenths\":%d,\"cpu_temp_pc\":%s,\"notification_seconds\":%d,\"menu_timeout\":%d,\"notification_active\":%s,\"lyrics_view\":%s,\"lyrics_page\":%d,\"weather_view\":%s,\"agenda_view\":%s,\"lyrics_index\":%d,\"lyrics_buffer\":%d,\"forecast_saved_at\":%ld}\n",cfg.telemetry,cfg.weather,cfg.notifications,cfg.media,cfg.appearance,metrics_live()?cpu:-1,metrics_live()?ram:-1,metrics_live()?disk_usage:-1,metrics_live()?(net_up>net_down?net_up:net_down):-1,weather_live()?"true":"false",weather_code,weather_temp,weather_unusual?"true":"false",weather_visible()?"true":"false",temperature_live()?cpu_temp:-1000,temp_pc?"true":"false",cfg.notice_seconds,cfg.menu_timeout,notice_live()?"true":"false",menu==PAGE_LYRICS?"true":"false",lyrics_page,weather_page(menu)?"true":"false",menu==PAGE_AGENDA?"true":"false",lyrics_index,lyrics_window?lyrics_window->count:0,forecast_saved);used=strlen(reply);if(used>=2)snprintf(reply+used-2,cap-used+2,",\"audio_blocked\":%s}\n",alert?"true":"false");}}return;}
+ if(!strcmp(name,"audio-start")&&a&&!b){if(audio_start(a)){memset(a,0,32);snprintf(reply,cap,"OK\n");}else{memset(a,0,strlen(a));snprintf(reply,cap,"ERR audio unavailable or preempted\n");}return;}
  if(!strcmp(name,"audio-stop")&&!a){audio_stop();snprintf(reply,cap,"OK\n");return;}
  if(!strcmp(name,"forecast-reload")&&!a){forecast_header();if(weather_page(menu))forecast_load();dirty=1;snprintf(reply,cap,"OK\n");return;}
  if(!strcmp(name,"boot-preview")&&!a){startup_at=mono();startup_frame=-1;dirty=1;snprintf(reply,cap,"OK\n");return;}

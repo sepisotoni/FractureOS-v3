@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode"
 )
 
 type mediaDeviceStatus struct {
@@ -47,24 +48,84 @@ type mediaSnapshot struct {
 }
 
 func asciiHex(s string) string {
-	var b strings.Builder
+	var text [80]byte
+	length := 0
+	appendText := func(value string) {
+		for i := 0; i < len(value) && length < len(text); i++ {
+			text[length] = value[i]
+			length++
+		}
+	}
+	unsupported := false
 	for _, r := range s {
-		if b.Len() >= 80 {
+		if length == len(text) {
 			break
 		}
-		if r < 32 {
-			r = ' '
+		if replacement, ok := mediaASCIIFallback[r]; ok {
+			appendText(replacement)
+			unsupported = false
+			continue
 		}
-		if r > 126 {
-			r = '?'
+		if r >= 32 && r <= 126 {
+			text[length] = byte(r)
+			length++
+			unsupported = false
+			continue
 		}
-		b.WriteByte(byte(r))
+		if unicode.Is(unicode.Mn, r) {
+			continue
+		}
+		if unicode.IsSpace(r) || unicode.IsControl(r) {
+			if length > 0 && text[length-1] != ' ' {
+				appendText(" ")
+			}
+			unsupported = false
+			continue
+		}
+		if !unsupported && length > 0 && text[length-1] != ' ' {
+			appendText(" ")
+		}
+		unsupported = true
 	}
-	if b.Len() == 0 {
+	start, end := 0, length
+	for start < end && text[start] == ' ' {
+		start++
+	}
+	for end > start && text[end-1] == ' ' {
+		end--
+	}
+	if start == end && strings.TrimSpace(s) != "" {
+		return hex.EncodeToString([]byte("[text unavailable]"))
+	}
+	if start == end {
 		return "-"
 	}
-	return hex.EncodeToString([]byte(b.String()))
+	return hex.EncodeToString(text[start:end])
 }
+
+var mediaASCIIFallback = map[rune]string{
+	'À': "A", 'Á': "A", 'Â': "A", 'Ã': "A", 'Ä': "A", 'Å': "A", 'Ā': "A", 'Ă': "A", 'Ą': "A",
+	'à': "a", 'á': "a", 'â': "a", 'ã': "a", 'ä': "a", 'å': "a", 'ā': "a", 'ă': "a", 'ą': "a",
+	'Ç': "C", 'Ć': "C", 'Ĉ': "C", 'Č': "C", 'ç': "c", 'ć': "c", 'ĉ': "c", 'č': "c",
+	'Ð': "D", 'Ď': "D", 'ð': "d", 'ď': "d",
+	'È': "E", 'É': "E", 'Ê': "E", 'Ë': "E", 'Ē': "E", 'Ĕ': "E", 'Ė': "E", 'Ę': "E", 'Ě': "E",
+	'è': "e", 'é': "e", 'ê': "e", 'ë': "e", 'ē': "e", 'ĕ': "e", 'ė': "e", 'ę': "e", 'ě': "e",
+	'Ì': "I", 'Í': "I", 'Î': "I", 'Ï': "I", 'Ī': "I", 'Į': "I", 'ì': "i", 'í': "i", 'î': "i", 'ï': "i", 'ī': "i", 'į': "i",
+	'Ł': "L", 'Ľ': "L", 'ł': "l", 'ľ': "l",
+	'Ñ': "N", 'Ń': "N", 'Ň': "N", 'ñ': "n", 'ń': "n", 'ň': "n",
+	'Ò': "O", 'Ó': "O", 'Ô': "O", 'Õ': "O", 'Ö': "O", 'Ø': "O", 'Ō': "O", 'Ő': "O",
+	'ò': "o", 'ó': "o", 'ô': "o", 'õ': "o", 'ö': "o", 'ø': "o", 'ō': "o", 'ő': "o",
+	'Ŕ': "R", 'Ř': "R", 'ŕ': "r", 'ř': "r",
+	'Ś': "S", 'Ş': "S", 'Š': "S", 'ś': "s", 'ş': "s", 'š': "s",
+	'ß': "ss", 'Ţ': "T", 'Ť': "T", 'ţ': "t", 'ť': "t",
+	'Ù': "U", 'Ú': "U", 'Û': "U", 'Ü': "U", 'Ū': "U", 'Ů': "U", 'Ű': "U",
+	'ù': "u", 'ú': "u", 'û': "u", 'ü': "u", 'ū': "u", 'ů': "u", 'ű': "u",
+	'Ý': "Y", 'Ÿ': "Y", 'ý': "y", 'ÿ': "y", 'Ž': "Z", 'Ź': "Z", 'Ż': "Z", 'ž': "z", 'ź': "z", 'ż': "z",
+	'Æ': "AE", 'æ': "ae", 'Œ': "OE", 'œ': "oe", 'Þ': "Th", 'þ': "th",
+	'‘': "'", '’': "'", '‚': "'", '“': "\"", '”': "\"", '„': "\"",
+	'‐': "-", '‑': "-", '‒': "-", '–': "-", '—': "-", '…': "...",
+}
+
 func mediaTextValid(s string) bool {
 	if s == "-" {
 		return true

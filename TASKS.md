@@ -1,6 +1,6 @@
 # FractureOS v3 task board
 
-Status: v0.1.11 is installed on the TomTom and matching Linux hub. Timed lyrics, grouped Clock/Quick settings, telemetry grace and exact shared home rendering passed manual checks; Windows x64 installer/update and renderer checks passed. Windows sensor hardware and earlier firmware-logo replacement remain open. See [release validation](docs/RELEASE-VALIDATION.md). Updated 2026-10-27.
+Status: v0.1.11 remains the latest stable release and v0.1.14 the latest published prerelease. This branch is a v0.1.15 Beta candidate based on v0.1.14; four platform archives have been built and checksummed locally, but no v0.1.15 GitHub release is published. Store, Windows visual and physical-device gates remain open. See [release validation](docs/RELEASE-VALIDATION.md). Updated for the v0.1.15 integration.
 
 Checkboxes mean the stated deliverable is complete, not merely discussed. Design tasks and implementation tasks are tracked separately. Update this file as each deliverable lands; add evidence or a limitation alongside completed implementation tasks. Experimental features remain open until demonstrated on the target hardware or explicitly declined by the owner.
 
@@ -16,7 +16,7 @@ Checkboxes mean the stated deliverable is complete, not merely discussed. Design
 - [x] R08 Build platform-selecting Linux/Windows installers and uninstallers; Linux install/uninstall fixture passed.
 - [x] R09 Manually check all nine faces with extra information, rehearse device restore/reinstall and test the actual TLS hub, collector shutdown and settings endpoints.
 - [x] R10 Publish repository and release downloads, then test the public installation command. v0.1.7 public installation completed on the Linux hub.
-- [x] R11 Validate Windows installer/tray on a real Windows session. Windows x64 runner passed native UI, tray close, in-place update/reopen and uninstall. Owner-specific playback/PawnIO hardware acceptance remains separate.
+- [x] R11 Validate Windows installer/tray on a real Windows session. Windows x64 runner passed native UI, tray close, in-place update/reopen and uninstall. Owner-specific playback acceptance remains separate; the owner reports PawnIO works.
 
 ## U — Requested UI, input and media revision
 
@@ -38,7 +38,7 @@ The P-series checkboxes below describe complete target modules. Initial implemen
 - [x] V05 Add separate native Windows and web dashboards, with no dashboard process while closed.
 - [x] V06 Build an Inno Setup installer with uninstallation and publish downloadable builds.
 - [x] V07 Correct Linux/TomTom LAN address ownership and verify routing.
-- [x] V08 Add authenticated notification forwarding and application exclusions. Silent webhook implemented; automatic Windows toast capture and notification sound playback remain pending.
+- [x] V08 Add authenticated notification forwarding and application exclusions. Silent webhook and an opt-in Windows listener candidate are implemented; Store/install/runtime gates and notification sound remain pending.
 - [x] V10 Replace disk widget with live CPU temperature; add optional signed PawnIO sensor support for Windows.
 - [x] V09 Manually validate on the TomTom, preserve settings and document measured limits.
 
@@ -49,7 +49,7 @@ The P-series checkboxes below describe complete target modules. Initial implemen
 - [x] W03 Add configurable 30-second menu inactivity timeout with preview cancellation.
 - [x] W04 Draw Spotify and transport/volume/more icons; add player clock.
 - [x] W05 Add bounded on-demand synchronized/plain lyrics lookup and authenticated lyrics webhook.
-- [ ] W06 Correct PawnIO access handling and add an explicitly approved elevated sensor helper. Flow and pinned-module checks implemented and Windows builds passed; actual UAC/temperature acceptance on the owner’s installed driver is pending.
+- [x] W06 Correct PawnIO access handling and add an explicitly approved elevated sensor helper. Flow and pinned-module checks implemented and Windows builds passed; the owner reports PawnIO works on their PC. The exact hardware and authorization path were not independently inspected.
 - [x] W07 Create one FractureOS vector logo, app/tray/installer resources and web favicon; replace backed-up TomTom icon. Final root icon SHA-256 verified after reconnection.
 - [x] W09 Add on-demand cached hourly/7-day Weather app.
 - [x] W10 Add verified one-click app updates in native/web dashboards.
@@ -68,13 +68,13 @@ The P-series checkboxes below describe complete target modules. Initial implemen
 - [x] P000 Build and verify Telnet/transfer harness, diagnostic C binary and device shell smoke script. Final run: 17 harness checks and seven C primitive checks passed; six host protocol regression tests passed. See `docs/DEVICE-VALIDATION.md`.
 - [x] P001 Record current boot scripts, mounts, device drivers, relevant kernel headers, compiler ABI, libc/loader and executable format. Current boot image matched the local OpenTom build; targeted backups and SDK provenance saved. Previous prototype directory is absent.
 - [ ] P002 Produce a reproducible ARMv5 build toolchain/sysroot compatible with Linux 2.6.13 and the discovered ABI. Installing an ARM compiler alone does not establish compatibility.
-  - Progress: existing GCC 3.3.4/glibc 2.3.2 SDK builds a working binary; repeated build is byte-identical. Archive/header provenance recorded; a complete portable pinned toolchain remains to be packaged.
+  - Progress: `tools/verify-legacy-sdk.py` checks every recorded SDK archive/compiler/sysroot/header/source hash and builds the device app and probe twice to verify byte-identical output. The tested archive hash matches provenance. A portable toolchain package/bootstrap and fresh-machine validation remain outstanding.
 - [x] P003 Build and run a minimal v3 C binary on-device; 10,728 bytes, exit 0, libc-only dependency, 424 KiB measured RSS. Transfer readback SHA-256 matches.
 - [x] P004 Validate framebuffer ioctls, pitch, offsets and pixel format using a reversible display session.
   - Verified RGB565/pitch/offsets and live rendering on the device; framebuffer screenshots captured during release validation.
 - [ ] P005 Validate touch press/release, noise and power-button durations; inspect existing power policy before replacing its event owner. No coordinate-based navigation requirement.
 - [ ] P006 Validate brightness, RTC retention, battery status, audio output and GPS separately. Record unsupported capabilities explicitly; do not infer hardware from device-node names.
-  - Progress: brightness 30, battery voltage/charge status and RTC read verified. Retention, brightness writes, audio and GPS fix untested.
+  - Progress: brightness 30, battery voltage/charge status and RTC read verified. GPS hardware reports Global Locate (`gpstype=128`); the original `gltt` helper produced a valid fix when run with a process-scoped `LD_LIBRARY_PATH` to the existing `/mnt/sdcard/opentom/lib`. No library was copied or persistent configuration changed. RTC retention, brightness writes and audio remain unverified.
 - [x] P007 Save a host-side backup and boot-file hashes; define and rehearse restoration before enabling v3 autostart.
   - Boot image/start scripts backed up and hashed; live restore/reinstall rehearsed. This is a targeted recovery backup, not a full SD-card image.
 - [ ] P008 Establish Linux/device and real Windows measurement baselines. Windows runtime tests require access to a Windows session; cross-compiling is not runtime verification.
@@ -139,7 +139,7 @@ The P-series checkboxes below describe complete target modules. Initial implemen
 
 ## Current handoff
 
-The v0.1.9 application runs on the TomTom, with persistent startup and preserved OpenTom recovery. The Linux hub is installed as a user service on the owner's host. Remaining work starts with real Windows acceptance, physical button/noise validation, portable toolchain packaging and the broader module lifecycle/protocol/editor design. The large feature catalog remains a roadmap, not a completed implementation. Use manual target-device checks for follow-up UI changes; do not add Python test harnesses or scheduled test jobs.
+The latest stable release is v0.1.11; v0.1.14 is the latest published prerelease and was installed on the Linux host and TomTom per its 2026-11-11 session record. This `release/v0.1.15-beta` candidate integrates the requested host/device work on the v0.1.14 base. Go/C source builds and focused tests pass; four platform archives and their SHA-256 manifest were generated locally. No v0.1.15 release, Store acceptance, Windows runtime or new TomTom deployment is claimed. The listener implementation and MSIX workflow do not establish Store approval or Windows runtime acceptance. Broader P-series items remain roadmap, not completed implementation.
 
 ## X — v0.1.11 playback, navigation and local preview
 
@@ -149,3 +149,39 @@ The v0.1.9 application runs on the TomTom, with persistent startup and preserved
 - [x] X04 Refine the curved purple/blue F; add a lightweight Fracture → FractureOS startup animation and inspect the earlier boot-logo mechanism. Application animation checked; earlier firmware graphics remain unchanged.
 - [x] X05 Render the home preview locally on Windows using the shared C renderer and synchronized face/theme/font/model data; unload it when hidden.
 - [x] X06 Check on TomTom and Windows, preserve settings, package/install and publish v0.1.11 with explicit hardware limits.
+
+## v0.1.12 — requested feature scope
+
+- [x] V12-01 Add a date above and seconds at lower right on every supplied face except the owner's Nunito face; redesign TomTom Quick settings as compact icon-led tiles. Installed v0.1.12 on 2026-11-01, then deployed the refined centered-tile/top-right-status layout to a separate same-version slot with settings preserved; owner visual acceptance is pending.
+- [x] V12-02 Add a read-only Today agenda from a user-configured ICS feed URL; send bounded upcoming summaries to the device. Disabled by default; local recurrence/payload tests pass, but no personal feed URL or new device build has been configured/validated.
+- [x] V12-03 Add notification quiet hours using the Windows host's local time. Quiet-window notifications are dropped rather than replayed.
+- [x] V12-04 Add opt-in Windows tray startup at user login. The existing Inno Setup installer exposes an unchecked startup task.
+- [x] V12-05 Add notification listener/permission/hub/device health diagnostics, last-success time and a synthetic test-forward action. Code is implemented; Windows runtime acceptance remains gated below.
+- [x] V12-06 Improve exact per-app allow/block controls while retaining an explicit privacy opt-in. Matching supports app display names and Windows app IDs; block rules take precedence.
+- [x] V12-07 Add quick-select face presets for common face/layout/theme combinations in the web Appearance view and on the TomTom.
+- [x] V12-08 Check the battery signal before adding a warning: the current driver/app path exposes charge state but no trustworthy capacity or low-charge threshold. No percentage is inferred from voltage and no low-battery warning is added.
+- [ ] V12-09 Complete the Microsoft Store MSIX submission, install, consent and real WhatsApp end-to-end gates below.
+
+## Windows notification Store submission
+
+- [ ] Obtain the Partner Center package Name, Publisher, and PublisherDisplayName, then dispatch the Windows MSIX packages workflow for version 0.1.15.0. Coordinate the Store account details with the owner.
+- [ ] Submit the generated unsigned MSIX bundle in Partner Center with the `userNotificationListener` capability justification; complete Store policy review and publication.
+- [ ] Set the published Store product ID in the bootstrap, install the Store package on Windows, grant notification access, and verify WhatsApp text/logo forwarding end to end.
+
+## v0.1.12 Beta — host and weather polish
+
+- [x] B12-01 Reorganize the desktop web dashboard into Overview, Device, Appearance, Integrations and System views with local SVG icons. Mobile-specific layout is intentionally out of scope.
+- [x] B12-02 Expand Open-Meteo condition names and device labels to distinguish cloud cover, precipitation type/intensity, showers, fog, snow and thunderstorms; unknown codes stay explicit.
+- [x] B12-03 Replace question-mark corruption in song titles with bounded ASCII transliteration and an explicit fallback for unsupported scripts.
+- [x] B12-04 Consolidate the Windows Start-menu shortcuts into one FractureOS dashboard entry; retain optional tray startup and the standard Installed Apps uninstaller.
+- [x] B12-05 Validate the web dashboard in Chrome, capture a README screenshot, measure host process memory and check collector/preview cleanup. Desktop navigation passed; mobile-specific layout was subsequently dropped per owner request. Visible-view polling and the previous v0.1.11 native-preview unload evidence are recorded in `docs/RELEASE-VALIDATION.md`. The 13,060 KiB RSS figure is a point sample, not a soak result.
+- [ ] B12-06 Obtain Partner Center package identity, build/submit MSIX, pass Store review/signing, install with user consent and test real notifications. These are owner/Store gates; no public publication is claimed here.
+
+## v0.1.13 Beta — native and device refinement
+
+- [ ] B13-01 Redesign the native Go/Win32 dashboard and make controls reflow at supported window sizes; retain lazy preview and worker lifecycles.
+  - Progress: resize-aware navigation, controls and overview cards are implemented with layout tests and Windows cross-builds. Windows visual/interaction acceptance is still required; see `docs/RELEASE-VALIDATION.md`.
+- [ ] B13-02 Refine TomTom app views with practical scalable navigation and weather condition artwork; four device-side face/layout/theme presets are implemented, but device deployment and artwork acceptance still require separate validation.
+- [x] B13-03 Implement the opt-in read-only agenda with host-local Today filtering, recurrence expansion, bounded transient device summaries and optional locations. A live personal feed and physical TomTom acceptance remain unverified; notification diagnostics and quiet hours are implemented.
+- [x] B13-04 Add a shared Go changelog and expose it in the web and native dashboards; clearly distinguish stable releases from unpublished Beta work.
+- [x] B13-05 Refresh README and implementation/release guides to distinguish the published v0.1.14 base from the unpublished v0.1.15 Beta candidate and record remaining acceptance gates.
