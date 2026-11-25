@@ -65,6 +65,12 @@ func effectiveConnectionMode(c Config) string {
 	if c.ConnectionMode == "direct" {
 		return "direct"
 	}
+	if c.ConnectionMode == "hub" {
+		return "hub"
+	}
+	if runtime.GOOS == "windows" && (c.Hub == "" || strings.HasPrefix(c.Hub, "https://127.0.0.1:")) {
+		return "direct"
+	}
 	return "hub"
 }
 

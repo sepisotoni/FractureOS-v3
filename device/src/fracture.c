@@ -58,7 +58,9 @@ static const char *profiles[]={"minimal","desk","bedside"};
 static const char *themes[]={"teal","amber","blue"};
 static uint16_t pixels[W*H];
 static uint16_t *wallpaper,*wallpaper_blur1,*wallpaper_blur2;
-static void wallpaper_release(void){free(wallpaper);free(wallpaper_blur1);free(wallpaper_blur2);wallpaper=wallpaper_blur1=wallpaper_blur2=NULL;}
+static unsigned long wallpaper_hash;
+static unsigned long content_hash(const unsigned char *p,size_t n);
+static void wallpaper_release(void){free(wallpaper);free(wallpaper_blur1);free(wallpaper_blur2);wallpaper=wallpaper_blur1=wallpaper_blur2=NULL;wallpaper_hash=0;}
 static void wallpaper_blur_pass(const uint16_t *src,uint16_t *dst,int rad,int dim_pct){
  int x,y,dx,dy;uint16_t *tmp=malloc((size_t)W*H*2);
  if(!tmp){memcpy(dst,src,(size_t)W*H*2);return;}
@@ -84,6 +86,7 @@ static void wallpaper_load(void){FILE *f=fopen("/mnt/sdcard/fracture-v3/wallpape
  wallpaper_dim(raw,68);
  wallpaper_release();
  wallpaper=raw;wallpaper_blur1=b1;wallpaper_blur2=b2;
+ wallpaper_hash=content_hash((const unsigned char*)wallpaper,(size_t)W*H*2);
 }
 #ifndef FRACTURE_RENDER_ONLY
 static unsigned char *mapped;

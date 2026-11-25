@@ -13,10 +13,11 @@ import (
 // Loaded only by a visible home dashboard. Closing/changing tabs releases the
 // frame, atlas, font, notification thumbnail and the renderer DLL itself.
 type homeRenderer struct {
-	dll                             *syscall.DLL
-	assets, notice, render, release *syscall.Proc
-	pixels                          []byte
-	atlasHash, fontHash, noticeHash uint32
+	dll                                        *syscall.DLL
+	assets, notice, wallpaper, render, release *syscall.Proc
+	pixels                                     []byte
+	atlasHash, fontHash, noticeHash            uint32
+	wallpaperHash                              uint32
 }
 
 func (p *homeRenderer) close() {
@@ -40,7 +41,7 @@ func (p *homeRenderer) draw(dc uintptr, x, y int, packet homePreviewPacket) erro
 			return errors.New("Home renderer is missing; install the complete FractureOS package")
 		}
 		p.dll = dll
-		for name, dest := range map[string]**syscall.Proc{"FracturePreviewAssets": &p.assets, "FracturePreviewNotice": &p.notice, "FracturePreviewRender": &p.render, "FracturePreviewClose": &p.release} {
+		for name, dest := range map[string]**syscall.Proc{"FracturePreviewAssets": &p.assets, "FracturePreviewNotice": &p.notice, "FracturePreviewWallpaper": &p.wallpaper, "FracturePreviewRender": &p.render, "FracturePreviewClose": &p.release} {
 			proc, e := dll.FindProc(name)
 			if e != nil {
 				_ = dll.Release()
@@ -77,6 +78,17 @@ func (p *homeRenderer) draw(dc uintptr, x, y int, packet homePreviewPacket) erro
 			return errors.New("Invalid notification artwork")
 		}
 		p.noticeHash = packet.NoticeHash
+	}
+	if p.wallpaperHash != packet.WallpaperHash {
+		data := uintptr(0)
+		if len(packet.Wallpaper) > 0 {
+			data = uintptr(unsafe.Pointer(&packet.Wallpaper[0]))
+		}
+		ok, _, _ := p.wallpaper.Call(data, uintptr(len(packet.Wallpaper)))
+		runtime.KeepAlive(packet)
+		if ok != 0 {
+			p.wallpaperHash = packet.WallpaperHash
+		}
 	}
 	model, e := syscall.BytePtrFromString(packet.Model)
 	if e != nil {

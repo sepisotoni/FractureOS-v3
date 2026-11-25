@@ -317,11 +317,32 @@ func platformDashboard() error {
 			edit(228, strconv.Itoa(st.MenuTimeout), 582, 252, 132, false)
 			label("Notify (s)", 730, 224)
 			edit(229, strconv.Itoa(st.NoticeSeconds), 730, 252, 132, false)
-			check(225, "Show telemetry on the TomTom", st.Telemetry != 0, 42, 322, 380)
-			check(226, "Enable media controls on the TomTom", st.Media != 0, 42, 356, 380)
-			check(262, "Look up lyrics when the Lyrics page is open", q.LyricsEnabled == nil || *q.LyricsEnabled, 452, 322, 410)
-			button(227, "Apply to TomTom", 42, 416, 220)
-			labelWide("Preview faces directly on device: TomTom Settings > Faces (hold Power to cancel).", 42, 466, 820)
+			check(225, "Show telemetry on the TomTom", st.Telemetry != 0, 42, 316, 380)
+			check(226, "Enable media controls on the TomTom", st.Media != 0, 42, 348, 380)
+			check(262, "Look up lyrics when the Lyrics page is open", q.LyricsEnabled == nil || *q.LyricsEnabled, 452, 316, 410)
+			button(227, "Apply to TomTom", 42, 384, 220)
+			wpOpts := []string{"PC wallpaper (auto)", "Legacy black (#000000)", "Preset: 01 Purple Blue", "Preset: 02 Midnight Sweep", "Preset: 03 Dual Current", "Custom (web studio)"}
+			wpCur := wpOpts[0]
+			switch c.Wallpaper.Mode {
+			case "color":
+				wpCur = wpOpts[1]
+			case "preset":
+				switch c.Wallpaper.Preset {
+				case "02-midnight-sweep.jpg":
+					wpCur = wpOpts[3]
+				case "03-dual-current.jpg":
+					wpCur = wpOpts[4]
+				default:
+					wpCur = wpOpts[2]
+				}
+			case "custom":
+				wpCur = wpOpts[5]
+			}
+			label("Wallpaper", 42, 434)
+			combo(2201, wpOpts, wpCur, 42, 460, 260)
+			button(2202, "Apply wallpaper", 316, 458, 175)
+			button(2203, "Custom / Crop studio...", 505, 458, 205)
+			labelWide("Preview faces and wallpapers live on the Dashboard tab.", 42, 504, 820)
 		case 2:
 			modeLabel := "Remote Linux hub"
 			if effectiveConnectionMode(c) == "direct" {
@@ -493,6 +514,64 @@ func platformDashboard() error {
 					}
 					return "Clock updated", nil
 				})
+			case 2202:
+				sel := get(2201)
+				payload := map[string]any{"mode": "pc", "color": "000000"}
+				switch sel {
+				case "Legacy black (#000000)":
+					payload["mode"] = "color"
+				case "Preset: 01 Purple Blue":
+					payload["mode"] = "preset"
+					payload["preset"] = "01-purple-blue-ribbon-flow.jpg"
+				case "Preset: 02 Midnight Sweep":
+					payload["mode"] = "preset"
+					payload["preset"] = "02-midnight-sweep.jpg"
+				case "Preset: 03 Dual Current":
+					payload["mode"] = "preset"
+					payload["preset"] = "03-dual-current.jpg"
+				case "Custom (web studio)":
+					if c.Wallpaper.CustomID != "" {
+						payload["mode"] = "custom"
+						payload["custom_id"] = c.Wallpaper.CustomID
+					} else {
+						mu.Lock()
+						message = "Open Custom / Crop studio to upload your first custom wallpaper."
+						mu.Unlock()
+						invalidate()
+						return 0
+					}
+				}
+				async(func() (string, error) {
+					conf, e := readConfig()
+					if e != nil {
+						return "", e
+					}
+					raw, e := hubRequest(conf, "/api/wallpaper", payload)
+					if e != nil {
+						return "", e
+					}
+					if updated, e2 := readConfig(); e2 == nil {
+						c = updated
+					}
+					var resp struct {
+						Warning string `json:"warning"`
+					}
+					_ = json.Unmarshal([]byte(raw), &resp)
+					if resp.Warning != "" {
+						return resp.Warning, nil
+					}
+					return "Wallpaper applied to TomTom", nil
+				})
+			case 2203:
+				exe, _ := os.Executable()
+				cmd := exec.Command(exe, "web")
+				if cmd.Start() == nil {
+					go cmd.Wait()
+				}
+				mu.Lock()
+				message = "Opened Web Dashboard — select Wallpaper in the sidebar to crop & upload."
+				mu.Unlock()
+				invalidate()
 			case 235:
 				next := c
 				if get(290) == "Direct USB to this PC" {
@@ -512,8 +591,14 @@ func platformDashboard() error {
 				next.MediaEnabled = checked(233)
 				next.MediaStatus = checked(234)
 				next.WindowsTemperature = checked(236)
-				if next.ConnectionMode == "direct" && next.Listen == "" {
-					next.Listen = "127.0.0.1:47831"
+				if next.ConnectionMode == "direct" {
+					if next.Listen == "" {
+						next.Listen = "127.0.0.1:47831"
+					}
+					if next.Hub == "" || !strings.HasPrefix(next.Hub, "https://127.0.0.1:") {
+						next.Hub = "https://" + next.Listen
+						user32.NewProc("SetWindowTextW").Call(fields[230], uintptr(unsafe.Pointer(wide(next.Hub))))
+					}
 				}
 				if e := saveConfig(next); e != nil {
 					mu.Lock()

@@ -405,7 +405,7 @@ func pushWallpaperToDevice(b *Broker, rawImage []byte) error {
 	return err
 }
 
-func applyWallpaper(b *Broker, next WallpaperConfig, uploadedImage []byte, customName string) (WallpaperConfig, error) {
+func applyWallpaper(b *Broker, next WallpaperConfig, uploadedImage []byte, customName string) (WallpaperConfig, string, error) {
 	wallpaperMu.Lock()
 	defer wallpaperMu.Unlock()
 
@@ -413,71 +413,66 @@ func applyWallpaper(b *Broker, next WallpaperConfig, uploadedImage []byte, custo
 		next.Color = "000000"
 	}
 	if !wallpaperHexColor.MatchString(next.Color) {
-		return next, errors.New("invalid hex color")
+		return next, "", errors.New("invalid hex color")
 	}
 	next.Color = strings.ToLower(next.Color)
 
+	var rgb565 []byte
+	var warning string
 	switch next.Mode {
 	case "color":
-		if _, err := b.call("wallpaper clear"); err != nil {
-			return next, err
-		}
-		_ = b.batch([]string{
-			"face-set background " + next.Color,
-			"theme-set background " + next.Color,
-		})
+		// Persist first, then clear on device if reachable.
 	case "pc":
 		raw, hash, err := readPCWallpaper()
 		if err != nil {
-			return next, err
+			return next, "", err
 		}
-		if err := pushWallpaperToDevice(b, raw); err != nil {
-			return next, err
+		rgb565, _, err = imageToWallpaper(raw)
+		if err != nil {
+			return next, "", err
 		}
 		next.LastPCHash = hash
 	case "preset":
 		presetPath, err := findWallpaperPresetPath(next.Preset)
 		if err != nil {
-			return next, err
+			return next, "", err
 		}
 		raw, err := os.ReadFile(presetPath)
 		if err != nil {
-			return next, err
+			return next, "", err
 		}
-		if err := pushWallpaperToDevice(b, raw); err != nil {
-			return next, err
+		rgb565, _, err = imageToWallpaper(raw)
+		if err != nil {
+			return next, "", err
 		}
 		next.Preset = filepath.Base(presetPath)
 	case "custom":
 		if len(uploadedImage) > 0 {
-			rgb565, pngBytes, err := imageToWallpaper(uploadedImage)
+			var pngBytes []byte
+			var err error
+			rgb565, pngBytes, err = imageToWallpaper(uploadedImage)
 			if err != nil {
-				return next, err
+				return next, "", err
 			}
 			id, err := addCustomWallpaperToHistory(customName, pngBytes)
 			if err != nil {
-				return next, err
-			}
-			if err := uploadWallpaper(b.device, rgb565); err != nil {
-				return next, err
-			}
-			if _, err := b.call("wallpaper load"); err != nil {
-				return next, err
+				return next, "", err
 			}
 			next.CustomID = id
 		} else if wallpaperIDRegex.MatchString(next.CustomID) {
 			raw, err := os.ReadFile(filepath.Join(wallpaperDir(), next.CustomID+".png"))
 			if err != nil {
-				return next, err
+				return next, "", err
 			}
-			if err := pushWallpaperToDevice(b, raw); err != nil {
-				return next, err
+			rgb565, _, err = imageToWallpaper(raw)
+			if err != nil {
+				return next, "", err
 			}
 		} else {
-			return next, errors.New("no custom wallpaper selected")
+			return next, "", errors.New("no custom wallpaper selected")
 		}
 	default:
-		return next, errors.New("unsupported wallpaper mode")
+		return next, "", errors.New("unsupported wallpaper mode")
 	}
 
 	c, err := readConfig()
@@ -485,7 +480,66 @@ func applyWallpaper(b *Broker, next WallpaperConfig, uploadedImage []byte, custo
 		c.Wallpaper = next
 		_ = saveConfig(c)
 	}
-	return next, nil
+
+	if b != nil && b.device != "" {
+		if next.Mode == "color" {
+			if _, err := b.call("wallpaper clear"); err != nil {
+				warning = "Saved solid colour; will apply when TomTom connects."
+			} else {
+				_ = b.batch([]string{
+					"face-set background " + next.Color,
+					"theme-set background " + next.Color,
+				})
+			}
+		} else if len(rgb565) == wallpaperRGB565Size {
+			if err := uploadWallpaper(b.device, rgb565); err != nil {
+				warning = "Saved wallpaper; will sync to TomTom when connected."
+			} else if _, err := b.call("wallpaper load"); err != nil {
+				warning = "Saved wallpaper; will sync to TomTom when connected."
+			}
+		}
+	}
+	return next, warning, nil
+}
+
+func activeWallpaperPreview(w WallpaperConfig) string {
+	var raw []byte
+	switch w.Mode {
+	case "color":
+		return ""
+	case "pc":
+		data, _, err := readPCWallpaper()
+		if err != nil {
+			return ""
+		}
+		raw = data
+	case "preset":
+		p, err := findWallpaperPresetPath(w.Preset)
+		if err != nil {
+			return ""
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return ""
+		}
+		raw = data
+	case "custom":
+		if !wallpaperIDRegex.MatchString(w.CustomID) {
+			return ""
+		}
+		data, err := os.ReadFile(filepath.Join(wallpaperDir(), w.CustomID+".png"))
+		if err != nil {
+			return ""
+		}
+		return "data:image/png;base64," + base64.StdEncoding.EncodeToString(data)
+	default:
+		return ""
+	}
+	_, pngThumb, err := imageToWallpaper(raw)
+	if err != nil {
+		return ""
+	}
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(pngThumb)
 }
 
 func wallpaperSupervisor(ctx context.Context, b *Broker) {
@@ -580,10 +634,11 @@ func registerWallpaper(mux *http.ServeMux, b *Broker, token string) {
 			_, _, pcErr := readPCWallpaper()
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"config":       c.Wallpaper,
-				"history":      readWallpaperHistory(true),
-				"presets":      listWallpaperPresets(),
-				"pc_available": pcErr == nil,
+				"config":         c.Wallpaper,
+				"history":        readWallpaperHistory(true),
+				"presets":        listWallpaperPresets(),
+				"pc_available":   pcErr == nil,
+				"active_preview": activeWallpaperPreview(c.Wallpaper),
 			})
 		case "POST":
 			r.Body = http.MaxBytesReader(w, r.Body, 8*1024*1024)
@@ -610,10 +665,11 @@ func registerWallpaper(mux *http.ServeMux, b *Broker, token string) {
 				_, _, pcErr := readPCWallpaper()
 				w.Header().Set("Content-Type", "application/json")
 				_ = json.NewEncoder(w).Encode(map[string]any{
-					"config":       c.Wallpaper,
-					"history":      readWallpaperHistory(true),
-					"presets":      listWallpaperPresets(),
-					"pc_available": pcErr == nil,
+					"config":         c.Wallpaper,
+					"history":        readWallpaperHistory(true),
+					"presets":        listWallpaperPresets(),
+					"pc_available":   pcErr == nil,
+					"active_preview": activeWallpaperPreview(c.Wallpaper),
 				})
 				return
 			}
@@ -656,15 +712,17 @@ func registerWallpaper(mux *http.ServeMux, b *Broker, token string) {
 				Preset:   req.Preset,
 				CustomID: req.CustomID,
 			}
-			applied, err := applyWallpaper(b, next, imgBytes, req.Name)
+			applied, warning, err := applyWallpaper(b, next, imgBytes, req.Name)
 			if err != nil {
-				http.Error(w, err.Error(), 502)
+				http.Error(w, err.Error(), 400)
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"config":  applied,
-				"history": readWallpaperHistory(true),
+				"config":         applied,
+				"history":        readWallpaperHistory(true),
+				"active_preview": activeWallpaperPreview(applied),
+				"warning":        warning,
 			})
 		case "DELETE":
 			id := r.URL.Query().Get("id")

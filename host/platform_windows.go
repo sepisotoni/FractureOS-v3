@@ -239,7 +239,7 @@ func directHubSupervisor(ctx context.Context) {
 		if c.Listen == "" {
 			c.Listen = "127.0.0.1:47831"
 		}
-		if c.Hub == "" {
+		if c.Hub == "" || !strings.HasPrefix(c.Hub, "https://127.0.0.1:") {
 			c.Hub = "https://" + c.Listen
 		}
 		_ = identity(&c)
@@ -247,7 +247,7 @@ func directHubSupervisor(ctx context.Context) {
 		done := make(chan error, 1)
 		activeListen, activeDevice = c.Listen, c.Device
 		hubCancel, hubDone = cancel, done
-		go func() { done <- serveWithContext(hubCtx, false) }()
+		go func() { done <- serveWithContext(hubCtx, true) }()
 	}
 	check()
 	for {

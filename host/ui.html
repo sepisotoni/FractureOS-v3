@@ -544,6 +544,7 @@
           <button type="button" data-page="dashboard" aria-current="page"><svg><use href="#i-overview"/></svg>Overview</button>
           <button type="button" data-page="device"><svg><use href="#i-clock"/></svg>Device</button>
           <button type="button" data-page="appearance"><svg><use href="#i-face"/></svg>Appearance</button>
+          <button type="button" data-page="wallpaper"><svg><use href="#i-face"/></svg>Wallpaper</button>
         </nav>
       </div>
       <div class="nav-group">
@@ -704,6 +705,9 @@
             <div class="field" style="max-width:380px;margin-top:16px"><label for="newTheme">Save a new preset (lowercase letters, numbers, hyphens)</label><input id="newTheme" placeholder="my-night-theme"><div class="buttons"><button class="button" id="cloneTheme" type="button">Save as new theme</button></div></div>
             <p class="help">Named themes survive updates. Bedside mode dims the selected colors.</p>
           </section>
+        </div>
+
+        <div class="view" data-view="wallpaper">
           <section class="card" id="cardWallpaper">
             <div class="card-head"><div class="card-icon"><svg><use href="#i-face"/></svg></div><div><h2 class="card-title">Wallpaper &amp; background</h2><p class="card-description">Sync your PC desktop wallpaper automatically, pick a solid colour (default legacy black), choose a preset, or crop a custom image. Menus use escalating frosted glass blur so text stays readable.</p></div></div>
             <div class="grid">
@@ -838,6 +842,7 @@
       dashboard:    { title: "Overview",     sub: "Live TomTom preview, active profile, and host telemetry", icon: "#i-overview" },
       device:       { title: "Device",       sub: "Clock behavior, timers and optional features for your TomTom", icon: "#i-clock" },
       appearance:   { title: "Appearance",   sub: "Customize supplied clock faces and the on-device palette", icon: "#i-face" },
+      wallpaper:    { title: "Wallpaper",    sub: "PC wallpaper auto-sync, legacy solid colour, presets, and custom crop studio", icon: "#i-face" },
       integrations: { title: "Integrations", sub: "Weather, calendar agenda, notifications, media, and audio", icon: "#i-cloud" },
       system:       { title: "System",       sub: "Choose Direct USB to this PC or Remote Linux hub and install updates", icon: "#i-system" },
       changelog:    { title: "What's new",   sub: "Release notes compiled directly into the application binary", icon: "#i-history" }
@@ -1012,8 +1017,14 @@
       const statusH = s.notification_active ? 96 : ((activityCount ? 26 : 0) + dh + ((activityCount || dh) ? 8 : 0));
       const height = 240 - statusH;
 
-      ctx.fillStyle = bgCol;
+      ctx.fillStyle = (wpState && wpState.config && wpState.config.mode === "color" && wpState.config.color) ? ("#" + wpState.config.color) : bgCol;
       ctx.fillRect(0, 0, 320, 240);
+      if (wpPreviewImg && wpState && wpState.config && wpState.config.mode !== "color") {
+        ctx.save();
+        ctx.filter = "brightness(68%)";
+        ctx.drawImage(wpPreviewImg, 0, 0, 320, 240);
+        ctx.restore();
+      }
 
       // face_draw_height(t, height)
       const only = !!f.hour_only && clock.mmStr === "00";
@@ -1690,8 +1701,20 @@
       } catch (error) { show(error.message, true); }
     })();
 
-    let wpState = { config: { mode: "pc", color: "000000" }, history: [], presets: [], pc_available: false };
+    let wpState = { config: { mode: "pc", color: "000000" }, history: [], presets: [], pc_available: false, active_preview: "" };
+    let wpPreviewImg = null;
     let wpImg = null, wpName = "Custom wallpaper", wpPanX = 0, wpPanY = 0, wpZoom = 1, wpDim = 1, wpDragging = false, wpDragX = 0, wpDragY = 0;
+
+    function updateWallpaperPreviewImage(src) {
+      if (!src) {
+        wpPreviewImg = null;
+        drawActivePreviews();
+        return;
+      }
+      const im = new Image();
+      im.onload = () => { wpPreviewImg = im; drawActivePreviews(); };
+      im.src = src;
+    }
 
     function syncWallpaperPanels() {
       const mode = $("wallpaperMode").value;
@@ -1792,6 +1815,7 @@
       syncWallpaperPanels();
       renderWallpaperLists();
       drawWallpaperCanvas();
+      updateWallpaperPreviewImage(wpState.active_preview || "");
     }
 
     $("wallpaperMode").addEventListener("change", syncWallpaperPanels);
@@ -1841,12 +1865,16 @@
         if (!wpState.presets || !wpState.presets.length) throw Error("No built-in presets available yet.");
         payload.preset = (wpState.config && wpState.config.preset) || wpState.presets[0].name;
       }
-      await api("/wallpaper", payload);
+      const res = JSON.parse(await api("/wallpaper", payload));
       await loadWallpaper();
+      if (res && res.warning) show(res.warning);
+      else show("Wallpaper applied.");
     });
     action("syncPcWallpaper", async () => {
-      await api("/wallpaper", { mode: "pc", color: ($("wallpaperColor").value || "#000000").replace("#", "") });
+      const res = JSON.parse(await api("/wallpaper", { mode: "pc", color: ($("wallpaperColor").value || "#000000").replace("#", "") }));
       await loadWallpaper();
+      if (res && res.warning) show(res.warning);
+      else show("PC wallpaper synced.");
     });
   </script>
 </body>

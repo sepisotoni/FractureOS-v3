@@ -39,6 +39,8 @@ func previewAssetSize(kind string) int {
 		return 45699
 	case "notice":
 		return 4608
+	case "wallpaper":
+		return 153600
 	}
 	return 0
 }
@@ -134,10 +136,10 @@ func registerPreview(mux *http.ServeMux, b *Broker, token string) {
 }
 
 type homePreviewPacket struct {
-	Model                           string
-	Received                        time.Time
-	Atlas, Font, Notice             []byte
-	AtlasHash, FontHash, NoticeHash uint32
+	Model                                          string
+	Received                                       time.Time
+	Atlas, Font, Notice, Wallpaper                 []byte
+	AtlasHash, FontHash, NoticeHash, WallpaperHash uint32
 }
 
 func previewCachedAsset(c Config, kind string, hash uint32) ([]byte, error) {
@@ -198,6 +200,8 @@ func fetchHomePreview(c Config, previous homePreviewPacket) (homePreviewPacket, 
 			packet.FontHash = uint32(n)
 		case "notice_hash":
 			packet.NoticeHash = uint32(n)
+		case "wallpaper_hash":
+			packet.WallpaperHash = uint32(n)
 		}
 	}
 	if packet.AtlasHash == 0 {
@@ -217,6 +221,12 @@ func fetchHomePreview(c Config, previous homePreviewPacket) (homePreviewPacket, 
 		packet.Notice = previous.Notice
 	} else if packet.Notice, e = previewCachedAsset(c, "notice", packet.NoticeHash); e != nil {
 		return homePreviewPacket{}, e
+	}
+	if packet.WallpaperHash == previous.WallpaperHash {
+		packet.Wallpaper = previous.Wallpaper
+	} else if packet.Wallpaper, e = previewCachedAsset(c, "wallpaper", packet.WallpaperHash); e != nil {
+		packet.Wallpaper = nil
+		packet.WallpaperHash = 0
 	}
 	// Assets can take longer on first connection: refresh the small model afterward.
 	if time.Since(packet.Received) > time.Second {
