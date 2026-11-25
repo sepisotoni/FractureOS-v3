@@ -6,10 +6,10 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag (for example v0.1.15)
+        description: Existing release tag (for example v0.1.17)
         required: true
         type: string
-        default: v0.1.15
+        default: v0.1.17
 permissions:
   contents: write
 jobs:

@@ -26,6 +26,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,12 +34,13 @@ import (
 	"time"
 )
 
-const version = "0.1.15"
+const version = "0.1.17"
 
 //go:embed ui.html
 var page string
 
 type Config struct {
+	ConnectionMode       string             `json:"connection_mode,omitempty"`
 	LyricsEnabled        bool               `json:"lyrics_enabled"`
 	WindowsTemperature   bool               `json:"windows_temperature"`
 	Device               string             `json:"device"`
@@ -56,6 +58,13 @@ type Config struct {
 	Weather              WeatherConfig      `json:"weather"`
 	Agenda               AgendaConfig       `json:"agenda"`
 	Notifications        NotificationConfig `json:"notifications"`
+}
+
+func effectiveConnectionMode(c Config) string {
+	if c.ConnectionMode == "direct" {
+		return "direct"
+	}
+	return "hub"
 }
 
 func configDir() string {
@@ -88,6 +97,9 @@ func readConfig() (Config, error) {
 	return c, e
 }
 func saveConfig(c Config) error {
+	if c.ConnectionMode != "" && c.ConnectionMode != "hub" && c.ConnectionMode != "direct" {
+		return errors.New("connection mode must be direct or hub")
+	}
 	if e := validateIntegrations(c.Weather, c.Notifications); e != nil {
 		return e
 	}
@@ -518,6 +530,12 @@ func (b *Broker) batch(commands []string) error {
 	return err
 }
 func serve() error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	return serveWithContext(ctx, true)
+}
+
+func serveWithContext(ctx context.Context, startAudio bool) error {
 	c, e := readConfig()
 	if e != nil {
 		return e
@@ -526,8 +544,6 @@ func serve() error {
 		return e
 	}
 	b := &Broker{device: c.Device}
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
 	mux := http.NewServeMux()
 	registerIntegrations(mux, b, c.Token)
 	registerLyrics(mux, b, c.Token)
@@ -542,7 +558,6 @@ func serve() error {
 		}
 		mediaAPI(b, w, r)
 	})
-	registerAudio(mux, b, c.Token)
 	mux.HandleFunc("/api/command", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+c.Token)) != 1 {
@@ -578,15 +593,17 @@ func serve() error {
 	srv := &http.Server{Addr: c.Listen, Handler: mux, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 45 * time.Second, IdleTimeout: 30 * time.Second, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13}}
 	go func() {
 		<-ctx.Done()
-		shutdown, c := context.WithTimeout(context.Background(), 3*time.Second)
-		defer c()
+		shutdown, cancelShutdown := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancelShutdown()
 		_ = srv.Shutdown(shutdown)
 	}()
 	go hubBackground(ctx, b)
 	go weatherSupervisor(ctx, b)
 	go agendaSupervisor(ctx, b)
 	go lyricsSupervisor(ctx, b)
-	go audioSupervisor(ctx, b, "linux")
+	if startAudio {
+		go audioSupervisor(ctx, b, runtime.GOOS)
+	}
 	log.Printf("FractureOS hub %s listening on https://%s; device %s", version, c.Listen, c.Device)
 	e = srv.ListenAndServeTLS(filepath.Join(configDir(), "hub.crt"), filepath.Join(configDir(), "hub.key"))
 	if errors.Is(e, http.ErrServerClosed) {
@@ -821,9 +838,26 @@ func settings(open bool) error {
 			if newc.Token == "" {
 				newc.Token = c.Token
 			}
+			if newc.ConnectionMode == "direct" {
+				if newc.Listen == "" {
+					newc.Listen = "127.0.0.1:47831"
+				}
+				if newc.Hub == "" {
+					newc.Hub = "https://" + newc.Listen
+				}
+				if newc.Device == "" {
+					newc.Device = "192.168.101.115"
+				}
+			}
 			if e = saveConfig(newc); e != nil {
 				http.Error(w, e.Error(), 400)
 				return
+			}
+			if newc.ConnectionMode == "direct" && (newc.Token == "" || newc.Fingerprint == "") {
+				if e = identity(&newc); e != nil {
+					http.Error(w, e.Error(), 500)
+					return
+				}
 			}
 			fmt.Fprint(w, "Saved")
 		case "/command":
@@ -996,6 +1030,8 @@ func configCommand(a []string) error {
 		return errors.New("usage: fracture config set KEY VALUE")
 	}
 	switch a[1] {
+	case "connection_mode":
+		c.ConnectionMode = a[2]
 	case "hub":
 		c.Hub = a[2]
 	case "device":
@@ -1069,7 +1105,7 @@ func configCommand(a []string) error {
 	return saveConfig(c)
 }
 func help() {
-	fmt.Println(`FractureOS 0.1.15
+	fmt.Println(`FractureOS 0.1.17
   fracture status | profile minimal|desk|bedside | theme teal|amber|blue
   fracture theme NAME | theme-get | theme-set KEY VALUE | theme-save NEW_NAME | theme-reset
   fracture face NAME | face-get | face-set KEY VALUE | face-reset
@@ -1078,8 +1114,8 @@ func help() {
   fracture settings                 Open settings (unloads after idle)
   fracture config get | config set KEY VALUE
   fracture pair-info                Show private hub pairing credentials
-  fracture serve                    Run TLS hub
-  fracture device install|restore   Linux USB host only
+  fracture serve                    Run TLS hub (Linux or Direct USB Windows)
+  fracture device install|restore   USB host deployment (TomTom at 192.168.101.115)
   fracture uninstall                Remove host app; keep user settings
   fracture version
 No resource collector starts unless hub_metrics is enabled and Desk is visible.`)

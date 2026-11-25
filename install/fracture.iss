@@ -1,6 +1,6 @@
 ; Build with Inno Setup 6.3+ on Windows. No configuration wizard: use app Settings.
 #ifndef AppVersion
-#define AppVersion "0.1.15"
+#define AppVersion "0.1.17"
 #endif
 #ifndef Arch
 #define Arch "amd64"
@@ -36,6 +36,17 @@ ArchitecturesInstallIn64BitMode=x64compatible
 [Files]
 Source: "..\build\windows-{#Arch}\fracture.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\build\windows-{#Arch}\fracture-preview.dll"; DestDir: "{app}"; Flags: ignoreversion
+[InstallDelete]
+Type: files; Name: "{group}\FractureOS Tray.lnk"
+Type: files; Name: "{group}\FractureOS Dashboard.lnk"
+Type: files; Name: "{group}\FractureOS Settings.lnk"
+Type: files; Name: "{group}\Uninstall FractureOS.lnk"
+Type: files; Name: "{userprograms}\FractureOS Tray.lnk"
+Type: files; Name: "{userprograms}\FractureOS Dashboard.lnk"
+Type: files; Name: "{userprograms}\FractureOS Settings.lnk"
+Type: files; Name: "{userprograms}\Uninstall FractureOS.lnk"
+Type: files; Name: "{userdesktop}\FractureOS Tray.lnk"
+Type: files; Name: "{userdesktop}\FractureOS Dashboard.lnk"
 [Icons]
 Name: "{group}\FractureOS"; Filename: "{app}\fracture.exe"; Parameters: "dashboard"
 [Tasks]

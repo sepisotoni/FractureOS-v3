@@ -3,3 +3,12 @@ artifacts/
 __pycache__/
 *.pyc
 host/rsrc_windows_*.syso
+package.json
+package-lock.json
+node_modules/
+preview-server.mjs
+preview-logic.test.mjs
+.playwright-cli/
+public/
+*.zip
+

@@ -18,11 +18,19 @@ func TestDashboardResponsiveBoundsFitClient(t *testing.T) {
 		}
 
 		left, right := dashboardCardBounds(width)
+		bottomRight := dashboardRightBottomCardBounds(width)
 		if left.x+left.width > right.x || right.x+right.width > width {
 			t.Fatalf("dashboard cards exceed client at width %d: %+v, %+v", width, left, right)
 		}
+		if bottomRight.x != right.x || bottomRight.width != right.width || bottomRight.y+bottomRight.height != left.y+left.height {
+			t.Fatalf("right bottom card misaligned at width %d: left=%+v bottomRight=%+v", width, left, bottomRight)
+		}
 		if left.width < 320 {
 			t.Fatalf("preview card too narrow at width %d: %+v", width, left)
+		}
+		full := dashboardFullCardBounds(width, 126, 250)
+		if full.x+full.width > width || full.width < 700 {
+			t.Fatalf("full card invalid at width %d: %+v", width, full)
 		}
 
 		control := dashboardControlBounds(650, 200, 210, 30, width)

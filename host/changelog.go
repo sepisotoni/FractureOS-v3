@@ -10,7 +10,18 @@ type releaseNote struct {
 
 var releaseNotes = []releaseNote{
 	{
-		Version: "v0.1.15 Beta",
+		Version: "v0.1.17",
+		Status:  "Release",
+		Changes: []string{
+			"Added Direct USB PC mode so Windows can host the TomTom directly without a separate Linux hub, alongside Remote Linux hub mode.",
+			"Added native Windows CPU and RAM collection and relaxed device audio subnet validation for USB-connected PCs.",
+			"Redesigned the web dashboard with dark frosted glassmorphism and an interactive 320x240 Home Preview.",
+			"Reorganized the native Windows dashboard cards and consolidated Windows Start menu shortcuts to a single FractureOS entry.",
+			"Fixed duplicate /api/audio route registration, duplicate audio-start dispatch, and framebuffer file descriptor leaks.",
+		},
+	},
+	{
+		Version: "v0.1.15",
 		Status:  "Prerelease",
 		Changes: []string{
 			"Desktop dashboard rework with responsive sections and local icons.",

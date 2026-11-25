@@ -35,3 +35,12 @@ func TestCommandBoundaries(t *testing.T) {
 		}
 	}
 }
+
+func TestConnectionModeValidation(t *testing.T) {
+	if got := effectiveConnectionMode(Config{}); got != "hub" {
+		t.Fatalf("default connection mode = %q, want hub", got)
+	}
+	if got := effectiveConnectionMode(Config{ConnectionMode: "direct"}); got != "direct" {
+		t.Fatalf("direct connection mode = %q, want direct", got)
+	}
+}

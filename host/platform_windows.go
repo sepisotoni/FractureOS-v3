@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -33,12 +36,123 @@ func openURL(url string) error {
 	return nil
 }
 func platformDefault() error { return platformTray() }
-func deviceManagement(_ []string) error {
-	return errors.New("run fracture device install on the Linux machine physically connected to the TomTom")
+
+func deviceManagement(args []string) error {
+	if len(args) != 1 || (args[0] != "install" && args[0] != "restore") {
+		return errors.New("usage: fracture device install|restore")
+	}
+	c, e := readConfig()
+	if e != nil {
+		return e
+	}
+	exe, _ := os.Executable()
+	candidates := []string{filepath.Dir(exe)}
+	if cwd, err := os.Getwd(); err == nil {
+		candidates = append(candidates, cwd)
+	}
+	for _, root := range candidates {
+		script := filepath.Join(root, "tools", "deploy-device.py")
+		if _, err := os.Stat(script); err == nil {
+			pythonExe, lookErr := exec.LookPath("python")
+			var cmdArgs []string
+			if lookErr == nil {
+				cmdArgs = []string{script, args[0], "--host", c.Device, "--package", root}
+			} else if pyExe, pyErr := exec.LookPath("py"); pyErr == nil {
+				pythonExe = pyExe
+				cmdArgs = []string{"-3", script, args[0], "--host", c.Device, "--package", root}
+			} else {
+				break
+			}
+			cmd := exec.Command(pythonExe, cmdArgs...)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			cmd.Stdin = os.Stdin
+			return cmd.Run()
+		}
+	}
+	return fmt.Errorf("connect the TomTom over USB (device IP %s) or deploy device payloads from a Linux host with Python 3 and tools/deploy-device.py", c.Device)
 }
+
+type winFileTime struct{ Low, High uint32 }
+
+func fileTimeUint64(t winFileTime) uint64 { return uint64(t.High)<<32 | uint64(t.Low) }
+
+type winMemoryStatusEx struct {
+	Length               uint32
+	MemoryLoad           uint32
+	TotalPhys            uint64
+	AvailPhys            uint64
+	TotalPageFile        uint64
+	AvailPageFile        uint64
+	TotalVirtual         uint64
+	AvailVirtual         uint64
+	AvailExtendedVirtual uint64
+}
+
+func windowsCPUSample() (uint64, uint64, error) {
+	var idle, kernel, user winFileTime
+	ok, _, err := kernel32.NewProc("GetSystemTimes").Call(
+		uintptr(unsafe.Pointer(&idle)),
+		uintptr(unsafe.Pointer(&kernel)),
+		uintptr(unsafe.Pointer(&user)),
+	)
+	if ok == 0 {
+		return 0, 0, err
+	}
+	idleTicks := fileTimeUint64(idle)
+	totalTicks := fileTimeUint64(kernel) + fileTimeUint64(user)
+	return totalTicks, idleTicks, nil
+}
+
+func windowsMemoryPercent() (int, error) {
+	var mem winMemoryStatusEx
+	mem.Length = uint32(unsafe.Sizeof(mem))
+	ok, _, err := kernel32.NewProc("GlobalMemoryStatusEx").Call(uintptr(unsafe.Pointer(&mem)))
+	if ok == 0 {
+		return 0, err
+	}
+	if mem.MemoryLoad > 100 {
+		return 100, nil
+	}
+	return int(mem.MemoryLoad), nil
+}
+
 func metricsWorker() error {
-	return errors.New("Windows resource collection is not included in 0.1.9; Linux hub metrics are available")
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	total, idle, e := windowsCPUSample()
+	if e != nil {
+		return e
+	}
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			c, e := readConfig()
+			if e != nil || !c.HubMetrics {
+				return nil
+			}
+			newTotal, newIdle, e := windowsCPUSample()
+			if e != nil {
+				continue
+			}
+			usage := 0
+			if newTotal > total && newIdle >= idle && newIdle-idle <= newTotal-total {
+				usage = int(100 * (newTotal - total - (newIdle - idle)) / (newTotal - total))
+			}
+			total, idle = newTotal, newIdle
+			memory, e := windowsMemoryPercent()
+			if e != nil {
+				continue
+			}
+			_, _ = hubCall(c, fmt.Sprintf("stats-bundle %d,%d,-1000,-1,-1 pc", usage, memory))
+		}
+	}
 }
+
 func platformUninstall() error {
 	exe, e := os.Executable()
 	if e != nil {
@@ -94,20 +208,86 @@ type notify struct {
 	Balloon             uintptr
 }
 
+func directHubSupervisor(ctx context.Context) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	var hubCancel context.CancelFunc
+	var hubDone chan error
+	var activeListen, activeDevice string
+	stopHub := func() {
+		if hubCancel != nil {
+			hubCancel()
+			<-hubDone
+			hubCancel = nil
+			hubDone = nil
+		}
+	}
+	defer stopHub()
+	check := func() {
+		c, err := readConfig()
+		if err != nil || effectiveConnectionMode(c) != "direct" {
+			stopHub()
+			activeListen, activeDevice = "", ""
+			return
+		}
+		if hubCancel != nil && (activeListen != c.Listen || activeDevice != c.Device) {
+			stopHub()
+		}
+		if hubCancel != nil {
+			return
+		}
+		if c.Listen == "" {
+			c.Listen = "127.0.0.1:47831"
+		}
+		if c.Hub == "" {
+			c.Hub = "https://" + c.Listen
+		}
+		_ = identity(&c)
+		hubCtx, cancel := context.WithCancel(ctx)
+		done := make(chan error, 1)
+		activeListen, activeDevice = c.Listen, c.Device
+		hubCancel, hubDone = cancel, done
+		go func() { done <- serveWithContext(hubCtx, false) }()
+	}
+	check()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case err := <-hubDone:
+			if hubCancel != nil {
+				hubCancel()
+			}
+			hubCancel, hubDone = nil, nil
+			if err != nil && ctx.Err() == nil {
+				log.Printf("direct usb hub: %v", err)
+			}
+		case <-ticker.C:
+			check()
+		}
+	}
+}
+
 func platformTray() error {
 	mediaContext, stopMedia := context.WithCancel(context.Background())
 	mediaDone := make(chan struct{})
-	defer func() { stopMedia(); <-mediaDone }()
-	go func() { defer close(mediaDone); localMediaSupervisor(mediaContext) }()
 	audioDone := make(chan struct{})
-	defer func() { stopMedia(); <-audioDone }()
-	go func() { defer close(audioDone); audioSupervisor(mediaContext, nil, "windows") }()
 	tempDone := make(chan struct{})
-	go func() { defer close(tempDone); windowsTemperatureSupervisor(mediaContext) }()
-	defer func() { stopMedia(); <-tempDone }()
 	notificationDone := make(chan struct{})
+	hubDone := make(chan struct{})
+	defer func() {
+		stopMedia()
+		<-mediaDone
+		<-audioDone
+		<-tempDone
+		<-notificationDone
+		<-hubDone
+	}()
+	go func() { defer close(mediaDone); localMediaSupervisor(mediaContext) }()
+	go func() { defer close(audioDone); audioSupervisor(mediaContext, nil, "windows") }()
+	go func() { defer close(tempDone); windowsTemperatureSupervisor(mediaContext) }()
 	go func() { defer close(notificationDone); windowsNotificationSupervisor(mediaContext) }()
-	defer func() { stopMedia(); <-notificationDone }()
+	go func() { defer close(hubDone); directHubSupervisor(mediaContext) }()
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	mutex, _, last := kernel32.NewProc("CreateMutexW").Call(0, 0, uintptr(unsafe.Pointer(wide("Local\\FractureOS-v3-tray"))))

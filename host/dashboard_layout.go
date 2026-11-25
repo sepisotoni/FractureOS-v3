@@ -42,8 +42,30 @@ func dashboardCardBounds(clientWidth int) (dashboardBounds, dashboardBounds) {
 	const margin, gap = 25, 20
 	width := (clientWidth - 2*margin - gap) / 2
 	return dashboardBounds{
-		x: margin, y: 135, width: width, height: 247,
+		x: margin, y: 126, width: width, height: 422,
 	}, dashboardBounds{
-		x: margin + width + gap, y: 135, width: width, height: 247,
+		x: margin + width + gap, y: 126, width: width, height: 244,
+	}
+}
+
+func dashboardRightBottomCardBounds(clientWidth int) dashboardBounds {
+	_, rightTop := dashboardCardBounds(clientWidth)
+	return dashboardBounds{
+		x:      rightTop.x,
+		y:      rightTop.y + rightTop.height + 16,
+		width:  rightTop.width,
+		height: 162,
+	}
+}
+
+func dashboardFullCardBounds(clientWidth, y, height int) dashboardBounds {
+	if clientWidth < dashboardMinimumWidth {
+		clientWidth = dashboardMinimumWidth
+	}
+	return dashboardBounds{
+		x:      25,
+		y:      y,
+		width:  clientWidth - 50,
+		height: height,
 	}
 }

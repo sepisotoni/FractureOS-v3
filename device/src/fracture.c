@@ -45,7 +45,7 @@
 #endif
 #endif /* device platform includes */
 #ifndef FRACTURE_VERSION
-#define FRACTURE_VERSION "0.1.15"
+#define FRACTURE_VERSION "0.1.17"
 #endif
 #define W 320
 #define H 240
@@ -207,7 +207,7 @@ static void audio_worker(int ready_fd){
  if(!audio_write_all(ready_fd,(const unsigned char*)"OKAY",4))goto fail;close(ready_fd);
  for(;;){
   client=accept(server,NULL,NULL);if(client<0){if(errno==EINTR)continue;break;}
-  peerlen=sizeof peer;if(getpeername(client,(struct sockaddr*)&peer,&peerlen)||peer.sin_family!=AF_INET||peer.sin_addr.s_addr!=inet_addr("192.168.101.105")){close(client);continue;}
+  peerlen=sizeof peer;if(getpeername(client,(struct sockaddr*)&peer,&peerlen)||peer.sin_family!=AF_INET||(ntohl(peer.sin_addr.s_addr)&0xffffff00U)!=0xc0a86500U){close(client);continue;}
   setsockopt(client,SOL_SOCKET,SO_RCVBUF,&rcvbuf,sizeof rcvbuf);
   setsockopt(client,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof timeout);
   if(!audio_read_all(client,token,sizeof token)||memcmp(token,audio_token,sizeof token)){close(client);continue;}
@@ -259,7 +259,6 @@ static void command(char *line,char *reply,size_t cap){char *name,*a,*b,*extra;i
  if(!strcmp(name,"face-get")&&!a){if(face_ready)face_json(reply,cap);return;}
  if(!strcmp(name,"face-reset")&&!a){char path[640];face_path(path,sizeof path,1);if(unlink(path)&&errno!=ENOENT)return;if(!face_load())return;dirty=1;snprintf(reply,cap,"OK\n");return;}
  if(!a)return;
- if(!strcmp(name,"audio-start")&&a&&!b){if(audio_start(a)){memset(a,0,32);snprintf(reply,cap,"OK\n");}else{memset(a,0,strlen(a));snprintf(reply,cap,"ERR audio unavailable or preempted\n");}return;}
  if(!strcmp(name,"link")&&!b&&integer(a,0,1,&n)){int was=link_live();link_at=n?mono():0;if(was!=link_live())dirty=1;snprintf(reply,cap,"OK\n");return;}
  if(!strcmp(name,"ui-timeout")&&a&&b&&integer(b,0,600,&n)){if(!strcmp(a,"notification")&&n>=1&&n<=120)cfg.notice_seconds=n;else if(!strcmp(a,"menu"))cfg.menu_timeout=n;else return;if(save()){cfg=old;return;}dirty=1;snprintf(reply,cap,"OK\n");return;}
  if(!strcmp(name,"feature")&&a&&b&&integer(b,0,2,&n)){int *field=NULL;if(!strcmp(a,"telemetry")&&n<2)field=&cfg.telemetry;else if(!strcmp(a,"weather"))field=&cfg.weather;else if(!strcmp(a,"notifications")&&n<2)field=&cfg.notifications;else if(!strcmp(a,"media")&&n<2)field=&cfg.media;else if(!strcmp(a,"appearance"))field=&cfg.appearance;if(!field)return;*field=n;if(save()){cfg=old;return;}if(!cfg.telemetry)stats_at=0;if(!cfg.weather)weather_at=0;if(!cfg.notifications){notice_until=0;notice_release_art();}if(!cfg.media){media_at=0;media_release_art();}dirty=1;snprintf(reply,cap,"OK\n");return;}
@@ -293,9 +292,9 @@ static int control(int argc,char **argv){int s,i;struct sockaddr_un addr;char li
  if(argc<1)return 2;line[0]=0;for(i=0;i<argc;i++){if(strlen(argv[i])+used+2>=sizeof line)return 2;used+=(size_t)snprintf(line+used,sizeof line-used,"%s%s",i?" ":"",argv[i]);}strcat(line,"\n");
  s=socket(AF_UNIX,SOCK_STREAM,0);if(s<0)return 1;memset(&addr,0,sizeof addr);addr.sun_family=AF_UNIX;strcpy(addr.sun_path,SOCK);if(connect(s,(struct sockaddr*)&addr,sizeof addr)){perror("connect");close(s);return 1;}
  if(write(s,line,strlen(line))!=(ssize_t)strlen(line)){close(s);return 1;}used=0;while(used+1<sizeof reply&&(n=read(s,reply+used,sizeof reply-used-1))>0)used+=n;reply[used]=0;close(s);fputs(reply,stdout);return used&&strncmp(reply,"ERR",3)?0:1;}
-static int framebuffer(void){size_t end;fb=open("/dev/fb",O_RDWR);if(fb<0)return -1;if(ioctl(fb,FBIOGET_FSCREENINFO,&fix)||ioctl(fb,FBIOGET_VSCREENINFO,&var))return -1;
- end=(var.yoffset+H-1)*fix.line_length+(var.xoffset+W)*2;if(var.xres!=W||var.yres!=H||var.bits_per_pixel!=16||var.red.offset!=11||var.green.offset!=5||var.blue.offset!=0||end>fix.smem_len)return -1;
- mapped_size=fix.smem_len;mapped=mmap(NULL,mapped_size,PROT_READ|PROT_WRITE,MAP_SHARED,fb,0);if(mapped==MAP_FAILED){mapped=NULL;return -1;}return 0;}
+static int framebuffer(void){size_t end;fb=open("/dev/fb",O_RDWR);if(fb<0)return -1;if(ioctl(fb,FBIOGET_FSCREENINFO,&fix)||ioctl(fb,FBIOGET_VSCREENINFO,&var)){close(fb);fb=-1;return -1;}
+ end=(var.yoffset+H-1)*fix.line_length+(var.xoffset+W)*2;if(var.xres!=W||var.yres!=H||var.bits_per_pixel!=16||var.red.offset!=11||var.green.offset!=5||var.blue.offset!=0||end>fix.smem_len){close(fb);fb=-1;return -1;}
+ mapped_size=fix.smem_len;mapped=mmap(NULL,mapped_size,PROT_READ|PROT_WRITE,MAP_SHARED,fb,0);if(mapped==MAP_FAILED){mapped=NULL;close(fb);fb=-1;return -1;}return 0;}
 static void inputs(double now){struct input_event e;ssize_t n;
  if(input>=0)while((n=read(input,&e,sizeof e))==(ssize_t)sizeof e){int down=-1;if(e.type==EV_KEY&&e.code==BTN_TOUCH)down=e.value!=0;if(e.type==EV_ABS&&e.code==ABS_PRESSURE)down=e.value>0;
  if(down==1&&!touch_down){touch_down=1;touch_at=now;touch_held=0;}else if(down==0&&touch_down){touch_down=0;if(!touch_held&&now-touch_at>=0.06){if(tap_due&&now<tap_due){tap_due=0;event("double");}else tap_due=now+0.32;}}}

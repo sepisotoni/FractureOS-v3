@@ -73,29 +73,46 @@ func platformDashboard() error {
 	brandIcon := appIcon(instance)
 	color := func(r, g, b uintptr) uintptr { return r | g<<8 | b<<16 }
 	bg := color(9, 13, 20)
-	surface := color(22, 31, 44)
-	foreground := color(232, 240, 250)
-	muted := color(154, 173, 193)
+	surface := color(20, 28, 40)
+	raised := color(29, 40, 56)
+	inputBg := color(14, 20, 30)
+	primaryBg := color(23, 56, 78)
+	borderCol := color(48, 64, 86)
+	foreground := color(235, 242, 250)
+	muted := color(152, 171, 191)
 	accent := color(98, 209, 248)
 	brush, _, _ := gdi32.NewProc("CreateSolidBrush").Call(bg)
 	defer gdi32.NewProc("DeleteObject").Call(brush)
 	cardBrush, _, _ := gdi32.NewProc("CreateSolidBrush").Call(surface)
 	defer gdi32.NewProc("DeleteObject").Call(cardBrush)
+	raisedBrush, _, _ := gdi32.NewProc("CreateSolidBrush").Call(raised)
+	defer gdi32.NewProc("DeleteObject").Call(raisedBrush)
+	inputBrush, _, _ := gdi32.NewProc("CreateSolidBrush").Call(inputBg)
+	defer gdi32.NewProc("DeleteObject").Call(inputBrush)
+	primaryBrush, _, _ := gdi32.NewProc("CreateSolidBrush").Call(primaryBg)
+	defer gdi32.NewProc("DeleteObject").Call(primaryBrush)
+	borderPen, _, _ := gdi32.NewProc("CreatePen").Call(0, 1, borderCol)
+	defer gdi32.NewProc("DeleteObject").Call(borderPen)
+	accentPen, _, _ := gdi32.NewProc("CreatePen").Call(0, 1, accent)
+	defer gdi32.NewProc("DeleteObject").Call(accentPen)
 	font := func(height, weight int32) uintptr {
 		v, _, _ := gdi32.NewProc("CreateFontW").Call(uintptr(height), 0, 0, 0, uintptr(weight), 0, 0, 0, 1, 0, 0, 5, 0, uintptr(unsafe.Pointer(wide("Segoe UI"))))
 		return v
 	}
-	normal := font(-18, 400)
+	normal := font(-17, 400)
 	navFont := font(-14, 600)
-	titleFont := font(-32, 600)
+	sectionFont := font(-22, 600)
+	titleFont := font(-30, 600)
 	clockFont := font(-66, 600)
 	defer gdi32.NewProc("DeleteObject").Call(normal)
 	defer gdi32.NewProc("DeleteObject").Call(navFont)
+	defer gdi32.NewProc("DeleteObject").Call(sectionFont)
 	defer gdi32.NewProc("DeleteObject").Call(titleFont)
 	defer gdi32.NewProc("DeleteObject").Call(clockFont)
 	var hwnd uintptr
 	var children []uintptr
 	childBounds := map[uintptr]dashboardBounds{}
+	inCard := map[uintptr]bool{}
 	fields := map[int]uintptr{}
 	pageIndex := 0
 	var renderer homeRenderer
@@ -186,6 +203,9 @@ func platformDashboard() error {
 		children = append(children, v)
 		fields[id] = v
 		childBounds[v] = dashboardBounds{x: x, y: y, width: w, height: h}
+		if id < 100 || id > 105 {
+			inCard[v] = true
+		}
 		return v
 	}
 	layoutChildren := func(clientWidth int) {
@@ -199,7 +219,8 @@ func platformDashboard() error {
 			user32.NewProc("MoveWindow").Call(v, uintptr(bounds.x), uintptr(bounds.y), uintptr(bounds.width), uintptr(bounds.height), 1)
 		}
 	}
-	label := func(s string, x, y int) { control("STATIC", s, 0, x, y, 620, 25, 0) }
+	label := func(s string, x, y int) { control("STATIC", s, 0, x, y, 390, 24, 0) }
+	labelWide := func(s string, x, y, w int) { control("STATIC", s, 0, x, y, w, 24, 0) }
 	edit := func(id int, value string, x, y, w int, password bool) {
 		style := uintptr(0x10000 | 0x800000 | 0x80)
 		if password {
@@ -208,8 +229,8 @@ func platformDashboard() error {
 		control("EDIT", value, id, x, y, w, 30, style)
 	}
 	button := func(id int, s string, x, y, w int) { control("BUTTON", s, id, x, y, w, 34, 0x10000|0xb) }
-	check := func(id int, s string, on bool, x, y int) {
-		v := control("BUTTON", s, id, x, y, 700, 28, 0x10000|3)
+	check := func(id int, s string, on bool, x, y, w int) {
+		v := control("BUTTON", s, id, x, y, w, 26, 0x10000|3)
 		if on {
 			user32.NewProc("SendMessageW").Call(v, 0xf1, 1, 0)
 		}
@@ -257,6 +278,7 @@ func platformDashboard() error {
 		}
 		children = nil
 		childBounds = map[uintptr]dashboardBounds{}
+		inCard = map[uintptr]bool{}
 		fields = map[int]uintptr{}
 		for i, s := range []string{"Dashboard", "Clock & faces", "Connection", "Weather", "Notifications", "Updates"} {
 			button(100+i, s, 20+i*146, 76, 138)
@@ -267,79 +289,87 @@ func platformDashboard() error {
 		mu.Unlock()
 		switch pageIndex {
 		case 0:
-			button(201, "Minimal", 36, 410, 126)
-			button(202, "Desk", 172, 410, 126)
-			button(203, "Bedside", 308, 410, 126)
-			label("Timer (minutes)", 36, 470)
-			edit(210, "25", 36, 499, 95, false)
-			button(211, "Start", 143, 497, 95)
-			button(212, "Cancel", 250, 497, 95)
-			button(213, "Refresh", 36, 565, 130)
-			button(214, "Web dashboard", 180, 565, 180)
+			button(201, "Minimal", 42, 428, 120)
+			button(202, "Desk", 172, 428, 120)
+			button(203, "Bedside", 302, 428, 120)
+			button(213, "Refresh", 42, 476, 184)
+			button(214, "Web dashboard", 238, 476, 184)
+			edit(210, "25", 482, 486, 86, false)
+			button(211, "Start timer", 580, 484, 134)
+			button(212, "Cancel", 726, 484, 134)
 		case 1:
-			label("Face", 36, 140)
-			combo(220, []string{"nunito", "neon", "blue-outline", "weather-blue", "aqua", "sunset", "numerals-duo", "lavender", "roboto", "ubuntu"}, st.Face, 36, 172, 250)
-			label("Theme", 340, 140)
-			combo(221, []string{"midnight", "teal", "amber", "blue"}, st.Theme, 340, 172, 210)
-			label("Appearance", 590, 140)
+			label("Face", 42, 144)
+			combo(220, []string{"nunito", "neon", "blue-outline", "weather-blue", "aqua", "sunset", "numerals-duo", "lavender", "roboto", "ubuntu"}, st.Face, 42, 172, 250)
+			label("Theme", 322, 144)
+			combo(221, []string{"midnight", "teal", "amber", "blue"}, st.Theme, 322, 172, 230)
+			label("Appearance", 582, 144)
 			appearance := []string{"Night", "Day", "Auto (07:00-19:00)"}
 			a := st.Appearance
 			if a < 0 || a > 2 {
 				a = 0
 			}
-			combo(222, appearance, appearance[a], 590, 172, 270)
-			label("Brightness (1-100)", 36, 230)
-			edit(223, strconv.Itoa(st.Brightness), 36, 260, 180, false)
-			label("Menu timeout (s)", 590, 230)
-			edit(228, strconv.Itoa(st.MenuTimeout), 590, 260, 120, false)
-			label("Notify (s)", 730, 230)
-			edit(229, strconv.Itoa(st.NoticeSeconds), 730, 260, 120, false)
-			label("UTC offset (minutes)", 340, 230)
-			edit(224, strconv.Itoa(st.Offset), 340, 260, 210, false)
-			check(225, "Telemetry on the TomTom", st.Telemetry != 0, 36, 330)
-			check(226, "Media on the TomTom", st.Media != 0, 36, 368)
-			check(262, "Look up lyrics when the Lyrics page is open", q.LyricsEnabled == nil || *q.LyricsEnabled, 36, 397)
-			button(227, "Apply to TomTom", 36, 430, 220)
-			label("Preview faces directly: TomTom Settings > Faces. Hold Power to cancel.", 36, 490)
+			combo(222, appearance, appearance[a], 582, 172, 280)
+			label("Brightness (1-100)", 42, 224)
+			edit(223, strconv.Itoa(st.Brightness), 42, 252, 200, false)
+			label("UTC offset (minutes)", 322, 224)
+			edit(224, strconv.Itoa(st.Offset), 322, 252, 230, false)
+			label("Menu timeout (s)", 582, 224)
+			edit(228, strconv.Itoa(st.MenuTimeout), 582, 252, 132, false)
+			label("Notify (s)", 730, 224)
+			edit(229, strconv.Itoa(st.NoticeSeconds), 730, 252, 132, false)
+			check(225, "Show telemetry on the TomTom", st.Telemetry != 0, 42, 322, 380)
+			check(226, "Enable media controls on the TomTom", st.Media != 0, 42, 356, 380)
+			check(262, "Look up lyrics when the Lyrics page is open", q.LyricsEnabled == nil || *q.LyricsEnabled, 452, 322, 410)
+			button(227, "Apply to TomTom", 42, 416, 220)
+			labelWide("Preview faces directly on device: TomTom Settings > Faces (hold Power to cancel).", 42, 466, 820)
 		case 2:
-			label("Hub URL", 36, 130)
-			edit(230, c.Hub, 36, 160, 824, false)
-			label("Certificate fingerprint (SHA-256)", 36, 204)
-			edit(231, c.Fingerprint, 36, 234, 824, false)
-			label("Access token (blank keeps saved token)", 36, 278)
-			edit(232, "", 36, 308, 824, true)
-			check(233, "Share Spotify from this PC", c.MediaEnabled, 36, 365)
-			check(234, "Show Spotify in the clock status bar", c.MediaStatus, 36, 403)
-			button(235, "Save connection", 36, 462, 220)
-			button(214, "Advanced web settings", 280, 462, 240)
-			check(236, "Use this PC's CPU temperature (optional PawnIO driver)", c.WindowsTemperature, 36, 508)
-			button(237, "Get sensor modules", 36, 550, 220)
-			button(238, "Install PawnIO", 280, 550, 180)
-			button(239, "Check sensor", 470, 550, 170)
-			button(261, "Authorize sensor", 650, 550, 210)
+			modeLabel := "Remote Linux hub"
+			if effectiveConnectionMode(c) == "direct" {
+				modeLabel = "Direct USB to this PC"
+			}
+			label("Connection mode", 42, 144)
+			combo(290, []string{"Direct USB to this PC", "Remote Linux hub"}, modeLabel, 42, 170, 256)
+			label("TomTom USB IP", 316, 144)
+			edit(291, c.Device, 316, 170, 204, false)
+			label("Hub URL", 538, 144)
+			edit(230, c.Hub, 538, 170, 326, false)
+			label("Certificate fingerprint (SHA-256)", 42, 212)
+			edit(231, c.Fingerprint, 42, 238, 410, false)
+			label("Access token (blank keeps saved token)", 472, 212)
+			edit(232, "", 472, 238, 392, true)
+			check(292, "Collect CPU & RAM metrics while Desk mode is visible", c.HubMetrics, 42, 282, 540)
+			button(235, "Save connection", 42, 324, 210)
+			button(214, "Web dashboard", 270, 324, 210)
+			check(233, "Share Spotify from this PC", c.MediaEnabled, 42, 410, 390)
+			check(234, "Show active track in clock bar", c.MediaStatus, 456, 410, 400)
+			check(236, "Use this PC's CPU temperature (optional PawnIO driver)", c.WindowsTemperature, 42, 448, 620)
+			button(237, "Get sensor modules", 42, 496, 195)
+			button(238, "Install PawnIO", 252, 496, 185)
+			button(239, "Check sensor", 452, 496, 185)
+			button(261, "Authorize sensor", 652, 496, 212)
 		case 3:
-			check(240, "Enable weather on the Linux hub", q.Weather.Enabled, 36, 135)
-			label("Latitude", 36, 180)
-			edit(241, fmt.Sprint(q.Weather.Latitude), 36, 210, 230, false)
-			label("Longitude", 340, 180)
-			edit(242, fmt.Sprint(q.Weather.Longitude), 340, 210, 230, false)
-			label("Hot (C)", 36, 260)
-			edit(243, fmt.Sprint(q.Weather.Hot), 36, 290, 180, false)
-			label("Cold (C)", 340, 260)
-			edit(244, fmt.Sprint(q.Weather.Cold), 340, 290, 180, false)
-			label("Strong gusts (km/h)", 590, 260)
-			edit(245, fmt.Sprint(q.Weather.Wind), 590, 290, 220, false)
-			label("Show weather on the TomTom", 36, 345)
+			check(240, "Enable weather on the host hub", q.Weather.Enabled, 42, 142, 480)
+			label("Latitude", 42, 182)
+			edit(241, fmt.Sprint(q.Weather.Latitude), 42, 210, 240, false)
+			label("Longitude", 322, 182)
+			edit(242, fmt.Sprint(q.Weather.Longitude), 322, 210, 240, false)
+			label("Show weather on the TomTom", 590, 182)
 			mode := []string{"Off", "Unusual conditions only", "Always"}
 			a := st.Weather
 			if a < 0 || a > 2 {
 				a = 1
 			}
-			combo(246, mode, mode[a], 36, 375, 400)
-			button(247, "Save weather", 36, 435, 220)
-			label("Thunderstorms, heavy rain/snow and your thresholds count as unusual.", 36, 494)
-			label("Weather data: Open-Meteo.com (CC BY 4.0). Not official emergency alerts.", 36, 528)
-			label("Initial location: Johannesburg. Change the coordinates here for your location.", 36, 562)
+			combo(246, mode, mode[a], 590, 210, 274)
+			label("Hot threshold (C)", 42, 260)
+			edit(243, fmt.Sprint(q.Weather.Hot), 42, 288, 220, false)
+			label("Cold threshold (C)", 322, 260)
+			edit(244, fmt.Sprint(q.Weather.Cold), 322, 288, 220, false)
+			label("Strong gusts (km/h)", 590, 260)
+			edit(245, fmt.Sprint(q.Weather.Wind), 590, 288, 274, false)
+			button(247, "Save weather", 42, 342, 220)
+			labelWide("Thunderstorms, heavy rain/snow and your thresholds count as unusual.", 42, 420, 820)
+			labelWide("Weather data: Open-Meteo.com (CC BY 4.0). Not official emergency alerts.", 42, 454, 820)
+			labelWide("Initial location: Johannesburg. Change coordinates above for your location.", 42, 488, 820)
 		case 4:
 			quietStart, quietEnd := q.Notifications.QuietStart, q.Notifications.QuietEnd
 			if quietStart == "" {
@@ -348,33 +378,30 @@ func platformDashboard() error {
 			if quietEnd == "" {
 				quietEnd = "07:00"
 			}
-			check(250, "Enable authenticated notification webhook", q.Notifications.Enabled, 36, 140)
-			label("Block these apps (names or Windows app IDs)", 36, 190)
-			control("EDIT", strings.Join(q.Notifications.Excluded, "\r\n"), 251, 36, 220, 390, 125, 0x10000|0x800000|0x200000|4|0x40|0x1000)
-			label("Allow-list apps", 450, 190)
-			control("EDIT", strings.Join(q.Notifications.Allowed, "\r\n"), 284, 450, 220, 390, 125, 0x10000|0x800000|0x200000|4|0x40|0x1000)
-			check(280, "Only forward apps in the allow list", q.Notifications.AllowListOnly, 36, 355)
-			check(281, "Quiet hours (Windows local time)", q.Notifications.QuietHoursEnabled, 450, 355)
-			label("From", 450, 391)
-			edit(282, quietStart, 500, 385, 110, false)
-			label("Until", 630, 391)
-			edit(283, quietEnd, 680, 385, 110, false)
-			check(252, "Allow notifications on the TomTom", st.Notifications != 0, 36, 430)
-			label("Display seconds", 300, 445)
-			edit(254, strconv.Itoa(st.NoticeSeconds), 300, 480, 150, false)
-			button(253, "Save notifications", 36, 480, 230)
-			check(255, "Forward new Windows notifications to the TomTom (opt-in)", c.WindowsNotifications, 36, 520)
-			button(256, "Set up Windows access", 36, 558, 210)
-			button(257, "Windows permission settings", 260, 558, 245)
-			button(258, "Send test notification", 525, 558, 230)
-			label("Text isn't saved by this app.", 36, 600)
+			check(250, "Enable authenticated notification webhook", q.Notifications.Enabled, 42, 140, 440)
+			label("Block these apps (names or Windows app IDs)", 42, 182)
+			control("EDIT", strings.Join(q.Notifications.Excluded, "\r\n"), 251, 42, 210, 396, 118, 0x10000|0x800000|0x200000|4|0x40|0x1000)
+			label("Allow-list apps", 464, 182)
+			control("EDIT", strings.Join(q.Notifications.Allowed, "\r\n"), 284, 464, 210, 398, 118, 0x10000|0x800000|0x200000|4|0x40|0x1000)
+			check(280, "Only forward apps in allow list", q.Notifications.AllowListOnly, 42, 342, 390)
+			check(281, "Quiet hours (Windows local time)", q.Notifications.QuietHoursEnabled, 464, 342, 390)
+			label("From", 464, 382)
+			edit(282, quietStart, 520, 378, 110, false)
+			label("Until", 654, 382)
+			edit(283, quietEnd, 710, 378, 110, false)
+			check(252, "Allow notifications on the TomTom", st.Notifications != 0, 42, 424, 380)
+			label("Display seconds", 464, 424)
+			edit(254, strconv.Itoa(st.NoticeSeconds), 620, 420, 120, false)
+			check(255, "Forward new Windows notifications (opt-in)", c.WindowsNotifications, 42, 462, 410)
+			button(253, "Save notifications", 42, 502, 210)
+			button(256, "Windows access", 264, 502, 185)
+			button(257, "Permission settings", 462, 502, 195)
+			button(258, "Send test", 670, 502, 192)
 		case 5:
-			label("Recent changes", 36, 140)
-			label("Installed app: "+version+"  ·  TomTom: "+st.Version, 36, 455)
-			button(270, "Check for updates", 36, 505, 240)
-			button(271, "Update FractureOS", 302, 505, 250)
-			label("The app closes during installation and reopens when it is ready. Settings are kept.", 36, 550)
-			label("On Linux, open the web settings on the hub to update that installation.", 36, 585)
+			labelWide("Installed app: "+version+"  ·  TomTom: "+st.Version, 42, 476, 520)
+			button(270, "Check for updates", 42, 512, 220)
+			button(271, "Update FractureOS", 280, 512, 230)
+			labelWide("Updates verify release SHA-256 checksums, close the app, and reopen when ready.", 42, 560, 820)
 		}
 		invalidate()
 	}
@@ -395,7 +422,17 @@ func platformDashboard() error {
 			return 0
 		case 0x111:
 			id := int(wp & 0xffff)
-			if wp>>16 != 0 {
+			notifyCode := wp >> 16
+			if id == 290 && notifyCode == 1 {
+				if get(290) == "Direct USB to this PC" {
+					curHub := strings.TrimSpace(get(230))
+					if curHub == "" || !strings.HasPrefix(curHub, "https://127.0.0.1:") {
+						user32.NewProc("SetWindowTextW").Call(fields[230], uintptr(unsafe.Pointer(wide("https://127.0.0.1:47831"))))
+					}
+				}
+				return 0
+			}
+			if notifyCode != 0 {
 				return 0
 			}
 			if id >= 100 && id <= 105 {
@@ -458,19 +495,35 @@ func platformDashboard() error {
 				})
 			case 235:
 				next := c
-				next.Hub = get(230)
+				if get(290) == "Direct USB to this PC" {
+					next.ConnectionMode = "direct"
+				} else {
+					next.ConnectionMode = "hub"
+				}
+				if dev := strings.TrimSpace(get(291)); dev != "" {
+					next.Device = dev
+				}
+				next.Hub = strings.TrimSpace(get(230))
 				next.Fingerprint = strings.TrimSpace(get(231))
 				if v := get(232); v != "" {
 					next.Token = v
 				}
+				next.HubMetrics = checked(292)
 				next.MediaEnabled = checked(233)
 				next.MediaStatus = checked(234)
 				next.WindowsTemperature = checked(236)
+				if next.ConnectionMode == "direct" && next.Listen == "" {
+					next.Listen = "127.0.0.1:47831"
+				}
 				if e := saveConfig(next); e != nil {
 					mu.Lock()
 					message = e.Error()
 					mu.Unlock()
 				} else {
+					if next.ConnectionMode == "direct" && (next.Token == "" || next.Fingerprint == "") {
+						_ = identity(&next)
+						user32.NewProc("SetWindowTextW").Call(fields[231], uintptr(unsafe.Pointer(wide(next.Fingerprint))))
+					}
 					c = next
 					user32.NewProc("SetWindowTextW").Call(fields[232], uintptr(unsafe.Pointer(wide(""))))
 					mu.Lock()
@@ -692,17 +745,36 @@ func platformDashboard() error {
 			}
 			dc := item.DC
 			r := item.Rect
-			oldBrush, _, _ := gdi32.NewProc("SelectObject").Call(dc, cardBrush)
-			pen, _, _ := gdi32.NewProc("GetStockObject").Call(8)
+			mu.Lock()
+			activeProfile := state.Profile
+			mu.Unlock()
+			isPrimary := item.ID == uint32(100+pageIndex) || item.ID == 211 || item.ID == 227 || item.ID == 235 || item.ID == 247 || item.ID == 253 || item.ID == 271
+			isProfileActive := (item.ID == 201 && activeProfile == "minimal") || (item.ID == 202 && activeProfile == "desk") || (item.ID == 203 && activeProfile == "bedside")
+			fill := raisedBrush
+			if isPrimary || isProfileActive || item.State&1 != 0 {
+				fill = primaryBrush
+			}
+			pen := borderPen
+			if item.ID == uint32(100+pageIndex) || isProfileActive || item.State&1 != 0 {
+				pen = accentPen
+			}
+			outer := brush
+			if item.ID < 100 || item.ID > 105 {
+				outer = cardBrush
+			}
+			oldBrush, _, _ := gdi32.NewProc("SelectObject").Call(dc, fill)
 			oldPen, _, _ := gdi32.NewProc("SelectObject").Call(dc, pen)
-			user32.NewProc("FillRect").Call(dc, uintptr(unsafe.Pointer(&r)), brush)
-			gdi32.NewProc("RoundRect").Call(dc, uintptr(r.Left), uintptr(r.Top), uintptr(r.Right), uintptr(r.Bottom), 18, 18)
+			user32.NewProc("FillRect").Call(dc, uintptr(unsafe.Pointer(&r)), outer)
+			gdi32.NewProc("RoundRect").Call(dc, uintptr(r.Left), uintptr(r.Top), uintptr(r.Right), uintptr(r.Bottom), 14, 14)
 			gdi32.NewProc("SelectObject").Call(dc, oldBrush)
 			gdi32.NewProc("SelectObject").Call(dc, oldPen)
 			oldFont, _, _ := gdi32.NewProc("SelectObject").Call(dc, normal)
+			if item.ID >= 100 && item.ID <= 105 {
+				gdi32.NewProc("SelectObject").Call(dc, navFont)
+			}
 			gdi32.NewProc("SetBkMode").Call(dc, 1)
 			col := foreground
-			if item.ID == uint32(100+pageIndex) || item.State&1 != 0 {
+			if item.ID == uint32(100+pageIndex) || isProfileActive || item.State&1 != 0 {
 				col = accent
 			}
 			gdi32.NewProc("SetTextColor").Call(dc, col)
@@ -718,10 +790,18 @@ func platformDashboard() error {
 			}
 			gdi32.NewProc("SelectObject").Call(dc, oldFont)
 			return 1
-		case 0x135, 0x138, 0x133:
+		case 0x135, 0x138:
 			gdi32.NewProc("SetTextColor").Call(wp, foreground)
+			if inCard[lp] {
+				gdi32.NewProc("SetBkColor").Call(wp, surface)
+				return cardBrush
+			}
 			gdi32.NewProc("SetBkColor").Call(wp, bg)
 			return brush
+		case 0x133:
+			gdi32.NewProc("SetTextColor").Call(wp, foreground)
+			gdi32.NewProc("SetBkColor").Call(wp, inputBg)
+			return inputBrush
 		case 0x14:
 			return 1
 		case 0xf:
@@ -741,36 +821,38 @@ func platformDashboard() error {
 			}
 			card := func(x, y, w, h int) {
 				old, _, _ := gdi32.NewProc("SelectObject").Call(dc, cardBrush)
-				pen, _, _ := gdi32.NewProc("GetStockObject").Call(8)
-				oldPen, _, _ := gdi32.NewProc("SelectObject").Call(dc, pen)
-				gdi32.NewProc("RoundRect").Call(dc, uintptr(x), uintptr(y), uintptr(x+w), uintptr(y+h), 24, 24)
+				oldPen, _, _ := gdi32.NewProc("SelectObject").Call(dc, borderPen)
+				gdi32.NewProc("RoundRect").Call(dc, uintptr(x), uintptr(y), uintptr(x+w), uintptr(y+h), 18, 18)
 				gdi32.NewProc("SelectObject").Call(dc, old)
 				gdi32.NewProc("SelectObject").Call(dc, oldPen)
 			}
-			user32.NewProc("DrawIconEx").Call(dc, 25, 24, brandIcon, 32, 32, 0, 0, 3)
-			draw("FractureOS", 72, 20, 450, 48, titleFont, foreground)
-			draw("Your desk, at a glance", max(72, clientWidth-330), 31, 300, 28, normal, muted)
+			user32.NewProc("DrawIconEx").Call(dc, 25, 22, brandIcon, 34, 34, 0, 0, 3)
+			draw("FractureOS", 72, 19, 450, 44, titleFont, foreground)
+			draw("Your desk, at a glance  ·  v"+version, max(72, clientWidth-330), 29, 305, 28, normal, muted)
 			mu.Lock()
 			st := state
 			note := message
 			last := lastSuccess
 			mu.Unlock()
-			if pageIndex == 0 {
+			switch pageIndex {
+			case 0:
 				leftCard, rightCard := dashboardCardBounds(clientWidth)
+				bottomRightCard := dashboardRightBottomCardBounds(clientWidth)
 				card(leftCard.x, leftCard.y, leftCard.width, leftCard.height)
 				card(rightCard.x, rightCard.y, rightCard.width, rightCard.height)
+				card(bottomRightCard.x, bottomRightCard.y, bottomRightCard.width, bottomRightCard.height)
 				mu.Lock()
 				packet := preview
 				mu.Unlock()
 				previewX := leftCard.x + (leftCard.width-320)/2
-				if e := renderer.draw(dc, previewX, 139, packet); e != nil {
+				if e := renderer.draw(dc, previewX, 142, packet); e != nil {
 					draw(e.Error(), leftCard.x+20, 210, leftCard.width-40, 100, normal, muted)
 				}
-				summary := "Home preview / drawn on this PC"
+				summary := "Live home preview · rendered on this PC"
 				if last.IsZero() || time.Since(last) > 10*time.Second {
-					summary = "TomTom offline / last home preview"
+					summary = "TomTom offline · last cached home preview"
 				}
-				draw(summary, leftCard.x+20, 385, leftCard.width-40, 25, normal, muted)
+				draw(summary, leftCard.x+18, 394, leftCard.width-36, 24, normal, muted)
 				value := func(n int, unit string) string {
 					if last.IsZero() || time.Since(last) > 10*time.Second || n < 0 {
 						return "Unavailable"
@@ -779,8 +861,15 @@ func platformDashboard() error {
 				}
 				contentX := rightCard.x + 22
 				contentWidth := rightCard.width - 44
-				draw("Hub resources", contentX, 153, contentWidth, 40, titleFont, foreground)
-				draw("CPU   "+value(st.CPU, "%")+"      RAM   "+value(st.RAM, "%"), contentX, 212, contentWidth, 30, normal, accent)
+				hostHeading := "Hub resources"
+				hostTarget := "Remote hub · " + c.Hub
+				if effectiveConnectionMode(c) == "direct" {
+					hostHeading = "Direct USB host"
+					hostTarget = "This PC · TomTom " + c.Device
+				}
+				draw(hostHeading, contentX, 140, contentWidth, 32, sectionFont, foreground)
+				draw(hostTarget, contentX, 176, contentWidth, 24, navFont, muted)
+				draw("CPU   "+value(st.CPU, "%")+"      RAM   "+value(st.RAM, "%"), contentX, 212, contentWidth, 28, normal, accent)
 				draw(func() string {
 					if st.TemperaturePC {
 						return "PC temp   "
@@ -791,8 +880,8 @@ func platformDashboard() error {
 						return -1
 					}
 					return st.TemperatureCPU / 10
-				}(), " C"), contentX, 253, contentWidth, 30, normal, muted)
-				draw("Traffic   "+value(st.Traffic, " KiB/s"), contentX, 286, contentWidth, 30, normal, muted)
+				}(), " C"), contentX, 246, contentWidth, 28, normal, muted)
+				draw("Traffic   "+value(st.Traffic, " KiB/s"), contentX, 278, contentWidth, 28, normal, muted)
 				weather := "Weather hidden or unavailable"
 				if st.WeatherLive && time.Since(last) < 10*time.Second {
 					weather = fmt.Sprintf("%.1f C  ·  %s", float64(st.Temperature)/10, weatherDescription(st.WeatherCode))
@@ -800,25 +889,58 @@ func platformDashboard() error {
 						weather += "  !"
 					}
 				}
-				draw(weather, contentX, 321, contentWidth, 50, normal, accent)
-				draw(fmt.Sprintf("Countdown: %d:%02d", st.Timer/60, st.Timer%60), rightCard.x+24, 417, contentWidth, 36, normal, foreground)
-			}
-			if pageIndex == 5 {
-				y := 182
+				draw(weather, contentX, 314, contentWidth, 38, normal, accent)
+				draw("Countdown timer", bottomRightCard.x+22, bottomRightCard.y+16, bottomRightCard.width-44, 30, sectionFont, foreground)
+				timerText := "No active countdown"
+				if st.Timer > 0 {
+					timerText = fmt.Sprintf("Remaining: %d:%02d", st.Timer/60, st.Timer%60)
+				}
+				draw(timerText, bottomRightCard.x+22, bottomRightCard.y+54, bottomRightCard.width-44, 28, normal, accent)
+			case 1:
+				c1 := dashboardFullCardBounds(clientWidth, 126, 256)
+				c2 := dashboardFullCardBounds(clientWidth, 396, 118)
+				card(c1.x, c1.y, c1.width, c1.height)
+				card(c2.x, c2.y, c2.width, c2.height)
+			case 2:
+				c1 := dashboardFullCardBounds(clientWidth, 126, 250)
+				c2 := dashboardFullCardBounds(clientWidth, 392, 162)
+				card(c1.x, c1.y, c1.width, c1.height)
+				card(c2.x, c2.y, c2.width, c2.height)
+			case 3:
+				c1 := dashboardFullCardBounds(clientWidth, 126, 268)
+				c2 := dashboardFullCardBounds(clientWidth, 406, 124)
+				card(c1.x, c1.y, c1.width, c1.height)
+				card(c2.x, c2.y, c2.width, c2.height)
+			case 4:
+				c1 := dashboardFullCardBounds(clientWidth, 126, 434)
+				card(c1.x, c1.y, c1.width, c1.height)
+			case 5:
+				c1 := dashboardFullCardBounds(clientWidth, 126, 320)
+				c2 := dashboardFullCardBounds(clientWidth, 460, 140)
+				card(c1.x, c1.y, c1.width, c1.height)
+				card(c2.x, c2.y, c2.width, c2.height)
+				draw("Recent changes", 42, 138, clientWidth-84, 30, sectionFont, foreground)
+				y := 174
 				for _, entry := range releaseNotes[:2] {
-					draw(entry.Version+"  ·  "+entry.Status, 36, y, clientWidth-72, 30, titleFont, accent)
-					y += 36
-					for _, change := range entry.Changes {
-						draw("• "+change, 48, y, clientWidth-96, 32, normal, foreground)
-						y += 34
+					if y > 400 {
+						break
+					}
+					draw(entry.Version+"  ·  "+entry.Status, 42, y, clientWidth-84, 26, normal, accent)
+					y += 28
+					for idx, change := range entry.Changes {
+						if idx >= 3 || y > 410 {
+							break
+						}
+						draw("• "+change, 54, y, clientWidth-108, 28, navFont, foreground)
+						y += 26
 					}
 					y += 8
 				}
 			}
-			draw(note, 25, clientHeight-54, clientWidth-50, 44, normal, muted)
 			if pageIndex == 4 {
-				draw(notificationStatus(), 25, clientHeight-84, clientWidth-50, 28, normal, accent)
+				draw(notificationStatus(), 25, clientHeight-80, clientWidth-50, 26, navFont, accent)
 			}
+			draw(note, 25, clientHeight-48, clientWidth-50, 38, normal, muted)
 			user32.NewProc("EndPaint").Call(wnd, uintptr(unsafe.Pointer(&ps)))
 			return 0
 		case 2:

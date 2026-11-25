@@ -16,7 +16,7 @@ jobs:
         run: |
           go install github.com/tc-hib/go-winres@v0.3.3
           Push-Location host
-          go-winres make --arch amd64,arm64 --file-version 0.1.15.0 --product-version 0.1.15.0
+          go-winres make --arch amd64,arm64 --file-version 0.1.17.0 --product-version 0.1.17.0
           if ($LASTEXITCODE) { throw 'Windows resources failed' }
           Pop-Location
       - name: Compile native Windows apps
