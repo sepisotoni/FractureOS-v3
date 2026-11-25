@@ -34,7 +34,7 @@ import (
 	"time"
 )
 
-const version = "0.1.17"
+const version = "0.1.18"
 
 //go:embed ui.html
 var page string
@@ -58,6 +58,7 @@ type Config struct {
 	Weather              WeatherConfig      `json:"weather"`
 	Agenda               AgendaConfig       `json:"agenda"`
 	Notifications        NotificationConfig `json:"notifications"`
+	Wallpaper            WallpaperConfig    `json:"wallpaper"`
 }
 
 func effectiveConnectionMode(c Config) string {
@@ -75,7 +76,7 @@ func configDir() string {
 	return filepath.Join(p, "fracture-v3")
 }
 func readConfig() (Config, error) {
-	c := Config{Device: "192.168.101.115", Hub: "https://127.0.0.1:47831", Listen: "127.0.0.1:47831", Weather: defaultWeather(), Agenda: defaultAgenda(), LyricsEnabled: true, Audio: defaultAudioConfig()}
+	c := Config{Device: "192.168.101.115", Hub: "https://127.0.0.1:47831", Listen: "127.0.0.1:47831", Weather: defaultWeather(), Agenda: defaultAgenda(), LyricsEnabled: true, Audio: defaultAudioConfig(), Wallpaper: defaultWallpaper()}
 	b, e := os.ReadFile(filepath.Join(configDir(), "config.json"))
 	if errors.Is(e, os.ErrNotExist) {
 		return c, nil
@@ -92,6 +93,9 @@ func readConfig() (Config, error) {
 		}
 		if c.Agenda.MaxEvents == 0 {
 			c.Agenda.MaxEvents = defaultAgenda().MaxEvents
+		}
+		if c.Wallpaper.Mode == "" {
+			c.Wallpaper = defaultWallpaper()
 		}
 	}
 	return c, e
@@ -271,6 +275,10 @@ func validateCommand(cmd string) error {
 		if len(a) == 2 && (a[1] == "load" || a[1] == "clear") {
 			return nil
 		}
+	case "wallpaper":
+		if len(a) == 2 && (a[1] == "load" || a[1] == "clear") {
+			return nil
+		}
 	case "media-ack":
 		if len(a) == 2 {
 			if _, e := strconv.ParseUint(a[1], 10, 32); e == nil {
@@ -434,6 +442,8 @@ func hubRequest(c Config, path string, payload any) (string, error) {
 	limit := int64(8192)
 	if path == "/api/preview" {
 		limit = 384 * 1024
+	} else if path == "/api/wallpaper" {
+		limit = 4 * 1024 * 1024
 	}
 	data, e := io.ReadAll(io.LimitReader(res.Body, limit+1))
 	if len(data) > int(limit) {
@@ -551,6 +561,7 @@ func serveWithContext(ctx context.Context, startAudio bool) error {
 	registerAgenda(mux, b, c.Token)
 	registerPreview(mux, b, c.Token)
 	registerAudio(mux, b, c.Token)
+	registerWallpaper(mux, b, c.Token)
 	mux.HandleFunc("/api/media", func(w http.ResponseWriter, r *http.Request) {
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+c.Token)) != 1 {
 			http.Error(w, "unauthorized", 401)
@@ -601,6 +612,7 @@ func serveWithContext(ctx context.Context, startAudio bool) error {
 	go weatherSupervisor(ctx, b)
 	go agendaSupervisor(ctx, b)
 	go lyricsSupervisor(ctx, b)
+	go wallpaperSupervisor(ctx, b)
 	if startAudio {
 		go audioSupervisor(ctx, b, runtime.GOOS)
 	}
@@ -793,6 +805,27 @@ func settings(open bool) error {
 				payload = q
 			}
 			out, err := hubRequest(c, "/api/integrations", payload)
+			if err != nil {
+				http.Error(w, err.Error(), 502)
+				return
+			}
+			fmt.Fprint(w, out)
+		case "/wallpaper":
+			if r.Method != "GET" && r.Method != "POST" {
+				http.Error(w, "GET or POST required", 405)
+				return
+			}
+			var payload any = map[string]string{"operation": "get"}
+			if r.Method == "POST" {
+				var q map[string]any
+				r.Body = http.MaxBytesReader(w, r.Body, 8*1024*1024)
+				if e = json.NewDecoder(r.Body).Decode(&q); e != nil {
+					http.Error(w, "invalid wallpaper request", 400)
+					return
+				}
+				payload = q
+			}
+			out, err := hubRequest(c, "/api/wallpaper", payload)
 			if err != nil {
 				http.Error(w, err.Error(), 502)
 				return
@@ -1105,7 +1138,7 @@ func configCommand(a []string) error {
 	return saveConfig(c)
 }
 func help() {
-	fmt.Println(`FractureOS 0.1.17
+	fmt.Println(`FractureOS 0.1.18
   fracture status | profile minimal|desk|bedside | theme teal|amber|blue
   fracture theme NAME | theme-get | theme-set KEY VALUE | theme-save NEW_NAME | theme-reset
   fracture face NAME | face-get | face-set KEY VALUE | face-reset

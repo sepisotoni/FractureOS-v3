@@ -3,7 +3,7 @@
 import hashlib,json,os,shutil,subprocess,tarfile,zipfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parent.parent
-VERSION='v0.1.17'
+VERSION='v0.1.18'
 OUT=ROOT/'build/release'
 OUT.mkdir(parents=True,exist_ok=True)
 subprocess.run(['sh','tools/build-device.sh'],cwd=ROOT,check=True)
@@ -26,6 +26,7 @@ for system in ('linux','windows'):
    shutil.copytree(ROOT/'assets/themes',staging/'assets/themes',dirs_exist_ok=True)
    shutil.copytree(ROOT/'assets/ui',staging/'assets/ui',dirs_exist_ok=True)
    shutil.copytree(ROOT/'assets/branding',staging/'assets/branding',dirs_exist_ok=True)
+   shutil.copytree(ROOT/'assets/wallpaper-packs',staging/'assets/wallpaper-packs',dirs_exist_ok=True)
    package=OUT/(name+'.tar.gz')
    with tarfile.open(package,'w:gz') as archive:
     for child in sorted(staging.iterdir()):archive.add(child,arcname=child.name)

@@ -10,6 +10,16 @@ type releaseNote struct {
 
 var releaseNotes = []releaseNote{
 	{
+		Version: "v0.1.18",
+		Status:  "Prerelease",
+		Changes: []string{
+			"Added automatic PC wallpaper forwarding on Windows, solid-color legacy background option, TomTom ONE v6 preset pack, and a custom crop/zoom/pan studio with last-5 history.",
+			"Added escalating frosted glassmorphism and background blur across TomTom menus so text and icons stay readable over wallpapers.",
+			"Added top-right HH:MM clock across TomTom menus and Today agenda.",
+			"Expanded media title ASCII transliteration with Cyrillic, Greek, fullwidth ASCII, and common symbol fallbacks.",
+		},
+	},
+	{
 		Version: "v0.1.17",
 		Status:  "Release",
 		Changes: []string{

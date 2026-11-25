@@ -1,6 +1,6 @@
 ; Build with Inno Setup 6.3+ on Windows. No configuration wizard: use app Settings.
 #ifndef AppVersion
-#define AppVersion "0.1.17"
+#define AppVersion "0.1.18"
 #endif
 #ifndef Arch
 #define Arch "amd64"

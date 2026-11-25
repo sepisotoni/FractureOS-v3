@@ -536,7 +536,7 @@
     <aside class="sidebar" aria-label="Main navigation">
       <div class="brand">
         <img src="/fracture.svg" alt="">
-        <div><div class="brand-name">FractureOS</div><div class="brand-sub">TomTom companion · 0.1.17</div></div>
+        <div><div class="brand-name">FractureOS</div><div class="brand-sub">TomTom companion · 0.1.18</div></div>
       </div>
       <div class="nav-group">
         <div class="nav-label">Main</div>
@@ -704,6 +704,37 @@
             <div class="field" style="max-width:380px;margin-top:16px"><label for="newTheme">Save a new preset (lowercase letters, numbers, hyphens)</label><input id="newTheme" placeholder="my-night-theme"><div class="buttons"><button class="button" id="cloneTheme" type="button">Save as new theme</button></div></div>
             <p class="help">Named themes survive updates. Bedside mode dims the selected colors.</p>
           </section>
+          <section class="card" id="cardWallpaper">
+            <div class="card-head"><div class="card-icon"><svg><use href="#i-face"/></svg></div><div><h2 class="card-title">Wallpaper &amp; background</h2><p class="card-description">Sync your PC desktop wallpaper automatically, pick a solid colour (default legacy black), choose a preset, or crop a custom image. Menus use escalating frosted glass blur so text stays readable.</p></div></div>
+            <div class="grid">
+              <div class="field"><label for="wallpaperMode">Background mode</label><select id="wallpaperMode"><option value="pc">Use this PC's wallpaper (auto-sync)</option><option value="color">Solid colour (Legacy)</option><option value="preset">FractureOS presets</option><option value="custom">Custom wallpaper</option></select></div>
+              <div class="field" id="wallpaperColorWrap" style="display:none"><label for="wallpaperColor">Solid background colour</label><div style="display:flex;gap:8px;align-items:center"><input id="wallpaperColor" type="color" value="#000000" style="width:52px;height:36px;padding:2px;border-radius:8px"><button class="button" id="wallpaperBlackBtn" type="button">Legacy black</button></div></div>
+            </div>
+            <div id="wallpaperPcPanel" class="help" style="margin-top:10px">Windows automatically forwards your current desktop wallpaper when paired or updated.</div>
+            <div id="wallpaperPresetsPanel" style="display:none;margin-top:12px">
+              <div id="wallpaperPresetsGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px"></div>
+            </div>
+            <div id="wallpaperCustomPanel" style="display:none;margin-top:14px">
+              <div class="appearance-split">
+                <div>
+                  <div class="field"><label for="wallpaperFile">Choose an image (PNG, JPG, BMP)</label><input id="wallpaperFile" type="file" accept="image/png,image/jpeg,image/bmp,image/*"></div>
+                  <div class="field" style="margin-top:10px"><label for="wallpaperZoom">Zoom (<span id="wallpaperZoomVal">100%</span>)</label><input id="wallpaperZoom" type="range" min="20" max="400" value="100"></div>
+                  <div class="field" style="margin-top:10px"><label for="wallpaperDim">Brightness (<span id="wallpaperDimVal">100%</span>)</label><input id="wallpaperDim" type="range" min="40" max="120" value="100"></div>
+                  <div class="buttons"><button class="button" id="wallpaperFillBtn" type="button">Fill 320×240</button><button class="button" id="wallpaperFitBtn" type="button">Fit</button><button class="button" id="wallpaperResetCropBtn" type="button">Reset</button></div>
+                  <p class="help">Drag inside the preview to pan and position your wallpaper.</p>
+                </div>
+                <div class="device-bezel">
+                  <canvas class="device-screen" id="wallpaperCanvas" width="320" height="240" style="cursor:grab;touch-action:none" aria-label="Custom wallpaper crop and zoom preview"></canvas>
+                  <div class="device-caption">320 × 240 TomTom wallpaper crop</div>
+                </div>
+              </div>
+              <div style="margin-top:14px">
+                <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px">Recent custom wallpapers (last 5)</div>
+                <div id="wallpaperHistoryGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:10px"></div>
+              </div>
+            </div>
+            <div class="buttons" style="margin-top:14px"><button class="button primary" id="applyWallpaper" type="button">Apply wallpaper</button><button class="button" id="syncPcWallpaper" type="button">Sync PC wallpaper now</button></div>
+          </section>
         </div>
 
         <div class="view" data-view="integrations">
@@ -789,7 +820,7 @@
       </main>
 
       <footer class="pane-footer">
-        <div class="pane-footer-left"><span class="status-dot live" id="footerDot"></span><span id="footerSummary">FractureOS 0.1.17 · Dual-mode companion</span></div>
+        <div class="pane-footer-left"><span class="status-dot live" id="footerDot"></span><span id="footerSummary">FractureOS 0.1.18 · Dual-mode companion</span></div>
         <div class="pane-footer-actions">
           <button class="button sm" id="refresh" type="button">Refresh status</button>
           <button class="button sm primary" type="button" data-go="integrations">Manage integrations</button>
@@ -1655,8 +1686,168 @@
           $("sidebarDot").className = "status-dot warn";
         }
         try { await loadIntegrations(); } catch (error) { show(error.message, true); }
+        try { await loadWallpaper(); } catch (error) { /* wallpaper optional */ }
       } catch (error) { show(error.message, true); }
     })();
+
+    let wpState = { config: { mode: "pc", color: "000000" }, history: [], presets: [], pc_available: false };
+    let wpImg = null, wpName = "Custom wallpaper", wpPanX = 0, wpPanY = 0, wpZoom = 1, wpDim = 1, wpDragging = false, wpDragX = 0, wpDragY = 0;
+
+    function syncWallpaperPanels() {
+      const mode = $("wallpaperMode").value;
+      $("wallpaperColorWrap").style.display = mode === "color" ? "" : "none";
+      $("wallpaperPcPanel").style.display = mode === "pc" ? "" : "none";
+      $("wallpaperPresetsPanel").style.display = mode === "preset" ? "" : "none";
+      $("wallpaperCustomPanel").style.display = mode === "custom" ? "" : "none";
+      $("syncPcWallpaper").style.display = mode === "pc" ? "" : "none";
+    }
+
+    function drawWallpaperCanvas() {
+      const canvas = $("wallpaperCanvas"), ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#000000";
+      ctx.fillRect(0, 0, 320, 240);
+      if (!wpImg) {
+        ctx.fillStyle = "rgba(255,255,255,0.45)";
+        ctx.font = "13px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("Choose an image to crop & zoom", 160, 124);
+        return;
+      }
+      ctx.save();
+      ctx.filter = `brightness(${Math.round(wpDim * 100)}%)`;
+      const w = wpImg.width * wpZoom, h = wpImg.height * wpZoom;
+      ctx.drawImage(wpImg, (320 - w) / 2 + wpPanX, (240 - h) / 2 + wpPanY, w, h);
+      ctx.restore();
+    }
+
+    function fitWallpaper(cover) {
+      if (!wpImg) return;
+      const sx = 320 / wpImg.width, sy = 240 / wpImg.height;
+      wpZoom = cover ? Math.max(sx, sy) : Math.min(sx, sy);
+      wpPanX = 0; wpPanY = 0;
+      $("wallpaperZoom").value = Math.max(20, Math.min(400, Math.round(wpZoom * 100)));
+      $("wallpaperZoomVal").textContent = $("wallpaperZoom").value + "%";
+      drawWallpaperCanvas();
+    }
+
+    function renderWallpaperLists() {
+      const pGrid = $("wallpaperPresetsGrid");
+      pGrid.innerHTML = "";
+      if (!wpState.presets || !wpState.presets.length) {
+        pGrid.innerHTML = '<div class="help">No built-in presets loaded yet.</div>';
+      } else {
+        wpState.presets.forEach(p => {
+          const card = document.createElement("button");
+          card.type = "button";
+          card.className = "button";
+          card.style.cssText = "display:flex;flex-direction:column;gap:6px;padding:6px;height:auto;text-align:left";
+          card.innerHTML = `<img src="${p.preview}" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px"><span style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%">${p.name}</span>`;
+          card.onclick = async () => {
+            try {
+              await api("/wallpaper", { mode: "preset", preset: p.name, color: wpState.config.color || "000000" });
+              show("Applied preset wallpaper: " + p.name);
+              await loadWallpaper();
+            } catch (e) { show(e.message, true); }
+          };
+          pGrid.appendChild(card);
+        });
+      }
+
+      const hGrid = $("wallpaperHistoryGrid");
+      hGrid.innerHTML = "";
+      if (!wpState.history || !wpState.history.length) {
+        hGrid.innerHTML = '<div class="help">No custom wallpapers saved yet (stores last 5).</div>';
+      } else {
+        wpState.history.forEach(item => {
+          const wrap = document.createElement("div");
+          wrap.style.cssText = "background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:6px";
+          wrap.innerHTML = `<img src="${item.preview}" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px"><div style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item.name}</div><div style="display:flex;gap:4px"><button type="button" class="button primary" style="flex:1;padding:4px 6px;font-size:11px">Use</button><button type="button" class="button" style="padding:4px 6px;font-size:11px">×</button></div>`;
+          const btns = wrap.querySelectorAll("button");
+          btns[0].onclick = async () => {
+            try {
+              await api("/wallpaper", { mode: "custom", custom_id: item.id, color: wpState.config.color || "000000" });
+              show("Applied saved custom wallpaper.");
+              await loadWallpaper();
+            } catch (e) { show(e.message, true); }
+          };
+          btns[1].onclick = async () => {
+            try {
+              await api("/wallpaper", { operation: "delete", delete_id: item.id });
+              await loadWallpaper();
+            } catch (e) { show(e.message, true); }
+          };
+          hGrid.appendChild(wrap);
+        });
+      }
+    }
+
+    async function loadWallpaper() {
+      wpState = JSON.parse(await api("/wallpaper"));
+      const c = wpState.config || { mode: "pc", color: "000000" };
+      $("wallpaperMode").value = c.mode || "pc";
+      $("wallpaperColor").value = "#" + (c.color || "000000");
+      $("wallpaperPcPanel").textContent = wpState.pc_available
+        ? "PC desktop wallpaper detected. FractureOS syncs it automatically when paired or updated."
+        : "PC desktop wallpaper could not be read automatically on this host; choose Solid colour, Preset, or Custom.";
+      syncWallpaperPanels();
+      renderWallpaperLists();
+      drawWallpaperCanvas();
+    }
+
+    $("wallpaperMode").addEventListener("change", syncWallpaperPanels);
+    $("wallpaperBlackBtn").addEventListener("click", () => { $("wallpaperColor").value = "#000000"; });
+    $("wallpaperFile").addEventListener("change", () => {
+      const f = $("wallpaperFile").files[0];
+      if (!f) return;
+      wpName = f.name.replace(/\.[^.]+$/, "");
+      const img = new Image();
+      img.onload = () => { wpImg = img; wpDim = 1; $("wallpaperDim").value = 100; $("wallpaperDimVal").textContent = "100%"; fitWallpaper(true); };
+      img.src = URL.createObjectURL(f);
+    });
+    $("wallpaperZoom").addEventListener("input", () => {
+      wpZoom = Number($("wallpaperZoom").value) / 100;
+      $("wallpaperZoomVal").textContent = $("wallpaperZoom").value + "%";
+      drawWallpaperCanvas();
+    });
+    $("wallpaperDim").addEventListener("input", () => {
+      wpDim = Number($("wallpaperDim").value) / 100;
+      $("wallpaperDimVal").textContent = $("wallpaperDim").value + "%";
+      drawWallpaperCanvas();
+    });
+    $("wallpaperFillBtn").addEventListener("click", () => fitWallpaper(true));
+    $("wallpaperFitBtn").addEventListener("click", () => fitWallpaper(false));
+    $("wallpaperResetCropBtn").addEventListener("click", () => { wpDim = 1; $("wallpaperDim").value = 100; $("wallpaperDimVal").textContent = "100%"; fitWallpaper(true); });
+
+    const wpCanvas = $("wallpaperCanvas");
+    wpCanvas.addEventListener("pointerdown", e => { if (!wpImg) return; wpDragging = true; wpDragX = e.clientX - wpPanX; wpDragY = e.clientY - wpPanY; wpCanvas.setPointerCapture(e.pointerId); wpCanvas.style.cursor = "grabbing"; });
+    wpCanvas.addEventListener("pointermove", e => { if (!wpDragging) return; wpPanX = e.clientX - wpDragX; wpPanY = e.clientY - wpDragY; drawWallpaperCanvas(); });
+    wpCanvas.addEventListener("pointerup", () => { wpDragging = false; wpCanvas.style.cursor = "grab"; });
+    wpCanvas.addEventListener("pointercancel", () => { wpDragging = false; wpCanvas.style.cursor = "grab"; });
+
+    action("applyWallpaper", async () => {
+      const mode = $("wallpaperMode").value;
+      const color = ($("wallpaperColor").value || "#000000").replace("#", "");
+      const payload = { mode, color };
+      if (mode === "custom") {
+        if (wpImg) {
+          payload.name = wpName;
+          payload.image_base64 = wpCanvas.toDataURL("image/png");
+        } else if (wpState.config && wpState.config.custom_id) {
+          payload.custom_id = wpState.config.custom_id;
+        } else {
+          throw Error("Choose an image or pick one from your recent 5 custom wallpapers.");
+        }
+      } else if (mode === "preset") {
+        if (!wpState.presets || !wpState.presets.length) throw Error("No built-in presets available yet.");
+        payload.preset = (wpState.config && wpState.config.preset) || wpState.presets[0].name;
+      }
+      await api("/wallpaper", payload);
+      await loadWallpaper();
+    });
+    action("syncPcWallpaper", async () => {
+      await api("/wallpaper", { mode: "pc", color: ($("wallpaperColor").value || "#000000").replace("#", "") });
+      await loadWallpaper();
+    });
   </script>
 </body>
 </html>

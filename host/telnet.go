@@ -154,6 +154,7 @@ func deviceCommands(address string, commands []string) (string, error) {
 // Artwork is a fixed 18 KiB RGB565 image, served once over the trusted USB hop.
 // Nothing supplied by Spotify is interpolated into the shell command.
 func uploadMediaArt(address string, data []byte) error { return uploadDeviceArt(address, data, false) }
+func uploadWallpaper(address string, data []byte) error { return uploadDevicePayload(address, data, 3) }
 func uploadDeviceArt(address string, data []byte, notice bool) error {
 	kind := 0
 	if notice {
@@ -162,7 +163,7 @@ func uploadDeviceArt(address string, data []byte, notice bool) error {
 	return uploadDevicePayload(address, data, kind)
 }
 func uploadDevicePayload(address string, data []byte, kind int) error {
-	if (kind == 0 && len(data) != 18432) || (kind == 1 && len(data) != 4608) || (kind == 2 && (len(data) < 32 || len(data) > 8192)) || kind < 0 || kind > 2 {
+	if (kind == 0 && len(data) != 18432) || (kind == 1 && len(data) != 4608) || (kind == 2 && (len(data) < 32 || len(data) > 8192)) || (kind == 3 && len(data) != 153600) || kind < 0 || kind > 3 {
 		return fmt.Errorf("invalid artwork size")
 	}
 	c, err := net.DialTimeout("tcp", net.JoinHostPort(address, "23"), 3*time.Second)
@@ -212,6 +213,9 @@ func uploadDevicePayload(address string, data []byte, kind int) error {
 	}
 	if kind == 2 {
 		destination = "/mnt/sdcard/fracture-v3/weather.dat"
+	}
+	if kind == 3 {
+		destination = "/mnt/sdcard/fracture-v3/wallpaper.rgb"
 	}
 	_, err = t.command("wget -q -O " + destination + ".new 'http://" + ln.Addr().String() + "/" + key + "' && mv " + destination + ".new " + destination)
 	_, _ = c.Write([]byte("exit\r\n"))

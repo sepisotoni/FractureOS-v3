@@ -95,6 +95,7 @@ static void page_label(int i,char *s,size_t cap,int *symbol){const char *v="Back
  case PAGE_MEDIA_MORE:v=i==0?"Lyrics / subtitles":i==1?"Audio output":"Back";*symbol=11;break;
  default:break;}snprintf(s,cap,"%s",v);}
 static void weather_draw(void){char s[80],label[32],value[40];int i,start=(selected/4)*4;struct tm clock;uint16_t fg=theme_color(theme.foreground),muted=theme_color(theme.muted),accent=theme_color(theme.accent);text(16,7,menu==PAGE_WEATHER_HOURS?"Hourly":menu==PAGE_WEATHER_DAYS?"7 days":"Weather",3,fg);localtime_now(&clock);strftime(s,sizeof s,"%H:%M",&clock);text(W-14-measured(s),13,s,1,muted);forecast_age(s,sizeof s);text_fit(16,43,s,288,1,muted);
+ if(wallpaper)glass_rounded(8,65,W-16,148,12,rgb(10,14,24),160);
  if(menu==PAGE_WEATHER){if(forecast){int temp=weather_live()?weather_temp:forecast->hour[0].temp,code=weather_live()?weather_code:forecast->hour[0].code;weather_icon(30,83,code,accent,theme_color(theme.background));snprintf(s,sizeof s,"%d C",temp/10);text(73,73,s,4,fg);text_fit(24,126,weather_label(code),274,1,muted);}else{text_lines(18,85,"Enable weather in app settings. Stored forecasts appear here after a hub refresh.",284,3,1,muted);}
  {const char *items[]={"Hourly","7 days","Back"};for(i=0;i<3;i++){rounded(12+i*102,183,94,31,11,i==selected?theme_color(theme.surface):theme_color(theme.background));text_fit(22+i*102,189,items[i],76,1,i==selected?fg:muted);}}center(221,"Tap: browse / power: select",1,muted);return;}
  if(!forecast){text_lines(18,95,"No stored forecast. Connect the hub with weather enabled.",284,3,1,muted);return;}
@@ -102,9 +103,10 @@ static void weather_draw(void){char s[80],label[32],value[40];int i,start=(selec
  text(19,y,label,1,fg);weather_icon(105,y-1,code,accent,theme_color(theme.background));if(menu==PAGE_WEATHER_DAYS)snprintf(value,sizeof value,"%d / %d C",low/10,temp/10);else snprintf(value,sizeof value,"%d C",temp/10);text_fit(142,y,value,101,1,fg);if(rain>=0){snprintf(value,sizeof value,"%d%%",rain);text(262,y,value,1,muted);}}
  snprintf(s,sizeof s,"%d/%d  Tap next / power %s",selected+1,page_count(),menu==PAGE_WEATHER_HOURS?"week":"hourly");center(221,s,1,muted);}
 static void agenda_draw(void){
- int i,start=(selected/4)*4;char time_label[8];
+ int i,start=(selected/4)*4;char time_label[8],clock_s[16];struct tm clock;
  uint16_t fg=theme_color(theme.foreground),muted=theme_color(theme.muted),accent=theme_color(theme.accent),surface=theme_color(theme.surface);
- text(16,7,"Today",3,fg);text_fit(16,39,"Times use host local timezone",288,1,muted);
+ text(16,7,"Today",3,fg);localtime_now(&clock);strftime(clock_s,sizeof clock_s,"%H:%M",&clock);text(W-14-measured(clock_s),13,clock_s,1,muted);text_fit(16,39,"Times use host local timezone",288,1,muted);
+ if(wallpaper)glass_rounded(8,62,W-16,152,12,rgb(10,14,24),160);
  if(!agenda_count){text_lines(20,94,"Agenda is off or no upcoming events were found. Configure an HTTPS ICS feed in host Settings.",280,3,1,muted);center(221,"Tap: browse / power: back",1,muted);return;}
  for(i=start;i<start+4&&i<agenda_count;i++){
   int y=68+(i-start)*37;
@@ -120,14 +122,15 @@ static void quick_settings_draw(void){static const char *labels[]={"Brightness",
  battery_refresh();battery=battery_state==1||battery_state==2?accent:muted;
  icon(244,7,14,battery,bg);if(battery_state==2){stroke(254,9,250,14,fg);stroke(250,14,255,14,fg);stroke(255,14,252,19,fg);}
  rounded(282,14,16,9,5,link_live()?accent:muted);rounded(284,16,12,5,3,bg);rounded(292,8,16,9,5,link_live()?accent:muted);rounded(294,10,12,5,3,bg);if(link_live())stroke(291,17,299,13,accent);else rect(288,13,8,5,bg);
- for(i=0;i<4;i++){int x=xs[i],y=ys[i];rounded(x,y,128,54,12,i==selected?active:bg);icon(x+10,y+16,icons[i],i==selected?accent:muted,i==selected?active:bg);text_fit(x+41,y+19,labels[i],78,1,i==selected?fg:muted);}
+ for(i=0;i<4;i++){int x=xs[i],y=ys[i];uint16_t tile_bg=wallpaper?rgb(12,17,28):bg;if(wallpaper)glass_rounded(x,y,128,54,12,i==selected?active:tile_bg,i==selected?210:155);else rounded(x,y,128,54,12,i==selected?active:bg);icon(x+10,y+16,icons[i],i==selected?accent:muted,i==selected?active:tile_bg);text_fit(x+41,y+19,labels[i],78,1,i==selected?fg:muted);}
  center(211,"Tap: browse / power: select",1,muted);}
 static void navigation_draw(void){char s[96],a[24],b[24];int i,start=(selected/4)*4;uint16_t fg=theme_color(theme.foreground),muted=theme_color(theme.muted),accent=theme_color(theme.accent),bg=theme_color(theme.background);double now=mono();
  if(menu==PAGE_FACES||menu==PAGE_THEMES){struct tm t;localtime_now(&t);face_draw_height(&t,193);rounded(8,194,304,46,10,theme_color(theme.surface));snprintf(s,sizeof s,"%s  %d/%d",menu==PAGE_FACES?cfg.face:cfg.theme_name,selected+1,page_count());center(196,s,1,fg);center(218,"Tap: preview / power: keep",1,muted);return;}
  if(weather_page(menu)){weather_draw();return;}
  if(menu==PAGE_AGENDA){agenda_draw();return;}
  if(menu==PAGE_LYRICS){lyrics_draw();return;}
- if(menu==PAGE_PLAYER){media_draw();return;}text_fit(18,8,page_title(),270,3,fg);
+ if(menu==PAGE_PLAYER){media_draw();return;}text_fit(18,8,page_title(),220,3,fg);
+ if(menu!=PAGE_QUICK){struct tm clock;char clock_s[16];localtime_now(&clock);strftime(clock_s,sizeof clock_s,"%H:%M",&clock);text(W-14-measured(clock_s),13,clock_s,1,muted);}
  if(menu==PAGE_EDIT){snprintf(s,sizeof s,"%d",edit_value);center(85,s,5,accent);center(160,"Tap + / double tap -",1,muted);center(191,"Power: apply / hold 1.5s: cancel",1,muted);return;}
  if(menu==PAGE_INFO){text_fit(16,90,info_text,288,1,fg);center(185,"Power to go back",1,muted);return;}
  if(menu==PAGE_QUICK){quick_settings_draw();return;}
@@ -136,6 +139,7 @@ static void navigation_draw(void){char s[96],a[24],b[24];int i,start=(selected/4
  else if(menu==PAGE_ALARM)text(20,43,"Daily / silent visual alerts",1,muted);
  else if(menu==PAGE_MEDIA)text(20,43,"Controls your connected Spotify player",1,muted);
  else if(page_count()>4){snprintf(s,sizeof s,"%d / %d",selected+1,page_count());text(255,43,s,1,muted);}
- {double progress=menu_anim_start?(now-menu_anim_start)/0.18:1;int y;if(progress>1)progress=1;if(progress<0)progress=0;progress=1-(1-progress)*(1-progress);y=menu_anim_start?(int)(menu_anim_from+(menu_anim_to-menu_anim_from)*progress):69+(selected%4)*32;rounded(12,y,296,30,11,theme_color(theme.surface));}
- for(i=start;i<start+4&&i<page_count();i++){int y=73+(i-start)*32,symbol;uint16_t surface=i==selected?theme_color(theme.surface):bg;page_label(i,s,sizeof s,&symbol);if(symbol==SYM_SPOTIFY)spotify_mark(23,y-2,23);else icon(23,y-2,symbol,accent,surface);text_fit(57,y-2,s,238,2,i==selected?fg:muted);}
+ if(wallpaper)glass_rounded(8,63,W-16,138,12,rgb(10,14,24),150);
+ {double progress=menu_anim_start?(now-menu_anim_start)/0.18:1;int y;if(progress>1)progress=1;if(progress<0)progress=0;progress=1-(1-progress)*(1-progress);y=menu_anim_start?(int)(menu_anim_from+(menu_anim_to-menu_anim_from)*progress):69+(selected%4)*32;if(wallpaper)glass_rounded(12,y,296,30,11,theme_color(theme.surface),210);else rounded(12,y,296,30,11,theme_color(theme.surface));}
+ for(i=start;i<start+4&&i<page_count();i++){int y=73+(i-start)*32,symbol;uint16_t surface=i==selected?theme_color(theme.surface):(wallpaper?rgb(10,14,24):bg);page_label(i,s,sizeof s,&symbol);if(symbol==SYM_SPOTIFY)spotify_mark(23,y-2,23);else icon(23,y-2,symbol,accent,surface);text_fit(57,y-2,s,238,2,i==selected?fg:muted);}
  center(221,"Tap: browse / power: select",1,muted);}
