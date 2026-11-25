@@ -57,3 +57,32 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 Filename: "{app}\fracture.exe"; Parameters: "tray"; Description: "Start FractureOS tray"; Flags: nowait postinstall skipifsilent
 Filename: "{app}\fracture.exe"; Parameters: "dashboard"; Description: "Open dashboard and settings"; Flags: nowait postinstall skipifsilent
 ; Config stays in %APPDATA%\fracture-v3 across upgrades/uninstallation.
+
+[Code]
+// Setup's Restart Manager cannot always close every fracture.exe (tray, dashboard,
+// web and helper processes), which caused "DeleteFile failed; code 5". Stop only
+// the copies that run from this install folder, then wait for them to exit.
+procedure StopFractureProcesses(const AppDir: String);
+var
+  ResultCode: Integer;
+  Command: String;
+begin
+  Command := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "' +
+    'Get-Process -Name fracture -ErrorAction SilentlyContinue | ' +
+    'Where-Object { $_.Path -and $_.Path.StartsWith(''' + AppDir + ''', [StringComparison]::OrdinalIgnoreCase) } | ' +
+    'Stop-Process -Force -ErrorAction SilentlyContinue"';
+  Exec('powershell.exe', Command, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(800);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  StopFractureProcesses(ExpandConstant('{app}'));
+  Result := '';
+end;
+
+function InitializeUninstall(): Boolean;
+begin
+  StopFractureProcesses(ExpandConstant('{app}'));
+  Result := True;
+end;
