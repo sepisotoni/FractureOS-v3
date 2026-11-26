@@ -528,6 +528,7 @@ func platformDashboard() error {
 					switch sel {
 					case "Legacy black (#000000)":
 						payload["mode"] = "color"
+						payload["color"] = "000000" // always black, never the previously saved colour
 					case "Preset: 01 Purple Blue":
 						payload["mode"] = "preset"
 						payload["preset"] = "01-purple-blue-ribbon-flow.jpg"
