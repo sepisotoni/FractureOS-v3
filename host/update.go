@@ -26,7 +26,8 @@ type updateOffer struct {
 	Page      string `json:"page"`
 }
 
-var releaseTag = regexp.MustCompile(`^v([0-9]{1,6})\.([0-9]{1,6})\.([0-9]{1,6})$`)
+// releaseTag accepts vX.Y.Z and the four-part vX.Y.Z.W form used for hotfixes.
+var releaseTag = regexp.MustCompile(`^v([0-9]{1,6})\.([0-9]{1,6})\.([0-9]{1,6})(?:\.([0-9]{1,6}))?$`)
 
 func compareVersions(a, b string) int {
 	aa := releaseTag.FindStringSubmatch("v" + strings.TrimPrefix(a, "v"))
@@ -34,8 +35,8 @@ func compareVersions(a, b string) int {
 	if aa == nil || bb == nil {
 		return 0
 	}
-	for i := 1; i < 4; i++ {
-		x, _ := strconv.Atoi(aa[i])
+	for i := 1; i < 5; i++ {
+		x, _ := strconv.Atoi(aa[i]) // an absent fourth part is "" and counts as 0
 		y, _ := strconv.Atoi(bb[i])
 		if x > y {
 			return 1

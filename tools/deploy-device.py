@@ -69,7 +69,7 @@ def main():
         if 'armv5' not in identity or '2.6.13' not in identity or 'ONE (v6)' not in identity:
             raise RuntimeError('This device release supports the validated OpenTom ONE (v6), Linux 2.6.13 only: ' + identity)
         previous_current = device.command('cat '+ROOT+'/current 2>/dev/null')[1].strip()
-        if args.slot != VERSION and not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9._-]{1,32})?', previous_current):
+        if args.slot != VERSION and not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?(?:-[A-Za-z0-9._-]{1,32})?', previous_current):
             raise RuntimeError('Cannot safely test-slot deploy without a valid existing current slot')
         # A new private backup directory on the modern host, outside public files.
         backup = args.evidence or (Path.home() / '.local/share/fracture-v3/backups' / (datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + secrets.token_hex(3)))

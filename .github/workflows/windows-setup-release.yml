@@ -27,7 +27,7 @@ jobs:
         env:
           TAG: ${{ inputs.tag }}
         run: |
-          if ($env:TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Invalid tag' }
+          if ($env:TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$') { throw 'Invalid tag' }
           $v = $env:TAG.Substring(1)
           $src = (Select-String -Path host/main.go -Pattern '^const version = "([0-9.]+)"').Matches.Groups[1].Value
           if ($src -ne $v) { throw "host/main.go version $src does not match tag $v" }
