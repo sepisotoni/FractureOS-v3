@@ -12,8 +12,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/draw"
-	"image/gif"
 	_ "image/jpeg"
 	"image/png"
 	"log"
@@ -392,11 +390,6 @@ func cachedPresetPreview(path string, raw []byte) (string, error) {
 	if v, ok := presetPreviewCache.Load(key); ok {
 		return v.(string), nil
 	}
-	if ext := strings.ToLower(filepath.Ext(path)); ext == ".gif" {
-		url := "data:image/gif;base64," + base64.StdEncoding.EncodeToString(raw)
-		presetPreviewCache.Store(key, url)
-		return url, nil
-	}
 	_, pngThumb, err := imageToWallpaper(raw)
 	if err != nil {
 		return "", err
@@ -419,7 +412,7 @@ func listWallpaperPresets() []wallpaperPresetInfo {
 				continue
 			}
 			ext := strings.ToLower(filepath.Ext(item.Name()))
-			if ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".bmp" && ext != ".gif" {
+			if ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".bmp" {
 				continue
 			}
 			raw, err := os.ReadFile(filepath.Join(dir, item.Name()))
@@ -445,13 +438,11 @@ type wallpaperDevice interface {
 	call(cmd string) (string, error)
 	batch(cmds []string) error
 	wpUpload(data []byte) error
-	wpUploadAnim(data []byte) error
 	wpConnected() bool
 }
 
-func (b *Broker) wpUpload(data []byte) error     { return uploadWallpaper(b.device, data) }
-func (b *Broker) wpUploadAnim(data []byte) error { return uploadWallpaperAnim(b.device, data) }
-func (b *Broker) wpConnected() bool              { return b != nil && b.device != "" }
+func (b *Broker) wpUpload(data []byte) error { return uploadWallpaper(b.device, data) }
+func (b *Broker) wpConnected() bool          { return b != nil && b.device != "" }
 
 var errWallpaperNoDevice = errors.New("no TomTom connected")
 
@@ -471,11 +462,10 @@ func customWallpaperID(pngBytes []byte) string {
 // ---- resolving a selection to pixels ---------------------------------------
 
 type resolvedWallpaper struct {
-	RGB     []byte // 320x240 RGB565 little-endian; nil for a solid colour
-	PNG     []byte // 320x240 PNG preview; nil for a solid colour
-	AnimBin []byte // optional FRAN animated frames for device
-	Key     string // content key; identical selections give identical keys
-	PCHash  string
+	RGB    []byte // 320x240 RGB565 little-endian; nil for a solid colour
+	PNG    []byte // 320x240 PNG preview; nil for a solid colour
+	Key    string // content key; identical selections give identical keys
+	PCHash string
 }
 
 func effectiveWallpaperDim(w WallpaperConfig, now time.Time) int {
@@ -511,85 +501,6 @@ func effectiveWallpaperBlur(w WallpaperConfig) int {
 	return w.BlurLevel
 }
 
-// gifToAnimation decodes an animated GIF into a 320x240 FRAN binary plus frame 0 RGB565/PNG.
-func gifToAnimation(raw []byte) ([]byte, []byte, []byte, error) {
-	g, err := gif.DecodeAll(bytes.NewReader(raw))
-	if err != nil || len(g.Image) <= 1 {
-		return nil, nil, nil, err
-	}
-	canvasRect := image.Rect(0, 0, g.Config.Width, g.Config.Height)
-	if canvasRect.Empty() {
-		canvasRect = g.Image[0].Bounds()
-	}
-	canvas := image.NewRGBA(canvasRect)
-	var rendered []*image.RGBA
-	for i, src := range g.Image {
-		var prev *image.RGBA
-		if i < len(g.Disposal) && g.Disposal[i] == gif.DisposalPrevious {
-			prev = image.NewRGBA(canvasRect)
-			draw.Draw(prev, canvasRect, canvas, canvasRect.Min, draw.Src)
-		}
-		draw.Draw(canvas, src.Bounds(), src, src.Bounds().Min, draw.Over)
-		snap := image.NewRGBA(canvasRect)
-		draw.Draw(snap, canvasRect, canvas, canvasRect.Min, draw.Src)
-		rendered = append(rendered, snap)
-		if i < len(g.Disposal) {
-			switch g.Disposal[i] {
-			case gif.DisposalBackground:
-				draw.Draw(canvas, src.Bounds(), image.Transparent, image.Point{}, draw.Src)
-			case gif.DisposalPrevious:
-				if prev != nil {
-					draw.Draw(canvas, canvasRect, prev, canvasRect.Min, draw.Src)
-				}
-			}
-		}
-	}
-	const maxFrames = 30
-	step := 1
-	if len(rendered) > maxFrames {
-		step = (len(rendered) + maxFrames - 1) / maxFrames
-	}
-	delayMs := 150
-	if len(g.Delay) > 0 && g.Delay[0] > 0 {
-		delayMs = g.Delay[0] * 10 * step
-	}
-	if delayMs < 60 {
-		delayMs = 60
-	}
-	if delayMs > 1000 {
-		delayMs = 1000
-	}
-	var rgbFrames [][]byte
-	var firstPNG []byte
-	for i := 0; i < len(rendered) && len(rgbFrames) < maxFrames; i += step {
-		var buf bytes.Buffer
-		if err := png.Encode(&buf, rendered[i]); err != nil {
-			return nil, nil, nil, err
-		}
-		rgb, pngBytes, err := imageToWallpaper(buf.Bytes())
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		if len(rgbFrames) == 0 {
-			firstPNG = pngBytes
-		}
-		rgbFrames = append(rgbFrames, rgb)
-	}
-	if len(rgbFrames) <= 1 {
-		return nil, nil, nil, nil
-	}
-	anim := make([]byte, 8+len(rgbFrames)*wallpaperRGB565Size)
-	copy(anim[:4], "FRAN")
-	anim[4] = byte(len(rgbFrames))
-	anim[5] = byte(len(rgbFrames) >> 8)
-	anim[6] = byte(delayMs)
-	anim[7] = byte(delayMs >> 8)
-	for i, f := range rgbFrames {
-		copy(anim[8+i*wallpaperRGB565Size:], f)
-	}
-	return rgbFrames[0], firstPNG, anim, nil
-}
-
 // resolveWallpaper turns a selection into device pixels. uploaded, when set,
 // is the raw image of a not-yet-stored custom wallpaper.
 func resolveWallpaper(w WallpaperConfig, uploaded []byte) (resolvedWallpaper, error) {
@@ -620,14 +531,6 @@ func resolveWallpaper(w WallpaperConfig, uploaded []byte) (resolvedWallpaper, er
 	}
 	if err != nil {
 		return r, err
-	}
-	if len(raw) >= 6 && (bytes.HasPrefix(raw, []byte("GIF87a")) || bytes.HasPrefix(raw, []byte("GIF89a"))) {
-		if rgb, pngBytes, anim, aerr := gifToAnimation(raw); aerr == nil && len(anim) > 0 {
-			r.RGB, r.PNG, r.AnimBin = rgb, pngBytes, anim
-			sum := sha256.Sum256(r.AnimBin)
-			r.Key = "anim:" + hex.EncodeToString(sum[:8])
-			return r, nil
-		}
 	}
 	if r.RGB, r.PNG, err = imageToWallpaper(raw); err != nil {
 		return r, err
@@ -770,11 +673,6 @@ func pushResolved(t wallpaperDevice, w WallpaperConfig, res resolvedWallpaper) (
 			return w, errors.New("wallpaper has no pixel data")
 		}
 		_, _ = t.call(fmt.Sprintf("wallpaper-style %d,%d", effectiveWallpaperDim(w, time.Now()), effectiveWallpaperBlur(w)))
-		if len(res.AnimBin) > 0 {
-			if err := t.wpUploadAnim(res.AnimBin); err != nil {
-				return w, err
-			}
-		}
 		if err := t.wpUpload(res.RGB); err != nil {
 			return w, err
 		}

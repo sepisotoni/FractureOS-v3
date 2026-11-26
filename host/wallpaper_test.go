@@ -178,27 +178,8 @@ func TestWallpaperAPIEndToEnd(t *testing.T) {
 	}
 }
 
-func TestAnimatedGifPresetAndDayNight(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "assets", "wallpaper-packs", "tomtom-one-v6", "wallpapers", "ai-generated", "04-ronin-animated.gif"))
-	if err != nil {
-		t.Fatalf("read animated gif preset: %v", err)
-	}
-	rgb, pngBytes, anim, err := gifToAnimation(raw)
-	if err != nil {
-		t.Fatalf("gifToAnimation: %v", err)
-	}
-	if len(rgb) != wallpaperRGB565Size || len(pngBytes) == 0 {
-		t.Fatalf("unexpected frame 0 output sizes: rgb=%d png=%d", len(rgb), len(pngBytes))
-	}
-	if len(anim) < 8+2*wallpaperRGB565Size || string(anim[:4]) != "FRAN" {
-		t.Fatalf("invalid FRAN header/size: len=%d", len(anim))
-	}
-	frames := int(anim[4]) | int(anim[5])<<8
-	if frames != 30 || len(anim) != 8+frames*wallpaperRGB565Size {
-		t.Fatalf("unexpected frame count/size: frames=%d len=%d", frames, len(anim))
-	}
-
-	w := WallpaperConfig{Mode: "preset", Preset: "04-ronin-animated.gif", DimPercent: 80, DayNightAuto: true, NightDimPercent: 40}
+func TestWallpaperDayNightAndStyle(t *testing.T) {
+	w := WallpaperConfig{Mode: "preset", Preset: "01-purple-blue-ribbon-flow.jpg", DimPercent: 80, DayNightAuto: true, NightDimPercent: 40, BlurLevel: 70}
 	day := time.Date(2026, 11, 27, 13, 0, 0, 0, time.Local)
 	night := time.Date(2026, 11, 27, 23, 0, 0, 0, time.Local)
 	if got := effectiveWallpaperDim(w, day); got != 80 {
@@ -206,5 +187,8 @@ func TestAnimatedGifPresetAndDayNight(t *testing.T) {
 	}
 	if got := effectiveWallpaperDim(w, night); got != 40 {
 		t.Fatalf("night dim = %d, want 40", got)
+	}
+	if got := effectiveWallpaperBlur(w); got != 70 {
+		t.Fatalf("blur = %d, want 70", got)
 	}
 }
