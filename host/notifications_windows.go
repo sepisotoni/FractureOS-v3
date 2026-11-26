@@ -428,6 +428,55 @@ func windowsNotificationWorker(check bool) error {
 	}
 	var queue noticeQueue
 	sent := 0
+	const (
+		noticePollInterval          = 250 * time.Millisecond
+		noticeStatusRefreshInterval = 5 * time.Second
+		noticeStateWriteInterval    = 5 * time.Second
+	)
+	type cachedLogo struct {
+		data []byte
+		err  error
+		at   time.Time
+	}
+	logoCache := make(map[string]cachedLogo)
+	lookupLogo := func(appID string) ([]byte, error) {
+		if appID == "" {
+			return nil, errors.New("App logo unavailable")
+		}
+		if entry, ok := logoCache[appID]; ok && (entry.err == nil || time.Since(entry.at) < time.Minute) {
+			return entry.data, entry.err
+		}
+		if len(logoCache) >= 64 {
+			clear(logoCache)
+		}
+		data, err := notificationLogo(appID)
+		logoCache[appID] = cachedLogo{data: data, err: err, at: time.Now()}
+		return data, err
+	}
+
+	var (
+		cachedSettings      IntegrationSettings
+		deviceNotifEnabled  bool
+		lastRemoteCheck     time.Time
+		lastConfigKey       string
+		forceRemoteRefresh  = true
+		lastWrittenMessage  string
+		lastWrittenAt       time.Time
+	)
+	recordState := func(msg string, delivered bool) {
+		if delivered {
+			writeNotificationDelivered(msg, sent)
+			lastWrittenMessage = msg
+			lastWrittenAt = time.Now()
+			return
+		}
+		if msg != lastWrittenMessage || time.Since(lastWrittenAt) >= noticeStateWriteInterval {
+			writeNotificationState(msg, sent)
+			lastWrittenMessage = msg
+			lastWrittenAt = time.Now()
+		}
+	}
+
 	for {
 		c, e = readConfig()
 		if e != nil {
@@ -446,70 +495,88 @@ func windowsNotificationWorker(check bool) error {
 			writeNotificationState("Windows notification access was revoked. Use Set up Windows access to allow it again.", sent)
 			return errors.New("Windows notification access was revoked")
 		}
-		settings, e := integrationGet(c)
-		if e != nil {
-			writeNotificationState("Cannot reach the hub; retrying", sent)
-			time.Sleep(3 * time.Second)
-			continue
+		configKey := c.ConnectionMode + "|" + c.Hub + "|" + c.Device
+		if forceRemoteRefresh || configKey != lastConfigKey || lastRemoteCheck.IsZero() || time.Since(lastRemoteCheck) >= noticeStatusRefreshInterval {
+			settings, err := integrationGet(c)
+			if err != nil {
+				forceRemoteRefresh = true
+				recordState("Cannot reach the hub; retrying", false)
+				time.Sleep(2 * time.Second)
+				continue
+			}
+			raw, err := hubCall(c, "status")
+			var ds struct {
+				Notifications int `json:"notifications"`
+			}
+			if err != nil || json.Unmarshal([]byte(raw), &ds) != nil {
+				forceRemoteRefresh = true
+				recordState("TomTom unavailable; retrying", false)
+				time.Sleep(2 * time.Second)
+				continue
+			}
+			cachedSettings = settings
+			deviceNotifEnabled = ds.Notifications != 0
+			lastRemoteCheck = time.Now()
+			lastConfigKey = configKey
+			forceRemoteRefresh = false
 		}
-		raw, e := hubCall(c, "status")
-		var ds struct {
-			Notifications int `json:"notifications"`
-		}
-		if e != nil || json.Unmarshal([]byte(raw), &ds) != nil {
-			writeNotificationState("TomTom unavailable; retrying", sent)
-			time.Sleep(3 * time.Second)
-			continue
-		}
-		if !settings.Notifications.Enabled || ds.Notifications == 0 {
+		if !cachedSettings.Notifications.Enabled || !deviceNotifEnabled {
 			queue.reset()
-			writeNotificationState("Paused: enable the authenticated notification webhook and TomTom notifications", sent)
-			time.Sleep(3 * time.Second)
+			forceRemoteRefresh = true
+			recordState("Paused: enable the authenticated notification webhook and TomTom notifications", false)
+			time.Sleep(2 * time.Second)
 			continue
 		}
-		if quietHoursActive(settings.Notifications.QuietHoursEnabled, settings.Notifications.QuietStart, settings.Notifications.QuietEnd, time.Now()) {
+		if quietHoursActive(cachedSettings.Notifications.QuietHoursEnabled, cachedSettings.Notifications.QuietStart, cachedSettings.Notifications.QuietEnd, time.Now()) {
 			queue.reset()
-			writeNotificationState("Quiet hours are active (Windows local time).", sent)
-			time.Sleep(2500 * time.Millisecond)
+			recordState("Quiet hours are active (Windows local time).", false)
+			time.Sleep(2 * time.Second)
 			continue
 		}
 		notices, e := windowsNotices(p)
 		if e != nil {
-			writeNotificationState("Windows notification read failed: "+e.Error(), sent)
-			time.Sleep(3 * time.Second)
+			recordState("Windows notification read failed: "+e.Error(), false)
+			time.Sleep(2 * time.Second)
 			continue
 		}
-		queue.observe(notices, settings.Notifications, time.Now())
+		queue.observe(notices, cachedSettings.Notifications, time.Now())
 		message := fmt.Sprintf("Listening for new Windows notifications; sent %d", sent)
 		delivered := false
-		if len(queue.pending) > 0 {
+		deliveryFailed := false
+		for len(queue.pending) > 0 {
 			n := queue.pending[0].notice
 			var logoErr error
-			n.Artwork, logoErr = notificationLogo(n.AppID)
+			n.Artwork, logoErr = lookupLogo(n.AppID)
 			n.Notification.AppID = n.AppID
 			out, err := hubRequest(c, "/api/notifications", n.Notification)
 			if err != nil {
 				message = "Notification delivery failed; retrying: " + err.Error()
-			} else if out != "OK" {
-				message = "Hub rejected notification; retrying: " + out
-			} else {
-				queue.pending[0] = pendingNotice{}
-				queue.pending = queue.pending[1:]
-				sent++
-				if logoErr != nil {
-					message = fmt.Sprintf("Forwarded %s; app logo unavailable; sent %d", n.App, sent)
-				} else {
-					message = fmt.Sprintf("Forwarded %s; sent %d", n.App, sent)
-				}
-				delivered = true
+				forceRemoteRefresh = true
+				deliveryFailed = true
+				break
 			}
+			if out != "OK" {
+				message = "Hub rejected notification; retrying: " + out
+				forceRemoteRefresh = true
+				deliveryFailed = true
+				break
+			}
+			queue.pending[0] = pendingNotice{}
+			queue.pending = queue.pending[1:]
+			sent++
+			if logoErr != nil {
+				message = fmt.Sprintf("Forwarded %s; app logo unavailable; sent %d", n.App, sent)
+			} else {
+				message = fmt.Sprintf("Forwarded %s; sent %d", n.App, sent)
+			}
+			delivered = true
 		}
-		if delivered {
-			writeNotificationDelivered(message, sent)
+		recordState(message, delivered)
+		if deliveryFailed {
+			time.Sleep(750 * time.Millisecond)
 		} else {
-			writeNotificationState(message, sent)
+			time.Sleep(noticePollInterval)
 		}
-		time.Sleep(2500 * time.Millisecond)
 	}
 }
 
