@@ -43,6 +43,12 @@ func (f *fakeTomTom) wpUpload(d []byte) error {
 	f.staged = append([]byte(nil), d...)
 	return nil
 }
+func (f *fakeTomTom) wpUploadAnim(d []byte) error {
+	if !f.online {
+		return errors.New("offline")
+	}
+	return nil
+}
 func (f *fakeTomTom) batch(c []string) error {
 	if !f.online {
 		return errors.New("offline")

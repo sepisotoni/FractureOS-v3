@@ -59,8 +59,12 @@ static const char *themes[]={"teal","amber","blue"};
 static uint16_t pixels[W*H];
 static uint16_t *wallpaper,*wallpaper_blur1,*wallpaper_blur2;
 static unsigned long wallpaper_hash;
+static int wallpaper_dim_pct=68,glass_blur_pct=50;
+static FILE *wallpaper_anim_fp=NULL;
+static int wallpaper_anim_count=0,wallpaper_anim_idx=0,wallpaper_anim_delay=150;
+static double wallpaper_anim_at=0;
 static unsigned long content_hash(const unsigned char *p,size_t n);
-static void wallpaper_release(void){free(wallpaper);free(wallpaper_blur1);free(wallpaper_blur2);wallpaper=wallpaper_blur1=wallpaper_blur2=NULL;wallpaper_hash=0;}
+static void wallpaper_release(void){if(wallpaper_anim_fp){fclose(wallpaper_anim_fp);wallpaper_anim_fp=NULL;}wallpaper_anim_count=0;wallpaper_anim_idx=0;free(wallpaper);free(wallpaper_blur1);free(wallpaper_blur2);wallpaper=wallpaper_blur1=wallpaper_blur2=NULL;wallpaper_hash=0;}
 static void wallpaper_blur_pass(const uint16_t *src,uint16_t *dst,int rad,int dim_pct){
  int x,y,dx,dy;uint16_t *tmp=malloc((size_t)W*H*2);
  if(!tmp){memcpy(dst,src,(size_t)W*H*2);return;}
@@ -75,18 +79,21 @@ static void wallpaper_blur_pass(const uint16_t *src,uint16_t *dst,int rad,int di
   dst[y*W+x]=(uint16_t)((r<<11)|(g<<5)|b);}}
  free(tmp);
 }
-static void wallpaper_dim(uint16_t *buf,int pct){int i;for(i=0;i<W*H;i++){uint16_t p=buf[i];int r=((p>>11)&31)*pct/100,g=((p>>5)&63)*pct/100,b=(p&31)*pct/100;buf[i]=(uint16_t)((r<<11)|(g<<5)|b);}}
-static void wallpaper_load(void){FILE *f=fopen("/mnt/sdcard/fracture-v3/wallpaper.rgb","rb");uint16_t *raw,*b1,*b2;if(!f)return;
+static void wallpaper_dim(uint16_t *buf,int pct){int i;if(pct<20)pct=20;if(pct>120)pct=120;for(i=0;i<W*H;i++){uint16_t p=buf[i];int r=((p>>11)&31)*pct/100,g=((p>>5)&63)*pct/100,b=(p&31)*pct/100;if(r>31)r=31;if(g>63)g=63;if(b>31)b=31;buf[i]=(uint16_t)((r<<11)|(g<<5)|b);}}
+static void wallpaper_load(void){FILE *f=fopen("/mnt/sdcard/fracture-v3/wallpaper.rgb","rb"),*af;uint16_t *raw,*b1,*b2;unsigned char hdr[8];int b1dim=35+glass_blur_pct/4,b2dim=50+glass_blur_pct/4;if(!f)return;
  raw=malloc((size_t)W*H*2);b1=malloc((size_t)W*H*2);b2=malloc((size_t)W*H*2);
  if(!raw||!b1||!b2){free(raw);free(b1);free(b2);fclose(f);return;}
  if(fread(raw,1,(size_t)W*H*2,f)!=(size_t)(W*H*2)){free(raw);free(b1);free(b2);fclose(f);return;}
  fclose(f);
- wallpaper_blur_pass(raw,b1,2,45);
- wallpaper_blur_pass(b1,b2,3,62);
- wallpaper_dim(raw,68);
+ if(b1dim>85)b1dim=85;if(b2dim>85)b2dim=85;
+ wallpaper_blur_pass(raw,b1,2+glass_blur_pct/50,b1dim);
+ wallpaper_blur_pass(b1,b2,3+glass_blur_pct/40,b2dim);
+ wallpaper_dim(raw,wallpaper_dim_pct);
  wallpaper_release();
  wallpaper=raw;wallpaper_blur1=b1;wallpaper_blur2=b2;
  wallpaper_hash=content_hash((const unsigned char*)wallpaper,(size_t)W*H*2);
+ af=fopen("/mnt/sdcard/fracture-v3/wallpaper-anim.bin","rb");
+ if(af){if(fread(hdr,1,8,af)==8&&!memcmp(hdr,"FRAN",4)){int cnt=(int)hdr[4]|((int)hdr[5]<<8),del=(int)hdr[6]|((int)hdr[7]<<8);if(cnt>=2&&cnt<=60&&del>=50&&del<=2000){wallpaper_anim_fp=af;wallpaper_anim_count=cnt;wallpaper_anim_delay=del;wallpaper_anim_idx=1%cnt;wallpaper_anim_at=0;}else fclose(af);}else fclose(af);}
 }
 #ifndef FRACTURE_RENDER_ONLY
 static unsigned char *mapped;
@@ -292,7 +299,9 @@ static void command(char *line,char *reply,size_t cap){char *name,*a,*b,*extra;i
  if(!strcmp(name,"audio-start")&&a&&!b){if(audio_start(a)){memset(a,0,32);snprintf(reply,cap,"OK\n");}else{memset(a,0,strlen(a));snprintf(reply,cap,"ERR audio unavailable or preempted\n");}return;}
  if(!strcmp(name,"audio-stop")&&!a){audio_stop();snprintf(reply,cap,"OK\n");return;}
  if(!strcmp(name,"forecast-reload")&&!a){forecast_header();if(weather_page(menu))forecast_load();dirty=1;snprintf(reply,cap,"OK\n");return;}
- if(!strcmp(name,"wallpaper")&&a&&!b){if(!strcmp(a,"load")){wallpaper_load();dirty=1;snprintf(reply,cap,"OK\n");}else if(!strcmp(a,"clear")){wallpaper_release();unlink("/mnt/sdcard/fracture-v3/wallpaper.rgb");dirty=1;snprintf(reply,cap,"OK\n");}else snprintf(reply,cap,"ERR bad wallpaper arg\n");return;}
+ if(!strcmp(name,"wallpaper")&&a&&!b){if(!strcmp(a,"load")){wallpaper_load();dirty=1;snprintf(reply,cap,"OK\n");}else if(!strcmp(a,"clear")){wallpaper_release();unlink("/mnt/sdcard/fracture-v3/wallpaper.rgb");unlink("/mnt/sdcard/fracture-v3/wallpaper-anim.bin");dirty=1;snprintf(reply,cap,"OK\n");}else snprintf(reply,cap,"ERR bad wallpaper arg\n");return;}
+ if(!strcmp(name,"wallpaper-style")&&a&&!b){int d,bl;char ex;if(sscanf(a,"%d,%d%c",&d,&bl,&ex)!=2||d<20||d>120||bl<0||bl>100){snprintf(reply,cap,"ERR bad wallpaper-style\n");return;}wallpaper_dim_pct=d;glass_blur_pct=bl;if(wallpaper)wallpaper_load();dirty=1;snprintf(reply,cap,"OK\n");return;}
+ if(!strcmp(name,"notice-chime")&&!a){audio_reap();if(audio_pid<=0&&!alert){pid_t cp=fork();if(cp==0){int dsp=open("/dev/dsp",O_WRONLY|O_NONBLOCK),rate=16000,fmt=AFMT_S16_LE,ch=2,k;if(dsp>=0){if(ioctl(dsp,SNDCTL_DSP_SPEED,&rate)>=0&&ioctl(dsp,SNDCTL_DSP_SETFMT,&fmt)>=0&&ioctl(dsp,SNDCTL_DSP_CHANNELS,&ch)>=0){int fl=fcntl(dsp,F_GETFL,0);if(fl>=0)fcntl(dsp,F_SETFL,fl&~O_NONBLOCK);short buf[640];for(k=0;k<320;k++){short s=(short)(((k*11)%16<8?2800:-2800)*(320-k)/320);buf[k*2]=s;buf[k*2+1]=s;}if(write(dsp,buf,sizeof buf)<0){}for(k=0;k<320;k++){short s=(short)(((k*17)%16<8?3200:-3200)*(320-k)/320);buf[k*2]=s;buf[k*2+1]=s;}if(write(dsp,buf,sizeof buf)<0){}}close(dsp);}_exit(0);}else if(cp>0){/* reaped asynchronously by audio_reap or OS */}}snprintf(reply,cap,"OK\n");return;}
  if(!strcmp(name,"boot-preview")&&!a){startup_at=mono();startup_frame=-1;dirty=1;snprintf(reply,cap,"OK\n");return;}
  if(!strcmp(name,"home-state")&&!a){home_model(reply,cap);return;}
  if(!strcmp(name,"preview-asset")&&a&&b){preview_asset(a,b,reply,cap);return;}
@@ -363,6 +372,13 @@ static int daemon_run(int seconds){struct sockaddr_un addr;struct pollfd p[2];do
  if(alert)audio_stop();
  {double tick=(timer_end||watch_start||cfg.profile==1||menu==PAGE_PLAYER||(face_ready&&!menu&&!alert&&(face.show_seconds||(face.colon&&face.blink&&!(face.hour_only&&t.tm_min==0)))))?(double)time(NULL):(double)(time(NULL)/60);if(tick!=last_tick){dirty=1;last_tick=tick;}}
  if(menu==PAGE_LYRICS&&lyrics_sync())dirty=1;
+ if(!menu&&!alert&&wallpaper&&wallpaper_anim_fp&&wallpaper_anim_count>=2&&!startup_at&&now-wallpaper_anim_at>=(double)wallpaper_anim_delay/1000.0){
+  if(fseek(wallpaper_anim_fp,8L+(long)wallpaper_anim_idx*(long)(W*H*2),SEEK_SET)==0&&fread(wallpaper,1,(size_t)W*H*2,wallpaper_anim_fp)==(size_t)(W*H*2)){
+   wallpaper_dim(wallpaper,wallpaper_dim_pct);
+   wallpaper_anim_idx=(wallpaper_anim_idx+1)%wallpaper_anim_count;
+   wallpaper_anim_at=now;dirty=1;
+  }
+ }
  if(startup_at){double elapsed=now-startup_at;if(elapsed>=1.4||menu||touch_down||power_down){startup_at=0;dirty=1;}else if((int)(elapsed*12)!=startup_frame){startup_frame=(int)(elapsed*12);startup_draw(elapsed);present();dirty=0;}}
  if(dirty&&!startup_at){render();present();dirty=0;}
  p[0].fd=listener;p[0].events=POLLIN;p[0].revents=0;p[1].fd=input;p[1].events=POLLIN;p[1].revents=0;count=poll(p,2,50);if(count>0&&(p[0].revents&POLLIN)){client=accept(listener,NULL,NULL);if(client>=0){struct timeval timeout={1,0};size_t used=0;ssize_t got;setsockopt(client,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof timeout);setsockopt(client,SOL_SOCKET,SO_SNDTIMEO,&timeout,sizeof timeout);

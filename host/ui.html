@@ -746,6 +746,12 @@
                 <div id="wallpaperHistoryGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:10px"></div>
               </div>
             </div>
+            <div class="grid" style="margin-top:14px">
+              <div class="field"><label for="wallpaperStyleDim">Backdrop brightness (<span id="wallpaperStyleDimVal">68%</span>)</label><input id="wallpaperStyleDim" type="range" min="20" max="120" value="68"></div>
+              <div class="field"><label for="wallpaperBlur">Menu frosted glass (<span id="wallpaperBlurVal">50%</span>)</label><input id="wallpaperBlur" type="range" min="0" max="100" value="50"></div>
+              <div class="field"><label for="wallpaperSlideshow">Slideshow rotation</label><select id="wallpaperSlideshow"><option value="0">Off</option><option value="5">Every 5 minutes</option><option value="15">Every 15 minutes</option><option value="30">Every 30 minutes</option><option value="60">Every hour</option></select></div>
+            </div>
+            <label class="check-row" style="margin-top:8px"><input id="wallpaperDayNight" type="checkbox">Auto-dim wallpaper at night (19:00–07:00)</label>
             <div id="wallpaperStatus" class="help" role="status" style="margin-top:14px"></div>
             <div class="buttons" style="margin-top:8px"><button class="button primary" id="applyWallpaper" type="button" disabled>Apply to TomTom</button><button class="button" id="discardWallpaper" type="button" disabled>Discard changes</button><button class="button" id="restoreWallpaper" type="button" disabled>Restore previous</button><button class="button" id="syncPcWallpaper" type="button">Re-sync TomTom</button></div>
             <p class="help">Choosing a wallpaper only previews it here. Nothing is sent to your TomTom until you press Apply; Restore goes back to the previous selection.</p>
@@ -779,6 +785,7 @@
           <section class="card" id="cardNotifications">
             <div class="card-head"><div class="card-icon"><svg><use href="#i-bell"/></svg></div><div><h2 class="card-title">Notifications</h2><p class="card-description">Forwarding is opt-in. The app keeps no notification history; new text and app logos go to your paired host and TomTom.</p></div></div>
             <label class="check-row"><input id="notificationsEnabled" type="checkbox">Enable the authenticated notification webhook</label>
+            <label class="check-row"><input id="notificationsSound" type="checkbox">Play chime on TomTom when a notification arrives</label>
             <div class="grid">
               <div class="field"><label for="notificationsExcluded">Block these apps (names or Windows app IDs)</label><textarea id="notificationsExcluded" rows="4" placeholder="Example: Calendar"></textarea></div>
               <div class="field"><label for="notificationsAllowed">Allow-list apps</label><textarea id="notificationsAllowed" rows="4" placeholder="Example: WhatsApp"></textarea></div>
@@ -1505,6 +1512,7 @@
       $("agendaLimit").value = agenda.max_events || 5;
       $("agendaLocation").checked = !!agenda.show_location;
       $("notificationsEnabled").checked = integrations.notifications.enabled;
+      $("notificationsSound").checked = !!integrations.notifications.sound_enabled;
       $("lyricsEnabled").checked = integrations.lyrics_enabled !== false;
       $("notificationsExcluded").value = (integrations.notifications.excluded || []).join("\n");
       $("notificationsAllowed").value = (integrations.notifications.allowed || []).join("\n");
@@ -1544,6 +1552,7 @@
       const next = JSON.parse(await api("/integrations"));
       next.notifications = {
         enabled:$("notificationsEnabled").checked,
+        sound_enabled:$("notificationsSound").checked,
         excluded:$("notificationsExcluded").value.split("\n").map(value => value.trim()).filter(Boolean),
         allowed:$("notificationsAllowed").value.split("\n").map(value => value.trim()).filter(Boolean),
         allow_list_only:$("notificationsAllowListOnly").checked,
@@ -1859,7 +1868,14 @@
     }
     function wpBuildPayload() {
       const mode = $("wallpaperMode").value;
-      const payload = { mode, color: ($("wallpaperColor").value || "#000000").replace("#", "") };
+      const payload = {
+        mode,
+        color: ($("wallpaperColor").value || "#000000").replace("#", ""),
+        dim_percent: Number($("wallpaperStyleDim").value || 68),
+        blur_level: Number($("wallpaperBlur").value || 50),
+        day_night_auto: $("wallpaperDayNight").checked,
+        slideshow_minutes: Number($("wallpaperSlideshow").value || 0),
+      };
       if (mode === "custom") {
         if (wpImg) { payload.name = wpName; payload.image_base64 = $("wallpaperCanvas").toDataURL("image/png"); }
         else if (wpSel.custom_id) payload.custom_id = wpSel.custom_id;
@@ -1898,6 +1914,14 @@
       wpSel.preset = c.preset || ""; wpSel.custom_id = c.custom_id || "";
       $("wallpaperMode").value = c.mode || "pc";
       $("wallpaperColor").value = "#" + (c.color || "000000");
+      const dimPct = (c.dim_percent >= 20 && c.dim_percent <= 120) ? c.dim_percent : 68;
+      const blurPct = (c.dim_percent || c.blur_level) ? Math.max(0, Math.min(100, c.blur_level || 0)) : 50;
+      $("wallpaperStyleDim").value = dimPct;
+      $("wallpaperStyleDimVal").textContent = dimPct + "%";
+      $("wallpaperBlur").value = blurPct;
+      $("wallpaperBlurVal").textContent = blurPct + "%";
+      $("wallpaperDayNight").checked = !!c.day_night_auto;
+      $("wallpaperSlideshow").value = String(c.slideshow_minutes || 0);
       $("wallpaperPcPanel").textContent = wpState.pc_available
         ? "PC desktop wallpaper detected. FractureOS syncs it automatically when paired or updated."
         : "PC desktop wallpaper could not be read automatically on this host; choose Solid colour, Preset, or Custom.";
@@ -1912,6 +1936,10 @@
 
     $("wallpaperMode").addEventListener("change", () => { syncWallpaperPanels(); wpStage(); });
     $("wallpaperColor").addEventListener("input", wpStage);
+    $("wallpaperStyleDim").addEventListener("input", () => { $("wallpaperStyleDimVal").textContent = $("wallpaperStyleDim").value + "%"; wpStage(); });
+    $("wallpaperBlur").addEventListener("input", () => { $("wallpaperBlurVal").textContent = $("wallpaperBlur").value + "%"; wpStage(); });
+    $("wallpaperDayNight").addEventListener("change", wpStage);
+    $("wallpaperSlideshow").addEventListener("change", wpStage);
     $("wallpaperBlackBtn").addEventListener("click", () => { $("wallpaperColor").value = "#000000"; wpStage(); });
     $("wallpaperFile").addEventListener("change", () => {
       const f = $("wallpaperFile").files[0];

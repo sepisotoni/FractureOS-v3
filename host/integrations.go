@@ -13,6 +13,7 @@ import (
 
 type NotificationConfig struct {
 	Enabled           bool     `json:"enabled"`
+	SoundEnabled      bool     `json:"sound_enabled,omitempty"`
 	Excluded          []string `json:"excluded"`
 	Allowed           []string `json:"allowed"`
 	AllowListOnly     bool     `json:"allow_list_only"`
@@ -189,6 +190,9 @@ func registerIntegrations(mux *http.ServeMux, b *Broker, token string) {
 			}
 		}
 		out := "OK"
+		if c.Notifications.SoundEnabled {
+			_, _ = b.call("notice-chime")
+		}
 
 		lastNotice = time.Now()
 		fmt.Fprint(w, out)

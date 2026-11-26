@@ -285,6 +285,17 @@ func validateCommand(cmd string) error {
 		if len(a) == 2 && (a[1] == "load" || a[1] == "clear") {
 			return nil
 		}
+	case "wallpaper-style":
+		if len(a) == 2 {
+			var d, bl int
+			if count, e := fmt.Sscanf(a[1], "%d,%d", &d, &bl); e == nil && count == 2 && d >= 20 && d <= 120 && bl >= 0 && bl <= 100 && fmt.Sprintf("%d,%d", d, bl) == a[1] {
+				return nil
+			}
+		}
+	case "notice-chime":
+		if len(a) == 1 {
+			return nil
+		}
 	case "media-ack":
 		if len(a) == 2 {
 			if _, e := strconv.ParseUint(a[1], 10, 32); e == nil {
