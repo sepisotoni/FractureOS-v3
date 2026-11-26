@@ -458,6 +458,10 @@ func hubRequest(c Config, path string, payload any) (string, error) {
 	if e != nil {
 		return "", e
 	}
+	if res.StatusCode == 404 && strings.Contains(string(data), "404 page not found") {
+		// Go's mux 404 body: the hub is running a build that predates this endpoint.
+		return "", fmt.Errorf("the connected hub is older than this app and does not support %s - update the Linux hub (fracture update) or switch to Direct USB", path)
+	}
 	if res.StatusCode != 200 {
 		return "", fmt.Errorf("hub: %s", strings.TrimSpace(string(data)))
 	}
@@ -835,10 +839,6 @@ func settingsPage(open bool, initialPage string) error {
 			}
 			out, err := hubRequest(c, "/api/wallpaper", payload)
 			if err != nil {
-				if strings.Contains(err.Error(), "404 page not found") {
-					http.Error(w, "Your Linux hub is on an older version without wallpaper support — update the Linux hub or switch to Direct USB mode.", 502)
-					return
-				}
 				http.Error(w, err.Error(), 502)
 				return
 			}
