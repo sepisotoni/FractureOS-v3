@@ -516,42 +516,37 @@ func platformDashboard() error {
 				})
 			case 2202:
 				sel := get(2201)
-				payload := map[string]any{"mode": "pc", "color": "000000"}
-				switch sel {
-				case "Legacy black (#000000)":
-					payload["mode"] = "color"
-				case "Preset: 01 Purple Blue":
-					payload["mode"] = "preset"
-					payload["preset"] = "01-purple-blue-ribbon-flow.jpg"
-				case "Preset: 02 Midnight Sweep":
-					payload["mode"] = "preset"
-					payload["preset"] = "02-midnight-sweep.jpg"
-				case "Preset: 03 Dual Current":
-					payload["mode"] = "preset"
-					payload["preset"] = "03-dual-current.jpg"
-				case "Custom (web studio)":
-					if c.Wallpaper.CustomID != "" {
-						payload["mode"] = "custom"
-						payload["custom_id"] = c.Wallpaper.CustomID
-					} else {
-						mu.Lock()
-						message = "Open Custom / Crop studio to upload your first custom wallpaper."
-						mu.Unlock()
-						invalidate()
-						return 0
-					}
-				}
 				async(func() (string, error) {
 					conf, e := readConfig()
 					if e != nil {
 						return "", e
 					}
+					payload := map[string]any{"mode": "pc", "color": "000000"}
+					if conf.Wallpaper.Color != "" {
+						payload["color"] = conf.Wallpaper.Color
+					}
+					switch sel {
+					case "Legacy black (#000000)":
+						payload["mode"] = "color"
+					case "Preset: 01 Purple Blue":
+						payload["mode"] = "preset"
+						payload["preset"] = "01-purple-blue-ribbon-flow.jpg"
+					case "Preset: 02 Midnight Sweep":
+						payload["mode"] = "preset"
+						payload["preset"] = "02-midnight-sweep.jpg"
+					case "Preset: 03 Dual Current":
+						payload["mode"] = "preset"
+						payload["preset"] = "03-dual-current.jpg"
+					case "Custom (web studio)":
+						if conf.Wallpaper.CustomID == "" {
+							return "", fmt.Errorf("Open Custom / Crop studio to upload your first custom wallpaper.")
+						}
+						payload["mode"] = "custom"
+						payload["custom_id"] = conf.Wallpaper.CustomID
+					}
 					raw, e := hubRequest(conf, "/api/wallpaper", payload)
 					if e != nil {
 						return "", e
-					}
-					if updated, e2 := readConfig(); e2 == nil {
-						c = updated
 					}
 					var resp struct {
 						Warning string `json:"warning"`
