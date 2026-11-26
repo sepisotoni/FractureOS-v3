@@ -941,7 +941,7 @@ func settingsPage(open bool, initialPage string) error {
 		}
 	}()
 	url := "http://" + listener.Addr().String() + "/"
-	if regexp.MustCompile(`^[a-z]{1,20}$`).MatchString(initialPage) {
+	if regexp.MustCompile(`^[a-z]{1,20}(/[a-z-]{1,20})?$`).MatchString(initialPage) {
 		url += "?page=" + initialPage
 	}
 	url += "#" + token
