@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
@@ -40,6 +41,8 @@ type IntegrationSettings struct {
 func registerIntegrations(mux *http.ServeMux, b *Broker, token string) {
 	var mu sync.Mutex
 	var lastNotice time.Time
+	var lastNoticeArtHash [32]byte
+	var hasNoticeArtHash bool
 	auth := func(w http.ResponseWriter, r *http.Request) bool {
 		w.Header().Set("Cache-Control", "no-store")
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+token)) != 1 {
@@ -128,9 +131,17 @@ func registerIntegrations(mux *http.ServeMux, b *Broker, token string) {
 			fmt.Fprint(w, "excluded")
 			return
 		}
+		var image []byte
+		if len(q.Artwork) > 0 {
+			image, e = thumbnailRGBSize(q.Artwork, 48)
+			if e != nil {
+				http.Error(w, "invalid notification artwork", 400)
+				return
+			}
+		}
 		mu.Lock()
 		defer mu.Unlock()
-		if time.Since(lastNotice) < 2*time.Second {
+		if time.Since(lastNotice) < 250*time.Millisecond {
 			http.Error(w, "notification rate limit", 429)
 			return
 		}
@@ -143,26 +154,39 @@ func registerIntegrations(mux *http.ServeMux, b *Broker, token string) {
 			fmt.Fprint(w, "disabled on device")
 			return
 		}
-		var image []byte
-		if len(q.Artwork) > 0 {
-			image, e = thumbnailRGBSize(q.Artwork, 48)
-			if e != nil {
-				http.Error(w, "invalid notification artwork", 400)
-				return
-			}
-		}
 		commands := []string{"notice -", "notice-text app " + asciiHex(q.App), "notice-text title " + asciiHex(q.Title), "notice-text body " + asciiHex(q.Body)}
+		skippedArtUpload := false
+		var artHash [32]byte
 		if len(image) > 0 {
-			if e = uploadDeviceArt(b.device, image, true); e != nil {
-				http.Error(w, "notification artwork transfer failed", 502)
-				return
+			artHash = sha256.Sum256(image)
+			if hasNoticeArtHash && artHash == lastNoticeArtHash {
+				skippedArtUpload = true
+			} else {
+				if e = uploadDeviceArt(b.device, image, true); e != nil {
+					hasNoticeArtHash = false
+					http.Error(w, "notification artwork transfer failed", 502)
+					return
+				}
+				lastNoticeArtHash = artHash
+				hasNoticeArtHash = true
 			}
 			commands = append(commands, "notice-art load")
 		}
 		commands = append(commands, fmt.Sprintf("notice-show %d", q.Seconds))
 		if e = b.batch(commands); e != nil {
-			http.Error(w, "notification delivery failed", 502)
-			return
+			if skippedArtUpload {
+				// Device may have rebooted and lost /tmp/fracture-notice.rgb; re-upload once.
+				hasNoticeArtHash = false
+				if e2 := uploadDeviceArt(b.device, image, true); e2 == nil {
+					lastNoticeArtHash = artHash
+					hasNoticeArtHash = true
+					e = b.batch(commands)
+				}
+			}
+			if e != nil {
+				http.Error(w, "notification delivery failed", 502)
+				return
+			}
 		}
 		out := "OK"
 
