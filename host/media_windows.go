@@ -42,8 +42,8 @@ func comCall(p uintptr, slot int, args ...uintptr) error {
 	if p == 0 {
 		return errors.New("Windows media interface unavailable")
 	}
-	table := *(*uintptr)(unsafe.Pointer(p))
-	fn := *(*uintptr)(unsafe.Pointer(table + uintptr(slot)*unsafe.Sizeof(p)))
+	table := *(*uintptr)(comPointer(p))
+	fn := *(*uintptr)(comPointer(table + uintptr(slot)*unsafe.Sizeof(p)))
 	params := append([]uintptr{p}, args...)
 	hr, _, _ := syscall.SyscallN(fn, params...)
 	if int32(hr) < 0 {
@@ -90,7 +90,7 @@ func comText(p uintptr, slot int) string {
 	if n > 4096 || ptr == 0 {
 		return ""
 	}
-	return syscall.UTF16ToString(unsafe.Slice((*uint16)(unsafe.Pointer(ptr)), int(n)))
+	return syscall.UTF16ToString(unsafe.Slice((*uint16)(comPointer(ptr)), int(n)))
 }
 func factory(class, id string) (uintptr, error) {
 	h, e := hstring(class)
@@ -349,7 +349,7 @@ func sessionArtwork(props uintptr) ([]byte, error) {
 	if e = comCall(access, 3, uintptr(unsafe.Pointer(&ptr))); e != nil || ptr == 0 {
 		return nil, errors.New("thumbnail buffer unavailable")
 	}
-	return thumbnailRGB(unsafe.Slice((*byte)(unsafe.Pointer(ptr)), int(length)))
+	return thumbnailRGB(unsafe.Slice((*byte)(comPointer(ptr)), int(length)))
 }
 
 // The volume editor deliberately targets the Windows default output, not an
