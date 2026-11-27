@@ -45,7 +45,7 @@
 #endif
 #endif /* device platform includes */
 #ifndef FRACTURE_VERSION
-#define FRACTURE_VERSION "0.1.18"
+#define FRACTURE_VERSION "0.1.18.1"
 #endif
 #define W 320
 #define H 240

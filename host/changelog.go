@@ -10,6 +10,20 @@ type releaseNote struct {
 
 var releaseNotes = []releaseNote{
 	{
+		Version: "v0.1.18.1",
+		Status:  "Prerelease",
+		Changes: []string{
+			"Wallpaper now lives under Appearance (Clock & faces | Wallpaper). Choosing a wallpaper only previews it; nothing is sent to the TomTom until you press Apply to TomTom.",
+			"Restore previous returns to your previous wallpaper selection. FractureOS does not back up the wallpaper file stored on the TomTom itself.",
+			"A wallpaper chosen while the TomTom is unplugged, or lost if the TomTom is re-flashed, is applied automatically when it connects.",
+			"A solid colour records the theme and face background it replaces and puts exactly those back when you pick something else; Legacy black changes no theme or face colours.",
+			"The Windows installer now closes any running FractureOS before installing, which fixes the access-denied error during updates.",
+			"Fixed: \"hub: 404 page not found\" when the app is newer than the Linux hub; the message now says to update the hub or use Direct USB.",
+			"Fixed: opening the dashboard on a specific page (?page=) showed an error.",
+			"Updates now accept four-part versions such as 0.1.18.1.",
+		},
+	},
+	{
 		Version: "v0.1.18",
 		Status:  "Prerelease",
 		Changes: []string{
