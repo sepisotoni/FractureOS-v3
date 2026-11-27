@@ -144,6 +144,9 @@ type weatherCurrent struct {
 	Gust     *float64         `json:"wind_gusts_10m"`
 }
 
+// weatherForecastURL is the forecast endpoint; tests point it at a local server.
+var weatherForecastURL = "https://api.open-meteo.com/v1/forecast"
+
 func fetchWeather(ctx context.Context, w WeatherConfig) (weatherCurrent, error) {
 	var body struct {
 		Current weatherCurrent `json:"current"`
@@ -152,7 +155,7 @@ func fetchWeather(ctx context.Context, w WeatherConfig) (weatherCurrent, error) 
 		Offset  int            `json:"utc_offset_seconds"`
 	}
 	q := url.Values{"latitude": {strconv.FormatFloat(w.Latitude, 'f', 4, 64)}, "longitude": {strconv.FormatFloat(w.Longitude, 'f', 4, 64)}, "current": {"temperature_2m,weather_code,wind_gusts_10m"}, "timeformat": {"unixtime"}, "forecast_days": {"7"}, "forecast_hours": {"24"}, "timezone": {"auto"}, "hourly": {"temperature_2m,weather_code,precipitation_probability"}, "daily": {"temperature_2m_min,temperature_2m_max,weather_code,precipitation_probability_max"}}
-	req, e := http.NewRequestWithContext(ctx, "GET", "https://api.open-meteo.com/v1/forecast?"+q.Encode(), nil)
+	req, e := http.NewRequestWithContext(ctx, "GET", weatherForecastURL+"?"+q.Encode(), nil)
 	if e != nil {
 		return body.Current, e
 	}
