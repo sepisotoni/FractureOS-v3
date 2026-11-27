@@ -15,6 +15,13 @@ int main(void){static const char *preset_faces[]={"blue-outline","sunset","aqua"
  strcpy(line,"event power");command(line,reply,sizeof reply);assert(menu==PAGE_CLOCK_TOOLS);
  strcpy(line,"event long");command(line,reply,sizeof reply);assert(menu==PAGE_APPS);
  strcpy(line,"event home");command(line,reply,sizeof reply);assert(menu==0);
+ strcpy(line,"ui-timeout menu 3");command(line,reply,sizeof reply);assert(!strcmp(reply,"OK\n"));
+ page_open(PAGE_APPS);menu_activity=10;menu_timeout_tick(12);assert(menu==PAGE_APPS);
+ touch_down=1;menu_timeout_tick(13);assert(menu==PAGE_APPS);
+ touch_held=1;menu_timeout_tick(13);assert(menu==PAGE_CLOCK);touch_down=touch_held=0;
+ page_open(PAGE_LYRICS);menu_activity=10;menu_timeout_tick(20);assert(menu==PAGE_LYRICS);
+ strcpy(line,"ui-timeout menu 0");command(line,reply,sizeof reply);assert(!strcmp(reply,"OK\n"));
+ page_open(PAGE_APPS);menu_activity=10;menu_timeout_tick(20);assert(menu==PAGE_APPS);
  menu=PAGE_APPS;selected=4;strcpy(line,"event power");command(line,reply,sizeof reply);assert(menu==PAGE_AGENDA);
  strcpy(line,"agenda-item 0,31343a3330,4d656574696e67,4f6666696365");command(line,reply,sizeof reply);assert(!strcmp(reply,"OK\n"));assert(agenda_count==1&&!strcmp(agenda_title[0],"Meeting")&&!strcmp(agenda_time[0],"14:30")&&!strcmp(agenda_location[0],"Office"));
  strcpy(line,"status");command(line,reply,sizeof reply);assert(strstr(reply,"\"agenda_view\":true"));

@@ -78,11 +78,28 @@ jobs:
           }
       - name: Exercise installer, native window and uninstaller
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           $dest = Join-Path $env:RUNNER_TEMP 'FractureOS-acceptance'
           $installer = Get-ChildItem build/inno/*-amd64-setup.exe | Select-Object -First 1
+          $baseline = Join-Path $env:RUNNER_TEMP 'FractureOS-v018-baseline'
+          $oldName = 'fracture-v0.1.18-windows-amd64-setup.exe'
+          gh release download v0.1.18 --repo $env:GITHUB_REPOSITORY --dir $baseline --pattern $oldName --pattern SHA256SUMS
+          if ($LASTEXITCODE) { throw 'Could not download the published baseline' }
+          $oldManifest = @(Get-Content "$baseline/SHA256SUMS" | Where-Object { ($_ -split '\s+')[1] -eq $oldName })
+          if ($oldManifest.Count -ne 1 -or ($oldManifest[0] -split '\s+')[0] -ne (Get-FileHash "$baseline/$oldName" -Algorithm SHA256).Hash) { throw 'Baseline installer checksum mismatch' }
+          $previous = Start-Process "$baseline/$oldName" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=`"$dest`"" -Wait -PassThru
+          if ($previous.ExitCode) { throw "Baseline installation failed: $($previous.ExitCode)" }
+          $previousApp = Start-Process "$dest/fracture.exe" -ArgumentList dashboard -PassThru
+          Start-Sleep -Seconds 5
+          $previousApp.Refresh()
+          if ($previousApp.HasExited -or !$previousApp.MainWindowHandle) { throw 'Baseline dashboard did not open' }
+          "v0.1.18 dashboard working set: $($previousApp.WorkingSet64) bytes" | Tee-Object build/inno/validation.txt
           $p = Start-Process $installer.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=`"$dest`"" -Wait -PassThru
           if ($p.ExitCode) { throw "Installer exit $($p.ExitCode)" }
+          if (!$previousApp.WaitForExit(5000)) { throw 'Setup left the old dashboard running' }
+          if (!(Test-Path "$dest/assets/wallpaper-packs/tomtom-one-v6/wallpapers/ai-generated/01-purple-blue-ribbon-flow.jpg")) { throw 'Wallpapers missing from the Windows installer' }
           $p = Start-Process "$dest/fracture.exe" -ArgumentList dashboard -PassThru
           Start-Sleep -Seconds 5
           $p.Refresh()
@@ -99,6 +116,9 @@ jobs:
             [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr h, int id);
             [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW")] public static extern IntPtr SetText(IntPtr h, uint m, IntPtr w, string s);
             [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+            [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+            [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr h);
+            [DllImport("user32.dll", EntryPoint="GetWindowLongW")] public static extern int Style(IntPtr h, int index);
           }
           '@
           [void][FractureWindow]::SendMessage($p.MainWindowHandle,0x111,[IntPtr]102,[IntPtr]::Zero)
@@ -114,7 +134,11 @@ jobs:
             Start-Sleep -Milliseconds 300
             $p.Refresh(); if ($p.HasExited) { throw "Dashboard crashed on tab $tab" }
           }
-          "Dashboard working set: $($p.WorkingSet64) bytes; window: $($p.MainWindowHandle)" | Tee-Object build/inno/validation.txt
+          if (([FractureWindow]::Style($p.MainWindowHandle,-16) -band 0x40000) -eq 0) { throw 'Dashboard has no resize border' }
+          [void][FractureWindow]::ShowWindow($p.MainWindowHandle,3)
+          if (![FractureWindow]::IsZoomed($p.MainWindowHandle)) { throw 'Dashboard did not maximize' }
+          [void][FractureWindow]::ShowWindow($p.MainWindowHandle,9)
+          "Candidate dashboard working set: $($p.WorkingSet64) bytes; window: $($p.MainWindowHandle)" | Tee-Object -Append build/inno/validation.txt
           Add-Type -AssemblyName System.Drawing,System.Windows.Forms
           $screen=[System.Windows.Forms.SystemInformation]::VirtualScreen
           $image=New-Object System.Drawing.Bitmap($screen.Width,$screen.Height)

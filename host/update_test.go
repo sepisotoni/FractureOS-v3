@@ -59,6 +59,7 @@ func TestCheckUpdateOffers(t *testing.T) {
 	}{
 		{"newer release", `[{"tag_name":"v99.0.0","draft":false},{"tag_name":"v1.0.0","draft":false}]`, 200, true, "v99.0.0", false},
 		{"four-part hotfix", `[{"tag_name":"v99.0.0.1","draft":false},{"tag_name":"v99.0.0","draft":false}]`, 200, true, "v99.0.0.1", false},
+		{"incomplete release skipped", `[{"tag_name":"v99.0.0.1","assets":[{"name":"SHA256SUMS","state":"uploaded"}]},{"tag_name":"v99.0.0","assets":[{"name":"SHA256SUMS","state":"uploaded"},{"name":"fracture-v99.0.0-` + updateSuffix() + `","state":"uploaded"}]}]`, 200, true, "v99.0.0", false},
 		{"draft ignored", `[{"tag_name":"v99.0.0","draft":true}]`, 200, false, cur, false},
 		{"junk tag ignored", `[{"tag_name":"nightly","draft":false},{"tag_name":"v99.x","draft":false}]`, 200, false, cur, false},
 		{"already current", `[{"tag_name":"` + cur + `","draft":false}]`, 200, false, cur, false},

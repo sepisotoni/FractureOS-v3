@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -72,6 +73,16 @@ func effectiveConnectionMode(c Config) string {
 		return "direct"
 	}
 	return "hub"
+}
+
+func configureDirectConnection(c *Config) {
+	listen := "127.0.0.1:47831"
+	if hub, err := url.Parse(c.Hub); err == nil && hub.Scheme == "https" && hub.Hostname() == "127.0.0.1" && hub.User == nil && hub.Path == "" && hub.RawQuery == "" && hub.Fragment == "" {
+		if port, err := strconv.Atoi(hub.Port()); err == nil && port > 0 && port <= 65535 {
+			listen = net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+		}
+	}
+	c.Listen, c.Hub = listen, "https://"+listen
 }
 
 func configDir() string {
@@ -809,6 +820,35 @@ func newSettingsMux(token string, touch func()) *http.ServeMux {
 			} else {
 				http.Error(w, "unknown update action", 400)
 			}
+		case "/device-screen":
+			if r.Method != "POST" {
+				http.Error(w, "POST required", 405)
+				return
+			}
+			out, err := hubRequest(c, "/api/preview", previewRequest{Operation: "screen"})
+			if err != nil {
+				http.Error(w, err.Error(), 502)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, out)
+		case "/weather-locations":
+			if r.Method != "GET" {
+				http.Error(w, "GET required", 405)
+				return
+			}
+			query := r.URL.Query().Get("q")
+			if !validLocationQuery(query) {
+				http.Error(w, "Enter a city or town name (2 to 120 characters).", 400)
+				return
+			}
+			places, err := searchWeatherLocations(r.Context(), query)
+			if err != nil {
+				http.Error(w, err.Error(), 502)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(places)
 		case "/integrations":
 			if r.Method != "GET" && r.Method != "POST" {
 				http.Error(w, "GET or POST required", 405)
@@ -842,6 +882,10 @@ func newSettingsMux(token string, touch func()) *http.ServeMux {
 				r.Body = http.MaxBytesReader(w, r.Body, 8*1024*1024)
 				if e = json.NewDecoder(r.Body).Decode(&q); e != nil {
 					http.Error(w, "invalid wallpaper request", 400)
+					return
+				}
+				if err := localWallpaperPayload(c, q); err != nil {
+					http.Error(w, err.Error(), 400)
 					return
 				}
 				payload = q
@@ -889,16 +933,12 @@ func newSettingsMux(token string, touch func()) *http.ServeMux {
 			newc.Agenda = current.Agenda
 			newc.Notifications = current.Notifications
 			newc.Audio = current.Audio
+			newc.Wallpaper = current.Wallpaper
 			if newc.Token == "" {
 				newc.Token = c.Token
 			}
 			if newc.ConnectionMode == "direct" {
-				if newc.Listen == "" {
-					newc.Listen = "127.0.0.1:47831"
-				}
-				if newc.Hub == "" {
-					newc.Hub = "https://" + newc.Listen
-				}
+				configureDirectConnection(&newc)
 				if newc.Device == "" {
 					newc.Device = "192.168.101.115"
 				}

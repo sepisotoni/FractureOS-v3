@@ -36,6 +36,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 [Files]
 Source: "..\build\windows-{#Arch}\fracture.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\build\windows-{#Arch}\fracture-preview.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\assets\wallpaper-packs\*"; DestDir: "{app}\assets\wallpaper-packs"; Flags: ignoreversion recursesubdirs createallsubdirs
 [InstallDelete]
 Type: files; Name: "{group}\FractureOS Tray.lnk"
 Type: files; Name: "{group}\FractureOS Dashboard.lnk"
@@ -62,27 +63,31 @@ Filename: "{app}\fracture.exe"; Parameters: "dashboard"; Description: "Open dash
 // Setup's Restart Manager cannot always close every fracture.exe (tray, dashboard,
 // web and helper processes), which caused "DeleteFile failed; code 5". Stop only
 // the copies that run from this install folder, then wait for them to exit.
-procedure StopFractureProcesses(const AppDir: String);
+function StopFractureProcesses(const AppDir: String): Boolean;
 var
   ResultCode: Integer;
-  Command: String;
+  Command, AppExe: String;
 begin
+  AppExe := AddBackslash(AppDir) + 'fracture.exe';
+  StringChangeEx(AppExe, '''', '''''', True);
   Command := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "' +
-    'Get-Process -Name fracture -ErrorAction SilentlyContinue | ' +
-    'Where-Object { $_.Path -and $_.Path.StartsWith(''' + AppDir + ''', [StringComparison]::OrdinalIgnoreCase) } | ' +
-    'Stop-Process -Force -ErrorAction SilentlyContinue"';
-  Exec('powershell.exe', Command, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Sleep(800);
+    '$ErrorActionPreference = ''Stop''; ' +
+    '$running = @(Get-Process -Name fracture -ErrorAction SilentlyContinue | ' +
+    'Where-Object { [String]::Equals($_.Path, ''' + AppExe + ''', [StringComparison]::OrdinalIgnoreCase) }); ' +
+    'foreach ($process in $running) { if (!$process.HasExited) { try { $process.Kill() } catch { if (!$process.HasExited) { throw } } }; ' +
+    'if (!$process.WaitForExit(5000)) { exit 1 } }"';
+  Result := Exec('powershell.exe', Command, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  if Result then Result := ResultCode = 0;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
-  StopFractureProcesses(ExpandConstant('{app}'));
-  Result := '';
+  if StopFractureProcesses(ExpandConstant('{app}')) then Result := ''
+  else Result := 'Close FractureOS from the system tray, then retry Setup.';
 end;
 
 function InitializeUninstall(): Boolean;
 begin
-  StopFractureProcesses(ExpandConstant('{app}'));
-  Result := True;
+  Result := StopFractureProcesses(ExpandConstant('{app}'));
+  if not Result then MsgBox('Close FractureOS from the system tray, then run uninstall again.', mbError, MB_OK);
 end;

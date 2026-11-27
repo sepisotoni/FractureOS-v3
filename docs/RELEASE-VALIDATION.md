@@ -1,3 +1,11 @@
+# v0.1.18.1 candidate status
+
+- The release branch builds on the device/web agent's test coverage and the performance agent's worker and TLS changes. The directory test fixes keep wallpaper fixtures in disposable local folders.
+- The ARMv5 release build and native clock/menu checks passed. The home preview matched all six native C cases pixel for pixel. The browser clock preview still approximates the layout. Overview's **View TomTom screen** requests a real 320×240 image using the device capture command.
+- The published v0.1.18 x64 and ARM64 installers both matched their published SHA-256 entries. v0.1.18.1 has a fresh manifest gate that requires both installers along with the four platform archives.
+- A read-only configuration check found the owner's active slot was `v0.1.18-v19test`, with `hour_only=0` on Neon and `menu_timeout=0`. That slot returned a real 320×240 capture. The new code defaults Neon to hour-only, exposes the setting on the device and in Windows, and preserves saved face overrides. A configured timeout now dismisses ordinary menus even after a touch has already registered as a hold.
+- The Windows wallpaper action sends the local image through a remote Linux hub as a saved wallpaper. Direct USB continues to follow the Windows desktop automatically. Weather location search uses Open-Meteo/GeoNames in both dashboards.
+
 # v0.1.15 Beta candidate status
 
 The `release/v0.1.15-beta` branch is based on the v0.1.14 published prerelease and integrates the requested host/device work. Source builds and focused tests passed; the four Linux/Windows amd64/arm64 archives were generated locally and checksummed, but no v0.1.15 release tag or GitHub release is published. Earlier validation records below refer to their named commits/branches only and do not validate the combined candidate. No new Store installation, Windows runtime, personal agenda feed or TomTom deployment is claimed.

@@ -5,6 +5,9 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parent.parent
 VERSION='v0.1.18.1'
 OUT=ROOT/'build/release'
+setups=[ROOT/'build/inno'/f'fracture-{VERSION}-windows-{arch}-setup.exe' for arch in ('amd64','arm64')]
+for setup in setups:
+ if not setup.is_file(): raise RuntimeError('Build both Windows installers from the release source first: '+str(setup))
 OUT.mkdir(parents=True,exist_ok=True)
 subprocess.run(['sh','tools/build-device.sh'],cwd=ROOT,check=True)
 subprocess.run(['sh','tools/build-windows-resources.sh'],cwd=ROOT,check=True)
@@ -35,11 +38,19 @@ for system in ('linux','windows'):
    renderer=ROOT/'build'/f'windows-{arch}'/'fracture-preview.dll'
    if not renderer.is_file(): raise RuntimeError('Missing Windows shared renderer: '+str(renderer))
    shutil.copy2(renderer,staging/'fracture-preview.dll')
-   (staging/'README.txt').write_text('FractureOS '+VERSION+'\nOpen fracture.exe for the tray. Right-click for Settings.\nWindows x64 installer/update and shared renderer checks passed; ARM64 runtime needs hardware acceptance. See https://github.com/sepisotoni/FractureOS-v3\n')
+  shutil.copytree(ROOT/'assets/wallpaper-packs',staging/'assets/wallpaper-packs',dirs_exist_ok=True)
+  for file in ('tools/deploy-device.py','tools/tomtom.py','device/scripts/boot.sh','device/scripts/control.sh','device/scripts/entry.sh','build/fracture-device','build/platform-probe'):
+   target=staging/file;target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(ROOT/file,target)
+  for group in ('faces','themes','ui','branding'):
+   shutil.copytree(ROOT/'assets'/group,staging/'assets'/group,dirs_exist_ok=True)
+  (staging/'README.txt').write_text('FractureOS '+VERSION+'\nOpen fracture.exe for the tray. Right-click for Settings.\nWith Python 3 installed, run fracture.exe device install from this archive to update the USB-connected TomTom.\nSee https://github.com/sepisotoni/FractureOS-v3\n')
    package=OUT/(name+'.zip')
    with zipfile.ZipFile(package,'w',zipfile.ZIP_DEFLATED) as archive:
-    for child in sorted(staging.iterdir()):archive.write(child,child.name)
+    for child in sorted(staging.rglob('*')):
+     if child.is_file(): archive.write(child,child.relative_to(staging))
   packages.append(package)
+for setup in setups:
+ destination=OUT/setup.name;shutil.copy2(setup,destination);packages.append(destination)
 manifest={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in packages}
 (OUT/'SHA256SUMS').write_text(''.join(f'{sha}  {name}\n' for name,sha in manifest.items()))
 (OUT/'build-info.json').write_text(json.dumps({'version':VERSION,'go':subprocess.check_output(['go','version'],text=True).strip(),'packages':manifest},indent=2)+'\n')

@@ -99,6 +99,20 @@ func (f *fakeShellDevice) exec(cmd string) (string, int) {
 	switch {
 	case strings.HasPrefix(cmd, "stty"):
 		return "", 0
+	case strings.HasPrefix(cmd, "slot=$(cat /mnt/sdcard/fracture-v3/current); case "):
+		return "", 0
+	case strings.HasPrefix(cmd, "\"$probe\" --hex /tmp/fracture-v3-screen.ppm "):
+		var offset, size int
+		if count, err := fmt.Sscanf(cmd, "\"$probe\" --hex /tmp/fracture-v3-screen.ppm %d %d", &offset, &size); err != nil || count != 2 {
+			return "bad screen transfer", 1
+		}
+		f.mu.Lock()
+		data := f.files["/tmp/fracture-v3-screen.ppm"]
+		f.mu.Unlock()
+		if offset < 0 || size <= 0 || offset > len(data) || size > len(data)-offset {
+			return "short screen transfer", 1
+		}
+		return fmt.Sprintf("%x", data[offset:offset+size]), 0
 	case strings.HasPrefix(cmd, "wget "):
 		m := wgetRE.FindStringSubmatch(cmd)
 		if m == nil || m[1] != m[3] {

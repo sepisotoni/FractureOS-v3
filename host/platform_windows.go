@@ -38,6 +38,22 @@ func openURL(url string) error {
 }
 func platformDefault() error { return platformTray() }
 
+func startDirectTray(c Config) error {
+	if effectiveConnectionMode(c) != "direct" {
+		return nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	tray := exec.Command(exe, "tray")
+	if err = tray.Start(); err != nil {
+		return err
+	}
+	go tray.Wait()
+	return nil
+}
+
 func deviceManagement(args []string) error {
 	if len(args) != 1 || (args[0] != "install" && args[0] != "restore") {
 		return errors.New("usage: fracture device install|restore")
@@ -214,7 +230,7 @@ func directHubSupervisor(ctx context.Context) {
 	defer ticker.Stop()
 	var hubCancel context.CancelFunc
 	var hubDone chan error
-	var activeListen, activeDevice string
+	var activeListen, activeDevice, activeToken string
 	stopHub := func() {
 		if hubCancel != nil {
 			hubCancel()
@@ -228,25 +244,23 @@ func directHubSupervisor(ctx context.Context) {
 		c, err := readConfig()
 		if err != nil || effectiveConnectionMode(c) != "direct" {
 			stopHub()
-			activeListen, activeDevice = "", ""
+			activeListen, activeDevice, activeToken = "", "", ""
 			return
 		}
-		if hubCancel != nil && (activeListen != c.Listen || activeDevice != c.Device) {
+		if hubCancel != nil && (activeListen != c.Listen || activeDevice != c.Device || activeToken != c.Token) {
 			stopHub()
 		}
 		if hubCancel != nil {
 			return
 		}
-		if c.Listen == "" {
-			c.Listen = "127.0.0.1:47831"
+		configureDirectConnection(&c)
+		if err = identity(&c); err != nil {
+			log.Printf("direct USB identity: %v", err)
+			return
 		}
-		if c.Hub == "" || !strings.HasPrefix(c.Hub, "https://127.0.0.1:") {
-			c.Hub = "https://" + c.Listen
-		}
-		_ = identity(&c)
 		hubCtx, cancel := context.WithCancel(ctx)
 		done := make(chan error, 1)
-		activeListen, activeDevice = c.Listen, c.Device
+		activeListen, activeDevice, activeToken = c.Listen, c.Device, c.Token
 		hubCancel, hubDone = cancel, done
 		go func() { done <- serveWithContext(hubCtx, false) }()
 	}

@@ -4,7 +4,6 @@
 set -eu
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 root=$(dirname "$here"); work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
-mkdir -p /mnt/sdcard/fracture-v3
 cc="gcc -std=gnu99 -O1 -w -idirafter /usr/include"
 $cc "$here/preview_drift_device.c" -o "$work/dev"
 $cc -fPIC "$here/preview_drift_preview.c" -o "$work/prev"

@@ -512,7 +512,7 @@
     .subtabs button { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); padding: 10px 14px; font: inherit; font-weight: 600; cursor: pointer; }
     .subtabs button:hover { color: #fff; }
     .subtabs button[aria-selected="true"] { color: #fff; border-bottom-color: var(--accent, #62d1f8); }
-    [data-section-panel][hidden] { display: none; }
+    [data-section-panel][hidden], .device-bezel [hidden] { display: none; }
     #wallpaperStatus.error { color: #ff8a8a; }
   </style>
 </head>
@@ -605,7 +605,7 @@
           <section class="group-panel" aria-label="Live clock overview">
             <div class="group-head">
               <h2 class="group-title"><svg><use href="#i-clock"/></svg>Clock &amp; home preview</h2>
-              <span class="group-note">Synced from TomTom geometry &amp; theme</span>
+              <span class="group-note">Live clock and on-demand screen capture</span>
             </div>
             <div class="hero-split">
               <div class="clock-readout">
@@ -620,8 +620,11 @@
                 </div>
               </div>
               <div class="device-bezel">
-                <canvas class="device-screen" id="homePreviewCanvas" width="320" height="240" aria-label="Live 320 by 240 TomTom clock home preview"></canvas>
-                <div class="device-caption" id="previewCaption">320 × 240 Home Preview · live</div>
+                <canvas class="device-screen" id="homePreviewCanvas" width="320" height="240" aria-label="Approximate TomTom clock home preview"></canvas>
+                <img class="device-screen" id="tomtomCapture" width="320" height="240" alt="Captured TomTom screen" hidden>
+                <div class="device-caption" id="previewCaption">320 × 240 · Clock preview</div>
+                <button class="button sm" id="captureTomTomScreen" type="button">View TomTom screen</button>
+                <button class="button sm" id="showLocalPreview" type="button" hidden>Back to clock preview</button>
               </div>
             </div>
           </section>
@@ -758,13 +761,17 @@
             <div class="card-head"><div class="card-icon"><svg><use href="#i-cloud"/></svg></div><div><h2 class="card-title">Weather</h2><p class="card-description">Current conditions and forecast are supplied by Open-Meteo; the TomTom does not make internet requests.</p></div></div>
             <label class="check-row"><input id="weatherEnabled" type="checkbox">Fetch weather on the active host</label>
             <div class="grid">
+              <div class="field"><label for="weatherCity">City or town</label><input id="weatherCity" type="search" maxlength="120" placeholder="Johannesburg, South Africa"><button class="button" type="button" id="searchWeatherCity">Search</button></div>
+              <div class="field"><label for="weatherCityResults">Matching places</label><select id="weatherCityResults" disabled><option value="">Search for a place</option></select></div>
+            </div>
+            <div class="grid">
               <div class="field"><label for="weatherLatitude">Latitude</label><input id="weatherLatitude" type="number" step="0.0001" min="-90" max="90"></div>
               <div class="field"><label for="weatherLongitude">Longitude</label><input id="weatherLongitude" type="number" step="0.0001" min="-180" max="180"></div>
               <div class="field"><label for="weatherMode">Show on the clock</label><select id="weatherMode"><option value="0">Off</option><option value="1">Unusual conditions only</option><option value="2">Always</option></select></div>
             </div>
             <details><summary>Unusual weather thresholds</summary><div class="grid" style="margin-top:12px"><div class="field"><label for="weatherHot">Hot temperature (°C)</label><input id="weatherHot" type="number"></div><div class="field"><label for="weatherCold">Cold temperature (°C)</label><input id="weatherCold" type="number"></div><div class="field"><label for="weatherWind">Strong gusts (km/h)</label><input id="weatherWind" type="number" min="1"></div></div><p class="help">Thunderstorms, heavy/freezing rain and heavy snow also count. Conditions are modeled estimates, not official emergency alerts.</p></details>
             <div class="buttons"><button class="button primary" id="saveWeather" type="button">Save weather settings</button></div>
-            <p class="help">Data from <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a> under CC BY 4.0.</p>
+            <p class="help">Forecasts from <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a> under CC BY 4.0. Location data from GeoNames.</p>
           </section>
           <section class="card" id="cardAgenda">
             <div class="card-head"><div class="card-icon"><svg><use href="#i-clock"/></svg></div><div><h2 class="card-title">Today agenda</h2><p class="card-description">A private, read-only calendar summary. Nothing is fetched until the TomTom Today page is open.</p></div></div>
@@ -876,7 +883,7 @@
       "roboto":       { atlas:"digit-atlas-roboto.pgm", hour_color:"97f47e", minute_color:"52daac", background:"000000", time_format:12, show_date:1, show_ampm:0, colon:1, date_x:64, date_y:10, date_scale:1, colon_x:157, colon_y:108, colon_gap:16, colon_size:6, layout:"custom", blink:1, hour_only:1, show_seconds:1, weight:1, digit0:"20,76,55,88", digit1:"75,76,55,88", digit2:"190,76,55,88", digit3:"245,76,55,88" },
       "ubuntu":       { atlas:"digit-atlas-ubuntu.pgm", hour_color:"ffb152", minute_color:"a883ff", background:"000000", time_format:12, show_date:1, show_ampm:0, colon:0, date_x:64, date_y:10, date_scale:1, colon_x:157, colon_y:108, colon_gap:16, colon_size:6, layout:"custom", blink:1, hour_only:1, show_seconds:1, weight:1, digit0:"101,42,55,88", digit1:"164,42,55,88", digit2:"101,130,55,88", digit3:"164,130,55,88" },
       "nunito":       { atlas:"digit-atlas-nunito.pgm", hour_color:"4be1fa", minute_color:"43b9ff", background:"000000", time_format:12, show_date:1, show_ampm:0, colon:0, date_x:129, date_y:19, date_scale:1, colon_x:157, colon_y:108, colon_gap:16, colon_size:6, layout:"custom", blink:1, hour_only:1, show_seconds:1, weight:1, digit0:"101,42,55,88", digit1:"164,42,55,88", digit2:"101,130,55,88", digit3:"164,130,55,88" },
-      "neon":         { atlas:"digit-atlas-nunito.pgm", hour_color:"4be1fa", minute_color:"43b9ff", background:"000000", time_format:24, show_date:1, show_ampm:0, colon:0, date_x:129, date_y:19, date_scale:1, colon_x:157, colon_y:108, colon_gap:16, colon_size:6, layout:"horizontal", blink:1, hour_only:0, show_seconds:1, weight:1, digit0:"4,35,70,170", digit1:"77,35,70,170", digit2:"173,35,70,170", digit3:"246,35,70,170" }
+      "neon":         { atlas:"digit-atlas-nunito.pgm", hour_color:"4be1fa", minute_color:"43b9ff", background:"000000", time_format:24, show_date:1, show_ampm:0, colon:0, date_x:129, date_y:19, date_scale:1, colon_x:157, colon_y:108, colon_gap:16, colon_size:6, layout:"horizontal", blink:1, hour_only:1, show_seconds:1, weight:1, digit0:"4,35,70,170", digit1:"77,35,70,170", digit2:"173,35,70,170", digit3:"246,35,70,170" }
     };
     const THEME_PRESETS = {
       midnight: { background:"000000", foreground:"f5f5f7", muted:"8e8e93", accent:"0a84ff", surface:"1c1c1e", hour_color:"4be1fa", minute_color:"43b9ff", face_colors:0 },
@@ -1332,9 +1339,9 @@
     function drawActivePreviews() {
       const s = lastStatus || {profile:"minimal", face:"nunito", theme:"teal", offset:0, cpu:-1, ram:-1, weather_live:false, timer_seconds:0};
       const v = activeViewName();
-      if (v === "dashboard") {
+      if (v === "dashboard" && $("tomtomCapture").hidden) {
         renderHomePreviewCanvas($("homePreviewCanvas"), s);
-        $("previewCaption").textContent = `320 × 240 · ${s.face || "nunito"} (${s.profile || "minimal"})`;
+        $("previewCaption").textContent = `Clock preview · ${s.face || "nunito"} (${s.profile || "minimal"})`;
       } else if (v === "appearance") {
         renderHomePreviewCanvas($("appearancePreviewCanvas"), s, {
           face: $("face").value,
@@ -1487,6 +1494,25 @@
       });
     });
     $("headerRefresh").addEventListener("click", () => $("refresh").click());
+    action("captureTomTomScreen", async () => {
+      const frame = JSON.parse(await api("/device-screen", {}));
+      if (!frame.data) throw Error("The TomTom did not return a screen capture.");
+      const screen = $("tomtomCapture");
+      screen.src = "data:image/png;base64," + frame.data;
+      screen.hidden = false;
+      $("homePreviewCanvas").hidden = true;
+      $("previewCaption").textContent = "TomTom screen · captured " + new Date().toLocaleTimeString();
+      $("captureTomTomScreen").textContent = "Refresh TomTom screen";
+      $("showLocalPreview").hidden = false;
+    });
+    $("showLocalPreview").addEventListener("click", () => {
+      $("tomtomCapture").hidden = true;
+      $("tomtomCapture").removeAttribute("src");
+      $("homePreviewCanvas").hidden = false;
+      $("showLocalPreview").hidden = true;
+      $("captureTomTomScreen").textContent = "View TomTom screen";
+      drawActivePreviews();
+    });
 
     action("saveFeatures", async () => {
       for (const [id, key] of [["featureTelemetry","telemetry"],["featureMedia","media"],["featureNotifications","notifications"]]) await cmd(`feature ${key} ${Number($(id).checked)}`);
@@ -1518,6 +1544,31 @@
       $("audioVolumeValue").textContent = $("audioVolume").value + "%";
       renderOverviewServices();
     }
+    let weatherPlaces = [];
+    action("searchWeatherCity", async () => {
+      const list = $("weatherCityResults");
+      list.replaceChildren(new Option("Searching…", ""));
+      list.disabled = true;
+      weatherPlaces = [];
+      try {
+        weatherPlaces = JSON.parse(await api("/weather-locations?q="+encodeURIComponent($("weatherCity").value.trim())));
+        list.replaceChildren(new Option(weatherPlaces.length ? "Choose a place" : "No matching places", ""));
+        weatherPlaces.forEach((place, index) => list.add(new Option([...new Set([place.name, place.admin1, place.country].filter(Boolean))].join(", "), index)));
+        list.disabled = !weatherPlaces.length;
+      } catch (error) {
+        list.replaceChildren(new Option("Search unavailable", ""));
+        throw error;
+      }
+    });
+    $("weatherCity").addEventListener("keydown", event => {
+      if (event.key === "Enter") $("searchWeatherCity").click();
+    });
+    $("weatherCityResults").addEventListener("change", () => {
+      const place = weatherPlaces[$("weatherCityResults").value];
+      if (!place) return;
+      $("weatherLatitude").value = place.latitude.toFixed(4);
+      $("weatherLongitude").value = place.longitude.toFixed(4);
+    });
     action("saveWeather", async () => {
       if (!integrations) throw Error("Connect to the hub before saving weather settings.");
       const next = JSON.parse(await api("/integrations"));
@@ -1807,7 +1858,9 @@
           card.type = "button";
           card.className = "button";
           card.style.cssText = "display:flex;flex-direction:column;gap:6px;padding:6px;height:auto;text-align:left";
-          card.innerHTML = `<img src="${p.preview}" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px"><span style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%">${p.name}</span>`;
+          card.innerHTML = '<img style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px"><span style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%"></span>';
+          card.querySelector("img").src = p.preview;
+          card.querySelector("span").textContent = p.name;
           card.onclick = () => { wpSel.preset = p.name; $("wallpaperMode").value = "preset"; syncWallpaperPanels(); wpStage(); };
           pGrid.appendChild(card);
         });
@@ -1821,7 +1874,9 @@
         wpState.history.forEach(item => {
           const wrap = document.createElement("div");
           wrap.style.cssText = "background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:6px";
-          wrap.innerHTML = `<img src="${item.preview}" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px"><div style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item.name}</div><div style="display:flex;gap:4px"><button type="button" class="button primary" style="flex:1;padding:4px 6px;font-size:11px">Use</button><button type="button" class="button" style="padding:4px 6px;font-size:11px">×</button></div>`;
+          wrap.innerHTML = '<img style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px"><div style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div><div style="display:flex;gap:4px"><button type="button" class="button primary" style="flex:1;padding:4px 6px;font-size:11px">Use</button><button type="button" class="button" style="padding:4px 6px;font-size:11px">×</button></div>';
+          wrap.querySelector("img").src = item.preview;
+          wrap.querySelector("div").textContent = item.name;
           const btns = wrap.querySelectorAll("button");
           btns[0].onclick = () => { wpSel.custom_id = item.id; wpImg = null; drawWallpaperCanvas(); $("wallpaperMode").value = "custom"; syncWallpaperPanels(); wpStage(); };
           btns[1].onclick = async () => {
@@ -1873,7 +1928,7 @@
     }
     /* Staging never touches the TomTom: it asks the hub for a dry-run render. */
     function wpStage() {
-      wpDirty = true; wpUpdateButtons();
+      wpDirty = true; wpInvalid = true; wpUpdateButtons();
       clearTimeout(wpDryTimer);
       const seq = ++wpDrySeq;
       wpDryTimer = setTimeout(async () => {
@@ -1890,10 +1945,12 @@
         wpUpdateButtons();
       }, 350);
     }
-    function wpRefreshOnShow() { if (!wpDirty) loadWallpaper().catch(e => wpSetStatus(e.message, true)); }
+    function wpRefreshOnShow() { if (!wpDirty) loadWallpaper().catch(e => { if (window.document) wpSetStatus(e.message, true); }); }
 
     async function loadWallpaper() {
-      wpState = JSON.parse(await api("/wallpaper"));
+      const state = JSON.parse(await api("/wallpaper"));
+      if (!window.document) return;
+      wpState = state;
       const c = wpState.config || { mode: "color", color: "000000" };
       wpSel.preset = c.preset || ""; wpSel.custom_id = c.custom_id || "";
       $("wallpaperMode").value = c.mode || "pc";

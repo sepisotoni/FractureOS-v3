@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -94,6 +96,28 @@ func TestHubPreviewAssetDownload(t *testing.T) {
 	_ = f2
 	if code, _ = hubDo(t, e, "POST", "/api/preview", hubToken, "application/json", fmt.Sprintf(`{"operation":"asset","kind":"notice","hash":%d}`, h)); code != 502 {
 		t.Fatalf("short asset = %d, want 502", code)
+	}
+}
+
+func TestSettingsCaptureTomTomScreen(t *testing.T) {
+	e := newRouteEnv(t)
+	const header = "P6\n320 240\n255\n"
+	e.dev.mu.Lock()
+	e.dev.files["/tmp/fracture-v3-screen.ppm"] = append([]byte(header), bytes.Repeat([]byte{17, 123, 231}, 320*240)...)
+	e.dev.replies["capture"] = "OK"
+	e.dev.mu.Unlock()
+	code, body := uiDo(t, e, "POST", "/device-screen", "{}", uiSession)
+	var reply previewReply
+	if code != 200 || json.Unmarshal([]byte(body), &reply) != nil {
+		t.Fatalf("screen: %d %s", code, body)
+	}
+	frame, err := png.Decode(bytes.NewReader(reply.Data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, g, b, _ := frame.At(319, 239).RGBA()
+	if frame.Bounds().Dx() != 320 || frame.Bounds().Dy() != 240 || r>>8 != 17 || g>>8 != 123 || b>>8 != 231 {
+		t.Fatalf("unexpected screen frame %v or pixel (%d, %d, %d)", frame.Bounds(), r>>8, g>>8, b>>8)
 	}
 }
 

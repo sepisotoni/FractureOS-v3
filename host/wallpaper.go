@@ -501,6 +501,24 @@ func resolveWallpaper(w WallpaperConfig, uploaded []byte) (resolvedWallpaper, er
 	return r, nil
 }
 
+func localWallpaperPayload(c Config, payload map[string]any) error {
+	if runtime.GOOS != "windows" || effectiveConnectionMode(c) == "direct" || payload["mode"] != "pc" {
+		return nil
+	}
+	raw, _, err := readPCWallpaper()
+	if err != nil {
+		return err
+	}
+	_, preview, err := imageToWallpaper(raw)
+	if err != nil {
+		return err
+	}
+	payload["mode"] = "custom"
+	payload["name"] = "Windows desktop wallpaper"
+	payload["image_base64"] = base64.StdEncoding.EncodeToString(preview)
+	return nil
+}
+
 // ---- device state ----------------------------------------------------------
 
 func parseModelUint(model, key string) (uint32, bool) {
