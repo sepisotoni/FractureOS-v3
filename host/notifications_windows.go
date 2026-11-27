@@ -455,13 +455,13 @@ func windowsNotificationWorker(check bool) error {
 	}
 
 	var (
-		cachedSettings      IntegrationSettings
-		deviceNotifEnabled  bool
-		lastRemoteCheck     time.Time
-		lastConfigKey       string
-		forceRemoteRefresh  = true
-		lastWrittenMessage  string
-		lastWrittenAt       time.Time
+		cachedSettings     IntegrationSettings
+		deviceNotifEnabled bool
+		lastRemoteCheck    time.Time
+		lastConfigKey      string
+		forceRemoteRefresh = true
+		lastWrittenMessage string
+		lastWrittenAt      time.Time
 	)
 	recordState := func(msg string, delivered bool) {
 		if delivered {
