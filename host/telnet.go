@@ -13,6 +13,9 @@ import (
 	"time"
 )
 
+// devicePort is the TomTom telnet port; tests point it at a fake device.
+var devicePort = "23"
+
 // Trusted USB development/management channel. Never expose TomTom Telnet to LAN.
 type telnet struct {
 	c           net.Conn
@@ -114,7 +117,7 @@ func deviceCommands(address string, commands []string) (string, error) {
 			return "", err
 		}
 	}
-	c, err := net.DialTimeout("tcp", net.JoinHostPort(address, "23"), 3*time.Second)
+	c, err := net.DialTimeout("tcp", net.JoinHostPort(address, devicePort), 3*time.Second)
 	if err != nil {
 		return "", err
 	}
@@ -153,7 +156,7 @@ func deviceCommands(address string, commands []string) (string, error) {
 
 // Artwork is a fixed 18 KiB RGB565 image, served once over the trusted USB hop.
 // Nothing supplied by Spotify is interpolated into the shell command.
-func uploadMediaArt(address string, data []byte) error { return uploadDeviceArt(address, data, false) }
+func uploadMediaArt(address string, data []byte) error  { return uploadDeviceArt(address, data, false) }
 func uploadWallpaper(address string, data []byte) error { return uploadDevicePayload(address, data, 3) }
 func uploadDeviceArt(address string, data []byte, notice bool) error {
 	kind := 0
@@ -166,7 +169,7 @@ func uploadDevicePayload(address string, data []byte, kind int) error {
 	if (kind == 0 && len(data) != 18432) || (kind == 1 && len(data) != 4608) || (kind == 2 && (len(data) < 32 || len(data) > 8192)) || (kind == 3 && len(data) != 153600) || kind < 0 || kind > 3 {
 		return fmt.Errorf("invalid artwork size")
 	}
-	c, err := net.DialTimeout("tcp", net.JoinHostPort(address, "23"), 3*time.Second)
+	c, err := net.DialTimeout("tcp", net.JoinHostPort(address, devicePort), 3*time.Second)
 	if err != nil {
 		return err
 	}

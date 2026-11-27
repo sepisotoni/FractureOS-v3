@@ -564,53 +564,7 @@ func serveWithContext(ctx context.Context, startAudio bool) error {
 		return e
 	}
 	b := &Broker{device: c.Device}
-	mux := http.NewServeMux()
-	registerIntegrations(mux, b, c.Token)
-	registerLyrics(mux, b, c.Token)
-	registerForecast(mux, b, c.Token)
-	registerAgenda(mux, b, c.Token)
-	registerPreview(mux, b, c.Token)
-	registerAudio(mux, b, c.Token)
-	registerWallpaper(mux, b, c.Token)
-	mux.HandleFunc("/api/media", func(w http.ResponseWriter, r *http.Request) {
-		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+c.Token)) != 1 {
-			http.Error(w, "unauthorized", 401)
-			return
-		}
-		mediaAPI(b, w, r)
-	})
-	mux.HandleFunc("/api/command", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-store")
-		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+c.Token)) != 1 {
-			http.Error(w, "unauthorized", 401)
-			return
-		}
-		if r.Method != "POST" {
-			http.Error(w, "POST required", 405)
-			return
-		}
-		var q struct {
-			Command string `json:"command"`
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, 1024)
-		dec := json.NewDecoder(r.Body)
-		dec.DisallowUnknownFields()
-		if e := dec.Decode(&q); e != nil {
-			http.Error(w, "invalid request", 400)
-			return
-		}
-		if e := validateCommand(q.Command); e != nil {
-			http.Error(w, e.Error(), 400)
-			return
-		}
-		out, e := b.call(q.Command)
-		if e != nil {
-			http.Error(w, e.Error(), 502)
-			return
-		}
-		w.Header().Set("Content-Type", "text/plain")
-		fmt.Fprintln(w, out)
-	})
+	mux := newHubMux(b, c.Token)
 	srv := &http.Server{Addr: c.Listen, Handler: mux, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 45 * time.Second, IdleTimeout: 30 * time.Second, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13}}
 	go func() {
 		<-ctx.Done()
@@ -651,6 +605,65 @@ func launchMetrics(ctx context.Context) (*exec.Cmd, context.CancelFunc, <-chan e
 	go func() { done <- cmd.Wait() }()
 	return cmd, cancel, done, nil
 }
+
+// newHubMux builds the authenticated hub API. It is separate from the server
+// so route behaviour can be tested without binding the real listener.
+func newHubMux(b *Broker, token string) *http.ServeMux {
+	mux := http.NewServeMux()
+	registerIntegrations(mux, b, token)
+	registerLyrics(mux, b, token)
+	registerForecast(mux, b, token)
+	registerAgenda(mux, b, token)
+	registerPreview(mux, b, token)
+	registerAudio(mux, b, token)
+	registerWallpaper(mux, b, token)
+	mux.HandleFunc("/api/media", func(w http.ResponseWriter, r *http.Request) {
+		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+token)) != 1 {
+			http.Error(w, "unauthorized", 401)
+			return
+		}
+		mediaAPI(b, w, r)
+	})
+	mux.HandleFunc("/api/command", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+token)) != 1 {
+			http.Error(w, "unauthorized", 401)
+			return
+		}
+		if r.Method != "POST" {
+			http.Error(w, "POST required", 405)
+			return
+		}
+		var q struct {
+			Command string `json:"command"`
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 1024)
+		dec := json.NewDecoder(r.Body)
+		dec.DisallowUnknownFields()
+		if e := dec.Decode(&q); e != nil {
+			http.Error(w, "invalid request", 400)
+			return
+		}
+		if e := validateCommand(q.Command); e != nil {
+			http.Error(w, e.Error(), 400)
+			return
+		}
+		out, e := b.call(q.Command)
+		if e != nil {
+			http.Error(w, e.Error(), 502)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprintln(w, out)
+	})
+	return mux
+}
+
+// syncDeviceTime pushes the host clock to the TomTom ("time <unix>").
+func syncDeviceTime(b *Broker) error {
+	_, err := b.call(fmt.Sprintf("time %d", time.Now().Unix()))
+	return err
+}
 func hubBackground(ctx context.Context, b *Broker) {
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
@@ -683,7 +696,7 @@ func hubBackground(ctx context.Context, b *Broker) {
 				continue
 			}
 			if time.Since(lastSync) > 5*time.Minute {
-				if _, err = b.call(fmt.Sprintf("time %d", time.Now().Unix())); err == nil {
+				if err = syncDeviceTime(b); err == nil {
 					lastSync = time.Now()
 				}
 			}
@@ -714,20 +727,9 @@ func hubBackground(ctx context.Context, b *Broker) {
 	}
 }
 
-func settings(open bool) error { return settingsPage(open, "") }
-
-func settingsPage(open bool, initialPage string) error {
-	token, e := randomToken()
-	if e != nil {
-		return e
-	}
-	listener, e := net.Listen("tcp", "127.0.0.1:0")
-	if e != nil {
-		return e
-	}
+// newSettingsMux builds the local, session-authenticated settings UI API.
+func newSettingsMux(token string, touch func()) *http.ServeMux {
 	mux := http.NewServeMux()
-	var lastMu sync.Mutex
-	last := time.Now()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Referrer-Policy", "no-referrer")
@@ -752,9 +754,7 @@ func settingsPage(open bool, initialPage string) error {
 			http.Error(w, "unauthorized", 401)
 			return
 		}
-		lastMu.Lock()
-		last = time.Now()
-		lastMu.Unlock()
+		touch()
 		c, e := readConfig()
 		if e != nil {
 			http.Error(w, e.Error(), 500)
@@ -928,6 +928,23 @@ func settingsPage(open bool, initialPage string) error {
 			http.NotFound(w, r)
 		}
 	})
+	return mux
+}
+
+func settings(open bool) error { return settingsPage(open, "") }
+
+func settingsPage(open bool, initialPage string) error {
+	token, e := randomToken()
+	if e != nil {
+		return e
+	}
+	listener, e := net.Listen("tcp", "127.0.0.1:0")
+	if e != nil {
+		return e
+	}
+	var lastMu sync.Mutex
+	last := time.Now()
+	mux := newSettingsMux(token, func() { lastMu.Lock(); last = time.Now(); lastMu.Unlock() })
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 120 * time.Second}
 	go func() {
 		for range time.Tick(30 * time.Second) {

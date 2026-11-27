@@ -47,8 +47,16 @@ func compareVersions(a, b string) int {
 	}
 	return 0
 }
+
+// Seams for tests; production values are the public GitHub endpoints.
+var (
+	releaseListURL     = "https://api.github.com/repos/sepisotoni/FractureOS-v3/releases?per_page=20"
+	releaseDownloadURL = "https://github.com/sepisotoni/FractureOS-v3/releases/download/"
+	updateTransport    http.RoundTripper
+)
+
 func updateClient(timeout time.Duration) *http.Client {
-	return &http.Client{Timeout: timeout, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+	return &http.Client{Timeout: timeout, Transport: updateTransport, CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) > 6 || req.URL.Scheme != "https" {
 			return errors.New("update redirect refused")
 		}
@@ -61,7 +69,7 @@ func updateClient(timeout time.Duration) *http.Client {
 }
 func checkUpdate(ctx context.Context) (updateOffer, error) {
 	offer := updateOffer{Current: version, Version: "v" + version, Page: "https://github.com/sepisotoni/FractureOS-v3/releases"}
-	req, e := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/repos/sepisotoni/FractureOS-v3/releases?per_page=20", nil)
+	req, e := http.NewRequestWithContext(ctx, "GET", releaseListURL, nil)
 	if e != nil {
 		return offer, e
 	}
@@ -117,7 +125,7 @@ func downloadUpdate(ctx context.Context, offer updateOffer) (string, string, err
 		return "", "", errors.New("unsupported architecture")
 	}
 	name := "fracture-" + offer.Version + "-" + suffix
-	base := "https://github.com/sepisotoni/FractureOS-v3/releases/download/" + url.PathEscape(offer.Version) + "/"
+	base := releaseDownloadURL + url.PathEscape(offer.Version) + "/"
 	client := updateClient(90 * time.Second)
 	defer client.CloseIdleConnections()
 	fetch := func(target string, limit int64) ([]byte, error) {
