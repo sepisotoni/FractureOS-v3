@@ -72,6 +72,7 @@ func weatherSupervisor(ctx context.Context, b *Broker) {
 	var cancel context.CancelFunc
 	var done <-chan error
 	var active WeatherConfig
+	spawn := newSpawnBackoff("weather-worker")
 	stop := func() {
 		if cancel != nil {
 			cancel()
@@ -85,10 +86,11 @@ func weatherSupervisor(ctx context.Context, b *Broker) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-done:
+		case err := <-done:
 			cancel()
 			cancel = nil
 			done = nil
+			spawn.exited(time.Now(), err)
 		case <-ticker.C:
 			c, e := readConfig()
 			needed := e == nil && c.Weather.Enabled
@@ -108,20 +110,23 @@ func weatherSupervisor(ctx context.Context, b *Broker) {
 			if cancel != nil && active != c.Weather {
 				stop()
 			}
-			if cancel != nil {
+			if cancel != nil || !spawn.allowed(time.Now()) {
 				continue
 			}
 			exe, err := os.Executable()
 			if err != nil {
+				spawn.failed(time.Now(), err)
 				continue
 			}
 			child, stopChild := context.WithCancel(ctx)
 			cmd := exec.CommandContext(child, exe, "weather-worker")
 			cmd.Stderr = os.Stderr
-			if err = cmd.Start(); err != nil {
+			if err = startWorker(cmd); err != nil {
 				stopChild()
+				spawn.failed(time.Now(), err)
 				continue
 			}
+			spawn.started(time.Now())
 			ch := make(chan error, 1)
 			go func() { ch <- cmd.Wait() }()
 			cancel = stopChild

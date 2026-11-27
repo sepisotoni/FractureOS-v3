@@ -636,7 +636,7 @@ func windowsNotificationSupervisor(ctx context.Context) {
 				child, stop := context.WithCancel(ctx)
 				cmd := exec.CommandContext(child, exe, "notifications-worker")
 				cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-				if e = cmd.Start(); e != nil {
+				if e = startWorker(cmd); e != nil {
 					stop()
 					writeNotificationState("Cannot start Windows notification forwarding: "+e.Error(), 0)
 					retry = time.Now().Add(30 * time.Second)

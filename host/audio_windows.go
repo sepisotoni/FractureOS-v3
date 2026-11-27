@@ -45,7 +45,7 @@ func launchAudioWorker(ctx context.Context) (<-chan error, error) {
 	}
 	cmd := exec.CommandContext(ctx, exe, "audio-worker")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	if err = cmd.Start(); err != nil {
+	if err = startWorker(cmd); err != nil {
 		return nil, err
 	}
 	done := make(chan error, 1)

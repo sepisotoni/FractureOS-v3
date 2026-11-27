@@ -206,6 +206,7 @@ func lyricsSupervisor(ctx context.Context, b *Broker) {
 	var cancel context.CancelFunc
 	var done <-chan error
 	retry := time.Time{}
+	spawn := newSpawnBackoff("lyrics-worker")
 	stop := func() {
 		if cancel != nil {
 			cancel()
@@ -219,11 +220,12 @@ func lyricsSupervisor(ctx context.Context, b *Broker) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-done:
+		case err := <-done:
 			cancel()
 			cancel = nil
 			done = nil
 			retry = time.Now().Add(10 * time.Second)
+			spawn.exited(time.Now(), err)
 		case <-ticker.C:
 			b.mediaMu.Lock()
 			hasMedia := b.mediaLatest.Title != "" && time.Since(b.mediaReceived) < 20*time.Second
@@ -237,20 +239,23 @@ func lyricsSupervisor(ctx context.Context, b *Broker) {
 				stop()
 				continue
 			}
-			if cancel != nil || time.Now().Before(retry) {
+			if cancel != nil || time.Now().Before(retry) || !spawn.allowed(time.Now()) {
 				continue
 			}
 			exe, e := os.Executable()
 			if e != nil {
+				spawn.failed(time.Now(), e)
 				continue
 			}
 			child, stopChild := context.WithCancel(ctx)
 			cmd := exec.CommandContext(child, exe, "lyrics-worker")
 			cmd.Stderr = os.Stderr
-			if e = cmd.Start(); e != nil {
+			if e = startWorker(cmd); e != nil {
 				stopChild()
+				spawn.failed(time.Now(), e)
 				continue
 			}
+			spawn.started(time.Now())
 			ch := make(chan error, 1)
 			go func() { ch <- cmd.Wait() }()
 			cancel = stopChild

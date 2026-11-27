@@ -597,7 +597,7 @@ func launchMetrics(ctx context.Context) (*exec.Cmd, context.CancelFunc, <-chan e
 	child, cancel := context.WithCancel(ctx)
 	cmd := exec.CommandContext(child, exe, "metrics-worker")
 	cmd.Stderr = os.Stderr
-	if err = cmd.Start(); err != nil {
+	if err = startWorker(cmd); err != nil {
 		cancel()
 		return nil, nil, nil, err
 	}
@@ -672,6 +672,7 @@ func hubBackground(ctx context.Context, b *Broker) {
 	var done <-chan error
 	lastSync := time.Time{}
 	statusFailure := time.Time{}
+	spawn := newSpawnBackoff("metrics-worker")
 	stopWorker := func() {
 		if worker != nil {
 			cancel()
@@ -685,10 +686,11 @@ func hubBackground(ctx context.Context, b *Broker) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-done:
+		case err := <-done:
 			cancel()
 			worker = nil
 			done = nil
+			spawn.exited(time.Now(), err)
 		case <-ticker.C:
 			c, err := readConfig()
 			if err != nil {
@@ -720,8 +722,14 @@ func hubBackground(ctx context.Context, b *Broker) {
 				stopWorker()
 				continue
 			}
-			if worker == nil {
-				worker, cancel, done, _ = launchMetrics(ctx)
+			if worker == nil && spawn.allowed(time.Now()) {
+				var launchErr error
+				worker, cancel, done, launchErr = launchMetrics(ctx)
+				if launchErr != nil {
+					spawn.failed(time.Now(), launchErr)
+				} else {
+					spawn.started(time.Now())
+				}
 			}
 		}
 	}

@@ -490,7 +490,7 @@ func launchLocalMedia(ctx context.Context) (*exec.Cmd, context.CancelFunc, chan 
 	child, cancel := context.WithCancel(ctx)
 	cmd := exec.CommandContext(child, exe, "media-worker")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	if e = cmd.Start(); e != nil {
+	if e = startWorker(cmd); e != nil {
 		cancel()
 		return nil, nil, nil, e
 	}

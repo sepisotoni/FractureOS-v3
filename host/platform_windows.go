@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -400,4 +401,54 @@ func platformTray() error {
 		user32.NewProc("DispatchMessageW").Call(uintptr(unsafe.Pointer(&m)))
 	}
 	return nil
+}
+
+var (
+	jobOnce   sync.Once
+	jobHandle uintptr
+)
+
+// workerJob is a job object that kills every process in it when its last
+// handle closes. The handle is never closed explicitly: it is released when this
+// process ends for any reason (exit, crash, End Task), so workers cannot be
+// orphaned and duplicated by the next tray start.
+func workerJob() uintptr {
+	jobOnce.Do(func() {
+		h, _, err := kernel32.NewProc("CreateJobObjectW").Call(0, 0)
+		if h == 0 {
+			log.Printf("job object: create failed: %v", err)
+			return
+		}
+		var info jobExtendedLimit
+		info.Basic.LimitFlags = jobLimitKillOnClose
+		r, _, err := kernel32.NewProc("SetInformationJobObject").Call(h, jobObjectExtendedLimitInfo, uintptr(unsafe.Pointer(&info)), unsafe.Sizeof(info))
+		if r == 0 {
+			log.Printf("job object: set limits failed: %v", err)
+			kernel32.NewProc("CloseHandle").Call(h)
+			return
+		}
+		jobHandle = h
+	})
+	return jobHandle
+}
+
+// trackChild puts a started worker into the kill-on-close job. Failure is
+// logged and otherwise ignored: the worker still runs, it just is not tied to us.
+func trackChild(cmd *exec.Cmd) {
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	job := workerJob()
+	if job == 0 {
+		return
+	}
+	h, _, err := kernel32.NewProc("OpenProcess").Call(processSetQuota|processTerminate, 0, uintptr(cmd.Process.Pid))
+	if h == 0 {
+		log.Printf("job object: open pid %d failed: %v", cmd.Process.Pid, err)
+		return
+	}
+	defer kernel32.NewProc("CloseHandle").Call(h)
+	if r, _, err := kernel32.NewProc("AssignProcessToJobObject").Call(job, h); r == 0 {
+		log.Printf("job object: assign pid %d failed: %v", cmd.Process.Pid, err)
+	}
 }
