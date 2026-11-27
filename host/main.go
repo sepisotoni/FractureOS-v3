@@ -423,11 +423,10 @@ func hubCall(c Config, cmd string) (string, error) {
 	return hubRequest(c, "/api/command", map[string]string{"command": cmd})
 }
 func hubRequest(c Config, path string, payload any) (string, error) {
-	transport, e := hubTransport(c)
+	transport, e := sharedHubTransport(c)
 	if e != nil {
 		return "", e
 	}
-	defer transport.CloseIdleConnections()
 	requestTimeout := 12 * time.Second
 	if path != "/api/command" {
 		requestTimeout = 35 * time.Second

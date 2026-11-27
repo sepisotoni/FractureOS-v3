@@ -48,6 +48,24 @@ func BenchmarkHubRequestFreshTLS(b *testing.B) {
 	c := Config{Hub: srv.URL, Token: "t", Fingerprint: hex.EncodeToString(sum[:])}
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
+		resetSharedHubTransport() // forces a new transport and handshake, the old behaviour
+		if _, err := hubRequest(c, "/api/command", map[string]string{"command": "status"}); err != nil {
+			b.Fatal(err)
+		}
+	}
+	resetSharedHubTransport()
+}
+
+// Same call with the shared keep-alive transport (current behaviour).
+func BenchmarkHubRequestShared(b *testing.B) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("{}")) }))
+	defer srv.Close()
+	sum := sha256.Sum256(srv.Certificate().Raw)
+	c := Config{Hub: srv.URL, Token: "t", Fingerprint: hex.EncodeToString(sum[:])}
+	resetSharedHubTransport()
+	defer resetSharedHubTransport()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
 		if _, err := hubRequest(c, "/api/command", map[string]string{"command": "status"}); err != nil {
 			b.Fatal(err)
 		}
