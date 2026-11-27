@@ -508,6 +508,12 @@
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important }
     }
+    .subtabs { display: flex; gap: 6px; margin: 0 0 16px; border-bottom: 1px solid rgba(255,255,255,.1); }
+    .subtabs button { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); padding: 10px 14px; font: inherit; font-weight: 600; cursor: pointer; }
+    .subtabs button:hover { color: #fff; }
+    .subtabs button[aria-selected="true"] { color: #fff; border-bottom-color: var(--accent, #62d1f8); }
+    [data-section-panel][hidden] { display: none; }
+    #wallpaperStatus.error { color: #ff8a8a; }
   </style>
 </head>
 <body>
@@ -544,7 +550,6 @@
           <button type="button" data-page="dashboard" aria-current="page"><svg><use href="#i-overview"/></svg>Overview</button>
           <button type="button" data-page="device"><svg><use href="#i-clock"/></svg>Device</button>
           <button type="button" data-page="appearance"><svg><use href="#i-face"/></svg>Appearance</button>
-          <button type="button" data-page="wallpaper"><svg><use href="#i-face"/></svg>Wallpaper</button>
         </nav>
       </div>
       <div class="nav-group">
@@ -668,6 +673,11 @@
         </div>
 
         <div class="view" data-view="appearance">
+          <div class="subtabs" role="tablist" aria-label="Appearance sections">
+            <button type="button" role="tab" data-section="faces" aria-selected="true">Clock &amp; faces</button>
+            <button type="button" role="tab" data-section="wallpaper" aria-selected="false">Wallpaper</button>
+          </div>
+          <div data-section-panel="faces">
           <section class="card">
             <div class="card-head"><div class="card-icon"><svg><use href="#i-face"/></svg></div><div><h2 class="card-title">Quick presets</h2><p class="card-description">Apply a ready-made face, layout and interface theme combination.</p></div></div>
             <div class="buttons" style="margin-top:0">
@@ -676,7 +686,7 @@
               <button class="button" id="presetAqua" data-preset="aqua,custom,teal" type="button">Cool aqua</button>
               <button class="button" id="presetNeon" data-preset="neon,horizontal,midnight" type="button">Neon compact</button>
             </div>
-            <p class="help">Presets keep your face's original palette and do not overwrite custom face or theme colors.</p>
+            <p class="help">Presets keep your face's original palette and do not overwrite custom face or theme colors. Looking for a background image? See the <a href="#appearance/wallpaper" data-section-link="wallpaper">Wallpaper tab</a>.</p>
           </section>
           <section class="card">
             <div class="card-head"><div class="card-icon"><svg><use href="#i-face"/></svg></div><div><h2 class="card-title">Watch faces</h2><p class="card-description">Edits are saved to the device; reset restores the selected supplied design.</p></div></div>
@@ -705,9 +715,8 @@
             <div class="field" style="max-width:380px;margin-top:16px"><label for="newTheme">Save a new preset (lowercase letters, numbers, hyphens)</label><input id="newTheme" placeholder="my-night-theme"><div class="buttons"><button class="button" id="cloneTheme" type="button">Save as new theme</button></div></div>
             <p class="help">Named themes survive updates. Bedside mode dims the selected colors.</p>
           </section>
-        </div>
-
-        <div class="view" data-view="wallpaper">
+          </div>
+          <div data-section-panel="wallpaper" hidden>
           <section class="card" id="cardWallpaper">
             <div class="card-head"><div class="card-icon"><svg><use href="#i-face"/></svg></div><div><h2 class="card-title">Wallpaper &amp; background</h2><p class="card-description">Sync your PC desktop wallpaper automatically, pick a solid colour (default legacy black), choose a preset, or crop a custom image. Menus use escalating frosted glass blur so text stays readable.</p></div></div>
             <div class="grid">
@@ -737,8 +746,11 @@
                 <div id="wallpaperHistoryGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:10px"></div>
               </div>
             </div>
-            <div class="buttons" style="margin-top:14px"><button class="button primary" id="applyWallpaper" type="button">Apply wallpaper</button><button class="button" id="syncPcWallpaper" type="button">Sync PC wallpaper now</button></div>
+            <div id="wallpaperStatus" class="help" role="status" style="margin-top:14px"></div>
+            <div class="buttons" style="margin-top:8px"><button class="button primary" id="applyWallpaper" type="button" disabled>Apply to TomTom</button><button class="button" id="discardWallpaper" type="button" disabled>Discard changes</button><button class="button" id="restoreWallpaper" type="button" disabled>Restore previous</button><button class="button" id="syncPcWallpaper" type="button">Re-sync TomTom</button></div>
+            <p class="help">Choosing a wallpaper only previews it here. Nothing is sent to your TomTom until you press Apply; Restore goes back to the previous selection.</p>
           </section>
+          </div>
         </div>
 
         <div class="view" data-view="integrations">
@@ -834,16 +846,19 @@
   </div>
 
   <script>
-    const session = location.hash.slice(1);
-    const initialPage = new URLSearchParams(location.search).get("page");
+    /* The launch hash is the session token (64 hex chars). Route hashes such as
+       #appearance/wallpaper are only used in-page, after the token is consumed. */
+    const ROUTE_RE = /^([a-z]{1,20})(?:\/([a-z-]{1,20}))?$/;
+    const rawHash = location.hash.slice(1);
+    const session = ROUTE_RE.test(rawHash) ? "" : rawHash;
+    const initialPage = new URLSearchParams(location.search).get("page") || (ROUTE_RE.test(rawHash) ? rawHash : "");
     history.replaceState(null, "", location.pathname);
     const $ = id => document.getElementById(id);
     let config = {}, integrations = null, lastStatus = null, liveFace = null, liveTheme = null;
     const viewMeta = {
       dashboard:    { title: "Overview",     sub: "Live TomTom preview, active profile, and host telemetry", icon: "#i-overview" },
       device:       { title: "Device",       sub: "Clock behavior, timers and optional features for your TomTom", icon: "#i-clock" },
-      appearance:   { title: "Appearance",   sub: "Customize supplied clock faces and the on-device palette", icon: "#i-face" },
-      wallpaper:    { title: "Wallpaper",    sub: "PC wallpaper auto-sync, legacy solid colour, presets, and custom crop studio", icon: "#i-face" },
+      appearance:   { title: "Appearance",   sub: "Clock faces, theme colours and wallpaper", icon: "#i-face" },
       integrations: { title: "Integrations", sub: "Weather, calendar agenda, notifications, media, and audio", icon: "#i-cloud" },
       system:       { title: "System",       sub: "Choose Direct USB to this PC or Remote Linux hub and install updates", icon: "#i-system" },
       changelog:    { title: "What's new",   sub: "Release notes compiled directly into the application binary", icon: "#i-history" }
@@ -917,7 +932,28 @@
       const el = document.querySelector(".view.active");
       return el ? el.dataset.view : "dashboard";
     }
-    function setView(name) {
+    const SECTIONS = { appearance: ["faces", "wallpaper"] };
+    function parseRoute(text) {
+      const m = ROUTE_RE.exec(text || "");
+      if (!m) return null;
+      let page = m[1], section = m[2] || "";
+      if (page === "wallpaper") { page = "appearance"; section = "wallpaper"; } /* legacy launch alias */
+      if (!viewMeta[page]) return null;
+      if (section && !(SECTIONS[page] || []).includes(section)) section = "";
+      return { page, section };
+    }
+    function setSection(page, section) {
+      const list = SECTIONS[page]; if (!list) return;
+      if (!list.includes(section)) section = list[0];
+      document.querySelectorAll(`[data-view="${page}"] [data-section-panel]`).forEach(el => { el.hidden = el.dataset.sectionPanel !== section; });
+      document.querySelectorAll(`[data-view="${page}"] .subtabs [data-section]`).forEach(b => b.setAttribute("aria-selected", String(b.dataset.section === section)));
+      history.replaceState(null, "", location.pathname + "#" + page + "/" + section);
+      if (page === "appearance" && section === "wallpaper") { wpRefreshOnShow(); }
+      if (page === "appearance" && section === "faces") drawActivePreviews();
+    }
+    function setView(name, section) {
+      const route = parseRoute(section ? name + "/" + section : name) || { page: "dashboard", section: "" };
+      name = route.page; section = route.section;
       document.querySelectorAll(".view").forEach(view => view.classList.toggle("active", view.dataset.view === name));
       document.querySelectorAll("[data-page]").forEach(button => {
         if (button.dataset.page === name) button.setAttribute("aria-current", "page");
@@ -935,8 +971,13 @@
       if (name === "dashboard") {
         refresh().catch(error => { $("status").textContent = error.message; });
       }
-      if (name === "dashboard" || name === "appearance") drawActivePreviews();
+      if (SECTIONS[name]) setSection(name, section || SECTIONS[name][0]);
+      else history.replaceState(null, "", location.pathname + "#" + name);
+      if (name === "dashboard" || (name === "appearance" && (section || "faces") === "faces")) drawActivePreviews();
     }
+    document.querySelectorAll(".subtabs [data-section]").forEach(b => b.addEventListener("click", () => setSection("appearance", b.dataset.section)));
+    document.querySelectorAll("[data-section-link]").forEach(a => a.addEventListener("click", e => { e.preventDefault(); setView("appearance", a.dataset.sectionLink); }));
+    window.addEventListener("hashchange", () => { const r = parseRoute(location.hash.slice(1)); if (r) setView(r.page, r.section); });
     document.querySelectorAll("[data-page]").forEach(button => button.addEventListener("click", () => setView(button.dataset.page)));
     document.querySelectorAll("[data-go]").forEach(button => button.addEventListener("click", () => setView(button.dataset.go)));
     function weatherName(code) {
@@ -1699,7 +1740,7 @@
         }
         try { await loadIntegrations(); } catch (error) { show(error.message, true); }
         try { await loadWallpaper(); } catch (error) { /* wallpaper optional */ }
-        if (initialPage && viewMeta[initialPage]) setPage(initialPage);
+        { const r = parseRoute(initialPage); if (r) setView(r.page, r.section); }
       } catch (error) { show(error.message, true); }
     })();
 
@@ -1767,13 +1808,7 @@
           card.className = "button";
           card.style.cssText = "display:flex;flex-direction:column;gap:6px;padding:6px;height:auto;text-align:left";
           card.innerHTML = `<img src="${p.preview}" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px"><span style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%">${p.name}</span>`;
-          card.onclick = async () => {
-            try {
-              await api("/wallpaper", { mode: "preset", preset: p.name, color: wpState.config.color || "000000" });
-              show("Applied preset wallpaper: " + p.name);
-              await loadWallpaper();
-            } catch (e) { show(e.message, true); }
-          };
+          card.onclick = () => { wpSel.preset = p.name; $("wallpaperMode").value = "preset"; syncWallpaperPanels(); wpStage(); };
           pGrid.appendChild(card);
         });
       }
@@ -1788,17 +1823,13 @@
           wrap.style.cssText = "background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:6px";
           wrap.innerHTML = `<img src="${item.preview}" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px"><div style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item.name}</div><div style="display:flex;gap:4px"><button type="button" class="button primary" style="flex:1;padding:4px 6px;font-size:11px">Use</button><button type="button" class="button" style="padding:4px 6px;font-size:11px">×</button></div>`;
           const btns = wrap.querySelectorAll("button");
-          btns[0].onclick = async () => {
-            try {
-              await api("/wallpaper", { mode: "custom", custom_id: item.id, color: wpState.config.color || "000000" });
-              show("Applied saved custom wallpaper.");
-              await loadWallpaper();
-            } catch (e) { show(e.message, true); }
-          };
+          btns[0].onclick = () => { wpSel.custom_id = item.id; wpImg = null; drawWallpaperCanvas(); $("wallpaperMode").value = "custom"; syncWallpaperPanels(); wpStage(); };
           btns[1].onclick = async () => {
             try {
               await api("/wallpaper", { operation: "delete", delete_id: item.id });
+              const keep = wpDirty; const sel = Object.assign({}, wpSel);
               await loadWallpaper();
+              if (keep) { Object.assign(wpSel, sel); wpStage(); }
             } catch (e) { show(e.message, true); }
           };
           hGrid.appendChild(wrap);
@@ -1806,77 +1837,131 @@
       }
     }
 
+    const wpSel = { preset: "", custom_id: "" };
+    let wpDirty = false, wpInvalid = false, wpDryTimer = 0, wpDrySeq = 0;
+    function wpLabel(c) {
+      if (c.mode === "color") return (c.color || "000000").toLowerCase() === "000000" ? "Legacy black" : "Solid colour #" + c.color;
+      if (c.mode === "preset") return "Preset " + (c.preset || "");
+      if (c.mode === "custom") return "Custom wallpaper";
+      return "PC wallpaper";
+    }
+    function wpSetStatus(text, error) { const el = $("wallpaperStatus"); el.textContent = text; el.classList.toggle("error", !!error); }
+    function wpSavedStatus() {
+      const c = wpState.config || {};
+      const dev = !wpState.device_connected ? "TomTom not connected; it will be updated when it connects."
+        : (c.applied ? "On your TomTom." : "TomTom connected; update pending.");
+      return "Saved: " + wpLabel(c) + ". " + dev;
+    }
+    function wpUpdateButtons() {
+      $("applyWallpaper").disabled = !wpDirty || wpInvalid;
+      $("discardWallpaper").disabled = !wpDirty;
+      $("restoreWallpaper").disabled = !wpState.can_restore || wpDirty;
+    }
+    function wpBuildPayload() {
+      const mode = $("wallpaperMode").value;
+      const payload = { mode, color: ($("wallpaperColor").value || "#000000").replace("#", "") };
+      if (mode === "custom") {
+        if (wpImg) { payload.name = wpName; payload.image_base64 = $("wallpaperCanvas").toDataURL("image/png"); }
+        else if (wpSel.custom_id) payload.custom_id = wpSel.custom_id;
+        else throw Error("Choose an image or pick one from your recent custom wallpapers.");
+      } else if (mode === "preset") {
+        const name = wpSel.preset || (wpState.presets && wpState.presets[0] && wpState.presets[0].name);
+        if (!name) throw Error("No built-in presets available yet.");
+        payload.preset = name;
+      }
+      return payload;
+    }
+    /* Staging never touches the TomTom: it asks the hub for a dry-run render. */
+    function wpStage() {
+      wpDirty = true; wpUpdateButtons();
+      clearTimeout(wpDryTimer);
+      const seq = ++wpDrySeq;
+      wpDryTimer = setTimeout(async () => {
+        try {
+          const res = JSON.parse(await api("/wallpaper", Object.assign(wpBuildPayload(), { dry_run: true })));
+          if (seq !== wpDrySeq) return;
+          wpInvalid = false;
+          updateWallpaperPreviewImage(res.active_preview || "");
+          wpSetStatus("Preview only. Not on your TomTom yet; press \u201cApply to TomTom\u201d to use it.");
+        } catch (e) {
+          if (seq !== wpDrySeq) return;
+          wpInvalid = true; wpSetStatus(e.message, true);
+        }
+        wpUpdateButtons();
+      }, 350);
+    }
+    function wpRefreshOnShow() { if (!wpDirty) loadWallpaper().catch(e => wpSetStatus(e.message, true)); }
+
     async function loadWallpaper() {
       wpState = JSON.parse(await api("/wallpaper"));
-      const c = wpState.config || { mode: "pc", color: "000000" };
+      const c = wpState.config || { mode: "color", color: "000000" };
+      wpSel.preset = c.preset || ""; wpSel.custom_id = c.custom_id || "";
       $("wallpaperMode").value = c.mode || "pc";
       $("wallpaperColor").value = "#" + (c.color || "000000");
       $("wallpaperPcPanel").textContent = wpState.pc_available
         ? "PC desktop wallpaper detected. FractureOS syncs it automatically when paired or updated."
         : "PC desktop wallpaper could not be read automatically on this host; choose Solid colour, Preset, or Custom.";
+      clearTimeout(wpDryTimer); wpDrySeq++; wpDirty = false; wpInvalid = false;
       syncWallpaperPanels();
       renderWallpaperLists();
       drawWallpaperCanvas();
       updateWallpaperPreviewImage(wpState.active_preview || "");
+      wpSetStatus(wpSavedStatus());
+      wpUpdateButtons();
     }
 
-    $("wallpaperMode").addEventListener("change", syncWallpaperPanels);
-    $("wallpaperBlackBtn").addEventListener("click", () => { $("wallpaperColor").value = "#000000"; });
+    $("wallpaperMode").addEventListener("change", () => { syncWallpaperPanels(); wpStage(); });
+    $("wallpaperColor").addEventListener("input", wpStage);
+    $("wallpaperBlackBtn").addEventListener("click", () => { $("wallpaperColor").value = "#000000"; wpStage(); });
     $("wallpaperFile").addEventListener("change", () => {
       const f = $("wallpaperFile").files[0];
       if (!f) return;
       wpName = f.name.replace(/\.[^.]+$/, "");
       const img = new Image();
-      img.onload = () => { wpImg = img; wpDim = 1; $("wallpaperDim").value = 100; $("wallpaperDimVal").textContent = "100%"; fitWallpaper(true); };
+      img.onload = () => { wpImg = img; wpDim = 1; $("wallpaperDim").value = 100; $("wallpaperDimVal").textContent = "100%"; fitWallpaper(true); wpStage(); };
       img.src = URL.createObjectURL(f);
     });
     $("wallpaperZoom").addEventListener("input", () => {
       wpZoom = Number($("wallpaperZoom").value) / 100;
       $("wallpaperZoomVal").textContent = $("wallpaperZoom").value + "%";
-      drawWallpaperCanvas();
+      drawWallpaperCanvas(); if (wpImg) wpStage();
     });
     $("wallpaperDim").addEventListener("input", () => {
       wpDim = Number($("wallpaperDim").value) / 100;
       $("wallpaperDimVal").textContent = $("wallpaperDim").value + "%";
-      drawWallpaperCanvas();
+      drawWallpaperCanvas(); if (wpImg) wpStage();
     });
-    $("wallpaperFillBtn").addEventListener("click", () => fitWallpaper(true));
-    $("wallpaperFitBtn").addEventListener("click", () => fitWallpaper(false));
-    $("wallpaperResetCropBtn").addEventListener("click", () => { wpDim = 1; $("wallpaperDim").value = 100; $("wallpaperDimVal").textContent = "100%"; fitWallpaper(true); });
+    $("wallpaperFillBtn").addEventListener("click", () => { fitWallpaper(true); if (wpImg) wpStage(); });
+    $("wallpaperFitBtn").addEventListener("click", () => { fitWallpaper(false); if (wpImg) wpStage(); });
+    $("wallpaperResetCropBtn").addEventListener("click", () => { wpDim = 1; $("wallpaperDim").value = 100; $("wallpaperDimVal").textContent = "100%"; fitWallpaper(true); if (wpImg) wpStage(); });
 
     const wpCanvas = $("wallpaperCanvas");
     wpCanvas.addEventListener("pointerdown", e => { if (!wpImg) return; wpDragging = true; wpDragX = e.clientX - wpPanX; wpDragY = e.clientY - wpPanY; wpCanvas.setPointerCapture(e.pointerId); wpCanvas.style.cursor = "grabbing"; });
     wpCanvas.addEventListener("pointermove", e => { if (!wpDragging) return; wpPanX = e.clientX - wpDragX; wpPanY = e.clientY - wpDragY; drawWallpaperCanvas(); });
-    wpCanvas.addEventListener("pointerup", () => { wpDragging = false; wpCanvas.style.cursor = "grab"; });
+    wpCanvas.addEventListener("pointerup", () => { const moved = wpDragging; wpDragging = false; wpCanvas.style.cursor = "grab"; if (moved && wpImg) wpStage(); });
     wpCanvas.addEventListener("pointercancel", () => { wpDragging = false; wpCanvas.style.cursor = "grab"; });
 
-    action("applyWallpaper", async () => {
-      const mode = $("wallpaperMode").value;
-      const color = ($("wallpaperColor").value || "#000000").replace("#", "");
-      const payload = { mode, color };
-      if (mode === "custom") {
-        if (wpImg) {
-          payload.name = wpName;
-          payload.image_base64 = wpCanvas.toDataURL("image/png");
-        } else if (wpState.config && wpState.config.custom_id) {
-          payload.custom_id = wpState.config.custom_id;
-        } else {
-          throw Error("Choose an image or pick one from your recent 5 custom wallpapers.");
-        }
-      } else if (mode === "preset") {
-        if (!wpState.presets || !wpState.presets.length) throw Error("No built-in presets available yet.");
-        payload.preset = (wpState.config && wpState.config.preset) || wpState.presets[0].name;
-      }
-      const res = JSON.parse(await api("/wallpaper", payload));
+    async function wpRun(buttonId, fn) {
+      const btn = $(buttonId);
+      try { btn.disabled = true; $("message").classList.remove("visible"); await fn(); }
+      catch (e) { show(e.message, true); }
+      finally { wpUpdateButtons(); $("syncPcWallpaper").disabled = false; }
+    }
+    $("applyWallpaper").onclick = () => wpRun("applyWallpaper", async () => {
+      const res = JSON.parse(await api("/wallpaper", wpBuildPayload()));
       await loadWallpaper();
-      if (res && res.warning) show(res.warning);
-      else show("Wallpaper applied.");
+      show(res.device_applied ? "Applied to your TomTom." : (res.warning || "Saved."), !res.device_applied && !!res.warning && res.device_connected);
     });
-    action("syncPcWallpaper", async () => {
-      const res = JSON.parse(await api("/wallpaper", { mode: "pc", color: ($("wallpaperColor").value || "#000000").replace("#", "") }));
+    $("discardWallpaper").onclick = () => wpRun("discardWallpaper", async () => { wpImg = null; await loadWallpaper(); show("Changes discarded."); });
+    $("restoreWallpaper").onclick = () => wpRun("restoreWallpaper", async () => {
+      const res = JSON.parse(await api("/wallpaper", { operation: "restore" }));
       await loadWallpaper();
-      if (res && res.warning) show(res.warning);
-      else show("PC wallpaper synced.");
+      show(res.device_applied ? "Previous wallpaper restored on your TomTom." : (res.warning || "Previous wallpaper restored."));
+    });
+    $("syncPcWallpaper").onclick = () => wpRun("syncPcWallpaper", async () => {
+      const res = JSON.parse(await api("/wallpaper", { operation: "sync" }));
+      await loadWallpaper();
+      show(!res.device_connected ? "No TomTom connected." : (res.pushed ? "TomTom updated." : "TomTom already matches the saved wallpaper."));
     });
   </script>
 </body>
