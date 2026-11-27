@@ -269,6 +269,9 @@ func platformDashboard() error {
 	}
 	var buildPage func()
 	buildPage = func() {
+		if latest, err := readConfig(); err == nil {
+			c = latest
+		}
 		mu.Lock()
 		previewVisible = pageIndex == 0
 		previewGeneration++
@@ -749,11 +752,8 @@ func platformDashboard() error {
 					return "Choose a matching place, then save weather", nil
 				})
 			case 247:
-				mu.Lock()
-				q := integrations
-				mu.Unlock()
-				q.Weather.Enabled = checked(240)
-				vals := []*float64{&q.Weather.Latitude, &q.Weather.Longitude, &q.Weather.Hot, &q.Weather.Cold, &q.Weather.Wind}
+				weather := WeatherConfig{Enabled: checked(240)}
+				vals := []*float64{&weather.Latitude, &weather.Longitude, &weather.Hot, &weather.Cold, &weather.Wind}
 				for i, dst := range vals {
 					v, e := strconv.ParseFloat(get(241+i), 64)
 					if e != nil {
@@ -776,6 +776,11 @@ func platformDashboard() error {
 					if e != nil {
 						return "", e
 					}
+					q, e := integrationGet(conf)
+					if e != nil {
+						return "", e
+					}
+					q.Weather = weather
 					if e = integrationSave(conf, q); e != nil {
 						return "", e
 					}
@@ -789,27 +794,22 @@ func platformDashboard() error {
 				})
 			case 253:
 				notificationDuration := get(254)
-				mu.Lock()
-				q := integrations
-				mu.Unlock()
-				q.Notifications.Enabled = checked(250)
-				q.Notifications.Excluded = nil
+				notifications := NotificationConfig{Enabled: checked(250)}
 				for _, v := range strings.Split(get(251), "\n") {
 					if v = strings.TrimSpace(v); v != "" {
-						q.Notifications.Excluded = append(q.Notifications.Excluded, v)
+						notifications.Excluded = append(notifications.Excluded, v)
 					}
 				}
-				q.Notifications.Allowed = nil
 				for _, v := range strings.Split(get(284), "\n") {
 					if v = strings.TrimSpace(v); v != "" {
-						q.Notifications.Allowed = append(q.Notifications.Allowed, v)
+						notifications.Allowed = append(notifications.Allowed, v)
 					}
 				}
-				q.Notifications.AllowListOnly = checked(280)
-				q.Notifications.QuietHoursEnabled = checked(281)
-				q.Notifications.QuietStart = strings.TrimSpace(get(282))
-				q.Notifications.QuietEnd = strings.TrimSpace(get(283))
-				if e := validateIntegrations(q.Weather, q.Notifications); e != nil {
+				notifications.AllowListOnly = checked(280)
+				notifications.QuietHoursEnabled = checked(281)
+				notifications.QuietStart = strings.TrimSpace(get(282))
+				notifications.QuietEnd = strings.TrimSpace(get(283))
+				if e := validateIntegrations(defaultWeather(), notifications); e != nil {
 					mu.Lock()
 					message = e.Error()
 					mu.Unlock()
@@ -820,19 +820,18 @@ func platformDashboard() error {
 				if checked(252) {
 					bit = 1
 				}
-				next := c
-				next.WindowsNotifications = checked(255)
-				if e := saveConfig(next); e != nil {
-					mu.Lock()
-					message = e.Error()
-					mu.Unlock()
-					invalidate()
-					return 0
-				}
-				c = next
+				enableWindows := checked(255)
 				async(func() (string, error) {
 					conf, e := readConfig()
 					if e != nil {
+						return "", e
+					}
+					q, e := integrationGet(conf)
+					if e != nil {
+						return "", e
+					}
+					q.Notifications = notifications
+					if e = validateCommand("ui-timeout notification " + notificationDuration); e != nil {
 						return "", e
 					}
 					if e = integrationSave(conf, q); e != nil {
@@ -845,6 +844,14 @@ func platformDashboard() error {
 					integrations = q
 					mu.Unlock()
 					if _, e = hubCall(conf, "ui-timeout notification "+notificationDuration); e != nil {
+						return "", e
+					}
+					latest, e := readConfig()
+					if e != nil {
+						return "", e
+					}
+					latest.WindowsNotifications = enableWindows
+					if e = saveConfig(latest); e != nil {
 						return "", e
 					}
 					return "Notification settings saved", nil
