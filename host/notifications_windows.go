@@ -462,6 +462,7 @@ func windowsNotificationWorker(check bool) error {
 		forceRemoteRefresh = true
 		lastWrittenMessage string
 		lastWrittenAt      time.Time
+		paused             pauseTimer
 	)
 	recordState := func(msg string, delivered bool) {
 		if delivered {
@@ -523,10 +524,16 @@ func windowsNotificationWorker(check bool) error {
 		if !cachedSettings.Notifications.Enabled || !deviceNotifEnabled {
 			queue.reset()
 			forceRemoteRefresh = true
-			recordState("Paused: enable the authenticated notification webhook and TomTom notifications", false)
+			recordState(notificationPausedMessage, false)
+			if paused.update(true, time.Now()) {
+				// Free this process; the tray supervisor starts a new one when the
+				// hub and TomTom settings allow forwarding again.
+				return nil
+			}
 			time.Sleep(2 * time.Second)
 			continue
 		}
+		paused.update(false, time.Now())
 		if quietHoursActive(cachedSettings.Notifications.QuietHoursEnabled, cachedSettings.Notifications.QuietStart, cachedSettings.Notifications.QuietEnd, time.Now()) {
 			queue.reset()
 			recordState("Quiet hours are active (Windows local time).", false)
@@ -625,8 +632,18 @@ func windowsNotificationSupervisor(ctx context.Context) {
 				}
 				continue
 			}
-			lastStatus = ""
 			if done == nil && time.Now().After(retry) {
+				// Do not start a process unless forwarding can deliver: it is a whole Go
+				// runtime. While stopped this is re-checked every tick, so turning the
+				// hub or TomTom setting on starts the worker within a few seconds.
+				if state, reason := notificationWorkerGate(c); state != gateRun {
+					if reason != lastStatus {
+						writeNotificationState(reason, 0)
+						lastStatus = reason
+					}
+					continue
+				}
+				lastStatus = ""
 				exe, e := os.Executable()
 				if e != nil {
 					writeNotificationState("Cannot locate the Windows app to start notification forwarding: "+e.Error(), 0)
