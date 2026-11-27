@@ -322,6 +322,13 @@ func parseLyrics(record lyricsRecord) ([]lyricLine, bool) {
 	}
 	return lines, true
 }
+
+// Seams for tests; production values are the public LRCLIB endpoint.
+var (
+	lrclibURL       = "https://lrclib.net/api/get"
+	lyricsTransport http.RoundTripper
+)
+
 func fetchLyrics(ctx context.Context, s lyricsSession) (lyricsRecord, error) {
 	var record lyricsRecord
 	q := url.Values{"track_name": {s.Title}, "artist_name": {s.Artist}}
@@ -331,12 +338,12 @@ func fetchLyrics(ctx context.Context, s lyricsSession) (lyricsRecord, error) {
 	if s.Duration > 0 && s.Duration <= 3600 {
 		q.Set("duration", strconv.Itoa(s.Duration))
 	}
-	req, e := http.NewRequestWithContext(ctx, "GET", "https://lrclib.net/api/get?"+q.Encode(), nil)
+	req, e := http.NewRequestWithContext(ctx, "GET", lrclibURL+"?"+q.Encode(), nil)
 	if e != nil {
 		return record, e
 	}
 	req.Header.Set("User-Agent", "FractureOS/"+version+" (https://github.com/sepisotoni/FractureOS-v3)")
-	client := http.Client{Timeout: 12 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return errors.New("lyrics redirect refused") }}
+	client := http.Client{Timeout: 12 * time.Second, Transport: lyricsTransport, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return errors.New("lyrics redirect refused") }}
 	defer client.CloseIdleConnections()
 	res, e := client.Do(req)
 	if e != nil {

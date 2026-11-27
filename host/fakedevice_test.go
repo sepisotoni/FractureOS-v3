@@ -124,6 +124,11 @@ func (f *fakeShellDevice) exec(cmd string) (string, int) {
 			for _, q := range quotedRE.FindAllStringSubmatch(seg, -1) {
 				args = append(args, q[1])
 			}
+			if len(args) == 0 { // unquoted form used by preview-asset downloads
+				if i := strings.Index(seg, "control.sh"); i >= 0 {
+					args = strings.Fields(seg[i+len("control.sh"):])
+				}
+			}
 			if len(args) == 0 {
 				return "no command", 1
 			}

@@ -49,7 +49,7 @@ func downloadPreviewAsset(address, kind string) ([]byte, error) {
 	if size == 0 {
 		return nil, errors.New("unknown preview asset")
 	}
-	c, e := net.DialTimeout("tcp", net.JoinHostPort(address, "23"), 3*time.Second)
+	c, e := net.DialTimeout("tcp", net.JoinHostPort(address, devicePort), 3*time.Second)
 	if e != nil {
 		return nil, e
 	}

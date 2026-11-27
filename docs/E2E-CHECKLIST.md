@@ -14,7 +14,7 @@ Legend
 
 ```sh
 export GOPROXY=direct GOSUMDB=off                    # sandbox has no module proxy
-go vet ./host/ && go test -race -count=1 ./host/     # 64 top-level tests + 13 subtests
+go vet ./host/ && go test -race -count=1 ./host/     # 71 top-level tests + 20 subtests
 CGO_ENABLED=0 go build -o /dev/null ./host/          # Linux hub release build mode
 GOOS=windows go build -o /dev/null ./host/           # Windows cross-build
 sh tests/preview_drift.sh                            # device renderer vs PC preview renderer, native x86
@@ -22,7 +22,7 @@ cd tests/ui && npm i jsdom && node wallpaper-ui.test.js
 NODE_PATH=... sh tests/preview_drift_js.sh           # web preview vs device (needs jsdom + @napi-rs/canvas)
 ```
 
-Last run (this branch): vet OK, `go test -race` 64/64 + 13/13 subtests PASS, `CGO_ENABLED=0` build OK, Windows build OK, drift script 6/6 PASS, UI test 25/25 PASS.
+Last run (this branch): vet OK, `go test -race` 71/71 + 20/20 subtests PASS, `CGO_ENABLED=0` build OK, Windows build OK, drift script 6/6 PASS, UI test 25/25 PASS.
 
 ## 1. Build and static checks
 
@@ -31,7 +31,7 @@ Last run (this branch): vet OK, `go test -race` 64/64 + 13/13 subtests PASS, `CG
 | `go vet ./host/` (linux) | PASS | clean |
 | `go build` with `CGO_ENABLED=0` | PASS | the Linux hub release mode |
 | Windows cross-build incl. new tests | PASS | `GOOS=windows go build`; tests compile for windows via `go vet` |
-| `GOOS=windows go vet ./host/` | FAIL (pre-existing) | 3 warnings `possible misuse of unsafe.Pointer` in `audio_windows.go:187,248,258` (AGENT-C's file) |
+| `GOOS=windows go vet ./host/` | FAIL (pre-existing) | 9 warnings `possible misuse of unsafe.Pointer`: `audio_windows.go` 187, 248, 258; `dashboard_windows.go` 441, 823 (AGENT-A); `media_windows.go` 45, 46, 93, 352 (AGENT-C). None are in files changed by AGENT-B |
 | `gofmt -l host` | FAIL (not mine) | `dashboard_layout.go` (AGENT-A), `media.go`, `notifications_windows.go` (AGENT-C). `telnet.go` fixed |
 | Race detector | PASS | `go test -race` |
 | ARM device build (`tools/build-device.sh`) | NOT TESTABLE HERE | needs the OpenTom ARM gcc 3.3.4 SDK |
@@ -69,8 +69,8 @@ Run: `go test -race ./host/ -run 'TestHub'`.
 | `/api/agenda` | PASS (fake) | valid events send `agenda-clear` + events; empty title, missing time, unknown field -> 400 |
 | `/api/media` | PASS (fake) | valid snapshot -> `media ...` commands; position > duration, huge duration, negative volume, garbage -> 400 |
 | `/api/audio` | PASS (guards only) | wrong content type -> 415; bad source -> 400; disabled -> 409. Streaming frames: see section 6 |
-| `/api/preview` | PASS (model only) | model op returns `FPR1`; unknown asset kind not 200; old device -> actionable "0.1.11" message. **NOT COVERED:** asset chunk download (`preview-asset`), needs the fake to implement that protocol |
-| `/api/lyrics` | PASS (guards only) | oversized title and unknown field -> 400. **NOT COVERED:** lyric session/search path |
+| `/api/preview` | PASS (fake) M | model op returns `FPR1`; old device -> actionable "0.1.11" message; asset op downloads in 8 KiB hex chunks and returns identical bytes; stale hash -> 409; unknown kind, zero hash, unknown op -> 400; truncated chunk from the device -> 502 |
+| `/api/lyrics` | PASS (fake) M | session; provide (wrong track -> 409, disabled in settings -> 403); clear-provided; schedule (sends `lyrics-begin`/`lyrics-line`/`lyrics-commit`; decreasing times, no lines, 13 lines, time past a day -> 400); update (sends `media-lyrics ...`; oversized -> 400; view closed -> 409); unknown op -> 400; oversized title / unknown field -> 400. Note `Broker.call` caches `status` for 1 s by design, so a lyrics-view change can lag up to 1 s |
 | `/api/wallpaper` | PASS (fake) | see section 4 |
 
 ## 4. Wallpaper (item 1 and 3)
@@ -94,7 +94,8 @@ Run: `go test -race ./host/ -run 'Wallpaper|Offline|Stale|Reflash|Solid|Legacy|U
 | `mode:"pc"` on a Remote Linux hub reads the **hub's** desktop, not the Windows PC | FAIL (design): Windows must upload its own wallpaper as a custom image (AGENT-A) |
 | Real `wallpaper_hash`/dim/blur on the ARM firmware | NOT TESTABLE HERE (no TomTom) |
 | Real telnet over USB | NOT TESTABLE HERE |
-| Device-file backup/restore (copy of `wallpaper.rgb` on the TomTom) | NOT IMPLEMENTED: only the selection is backed up (`previous.json`); see TASKS F-03 |
+| Selection-level backup/restore (`previous.json`, "Restore previous") | PASS (fake) |
+| Device-file backup/restore (copy of `wallpaper.rgb` on the TomTom) | NOT IMPLEMENTED. Hardware-gated, TASKS F-03. There is no device-side backup in 0.1.18.1 |
 | Caveat: restoring a colour override writes the original value back (an override file with the original value remains); a user's own theme-background edit made during an override is overwritten on restore | KNOWN GAP |
 
 ## 5. Preview (item 2)
@@ -104,6 +105,7 @@ Run: `go test -race ./host/ -run 'Wallpaper|Offline|Stale|Reflash|Solid|Legacy|U
 | PC preview renderer == device renderer, home screen, 3 faces x {no wallpaper, wallpaper} | PASS M | `tests/preview_drift.sh`: 0 differing pixels. Control: feeding an undimmed wallpaper gave 69,238 differing pixels |
 | Menu screens in the preview | NOT SUPPORTED | `navigation_draw()` is compiled out of the preview build; TASKS F-01 (declined for 0.1.18.1) |
 | Notification overlay / dock / other model states in the drift test | NOT COVERED | only the default home state with a fixed clock is compared |
+| Home-preview packet (`fetchHomePreview`): downloads atlas/font/notice/wallpaper from the device, reuses unchanged assets, serves a fresh client from the disk cache, repairs a corrupted cache entry by hash, degrades to no wallpaper if the wallpaper download fails, rejects a missing face or malformed model | PASS (fake) M | `TestFetchHomePreview*`. The fake's asset bytes are synthetic; the real firmware hash/size contract is not testable here |
 | Windows DLL path (`preview_windows.go` -> `fracture-preview.dll`) | NOT TESTABLE HERE | no Windows; the native x86 build of the same C source is what is tested. Note the renderer emits **BGRA** |
 | Web dashboard preview vs device | **FAIL** | `tests/preview_drift_js.sh`: aqua 17.66%, neon 22.28%, sunset 17.61% of pixels differ; 14.8% / 10.8% / 14.8% differ by more than 32/255. Images: `docs/preview-drift/`. Cause is structural (browser fonts and hand-tuned scale factors vs bitmap atlases): thinner glyphs, higher position with clipping at the top edge, bold bright date and minutes label. Font fallback in this sandbox affects the absolute number but not these differences |
 
@@ -114,6 +116,7 @@ Run: `go test -race ./host/ -run 'Wallpaper|Offline|Stale|Reflash|Solid|Legacy|U
 | Weather settings validation and persistence | PASS | section 2 |
 | Weather forecast push to device | PASS (fake) | section 3 |
 | Weather description text | PASS | existing `TestWeatherDescription` |
+| Lyrics search (`fetchLyrics`/`cachedLyrics`, LRCLIB): found, 404, 5xx, malformed, oversized, over-long lyrics, redirect refused, duration filter omitted when implausible, 7-day expiry, 8-entry bound, failures not cached | PASS M | `TestFetchLyricsResponses`, `TestCachedLyricsCachesExpiresAndPrunes` against a fake TLS server. The real lrclib.net is not reachable from the sandbox |
 | Weather fetch + parse from Open-Meteo (`weatherSupervisor`) | NOT COVERED | the sandbox cannot reach api.open-meteo.com and the URL has no test seam; supervisor code is AGENT-C's |
 | Notification filtering, quiet hours, queue | PASS | existing `notifications_test.go` |
 | Notification route and device delivery | PASS (fake) | section 3 |
@@ -176,3 +179,14 @@ Run: `cd tests/ui && node wallpaper-ui.test.js` (jsdom with a stubbed API).
 |---|---|
 | No tokens/secrets committed | PASS (`git diff` scan for GitHub token patterns on every commit: 0 matches) |
 | No version strings, workflows or `install/*` touched | PASS |
+
+## 12. Release-notes wording (draft, for LEAD)
+
+Suggested text for the 0.1.18.1 notes; it makes no claim of a device-side backup:
+
+- Wallpaper now lives under Appearance (Clock & faces | Wallpaper). Choosing a wallpaper only previews it; nothing is sent to the TomTom until you press **Apply to TomTom**.
+- **Restore previous** returns to your previous wallpaper *selection*. FractureOS does not back up the wallpaper file stored on the TomTom itself.
+- A wallpaper chosen while the TomTom is unplugged, or lost if the TomTom is re-flashed, is applied automatically when it connects.
+- A solid colour records the theme and face background it replaces and puts exactly those back when you pick something else; Legacy black changes no theme or face colours.
+- Fixed: "hub: 404 page not found" when the app is newer than the Linux hub; the message now says to update the hub or use Direct USB.
+- Fixed: opening the dashboard on a specific page (`?page=`) showed an error.
