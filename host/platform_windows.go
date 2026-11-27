@@ -247,7 +247,7 @@ func directHubSupervisor(ctx context.Context) {
 		done := make(chan error, 1)
 		activeListen, activeDevice = c.Listen, c.Device
 		hubCancel, hubDone = cancel, done
-		go func() { done <- serveWithContext(hubCtx, true) }()
+		go func() { done <- serveWithContext(hubCtx, false) }()
 	}
 	check()
 	for {
@@ -269,6 +269,18 @@ func directHubSupervisor(ctx context.Context) {
 }
 
 func platformTray() error {
+	// Take the single-instance mutex before starting any supervisor: a second
+	// launch must not spawn workers or bind the hub before it notices it is a duplicate.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	mutex, _, last := kernel32.NewProc("CreateMutexW").Call(0, 0, uintptr(unsafe.Pointer(wide("Local\\FractureOS-v3-tray"))))
+	if mutex == 0 {
+		return last
+	}
+	defer kernel32.NewProc("CloseHandle").Call(mutex)
+	if last == syscall.Errno(183) {
+		return nil
+	}
 	mediaContext, stopMedia := context.WithCancel(context.Background())
 	mediaDone := make(chan struct{})
 	audioDone := make(chan struct{})
@@ -284,20 +296,13 @@ func platformTray() error {
 		<-hubDone
 	}()
 	go func() { defer close(mediaDone); localMediaSupervisor(mediaContext) }()
+	// The tray owns the only Windows audio supervisor. In Direct USB mode the
+	// in-process hub is started with startAudio=false (directHubSupervisor); this
+	// supervisor reaches that hub over HTTPS at c.Hub, so Direct mode is covered.
 	go func() { defer close(audioDone); audioSupervisor(mediaContext, nil, "windows") }()
 	go func() { defer close(tempDone); windowsTemperatureSupervisor(mediaContext) }()
 	go func() { defer close(notificationDone); windowsNotificationSupervisor(mediaContext) }()
 	go func() { defer close(hubDone); directHubSupervisor(mediaContext) }()
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	mutex, _, last := kernel32.NewProc("CreateMutexW").Call(0, 0, uintptr(unsafe.Pointer(wide("Local\\FractureOS-v3-tray"))))
-	if mutex == 0 {
-		return last
-	}
-	defer kernel32.NewProc("CloseHandle").Call(mutex)
-	if last == syscall.Errno(183) {
-		return nil
-	}
 	instance, _, _ := kernel32.NewProc("GetModuleHandleW").Call(0)
 	icon := appIcon(instance)
 	var data notify
