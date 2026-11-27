@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -106,4 +108,33 @@ func (s *spawnBackoff) exited(now time.Time, err error) {
 		return
 	}
 	s.fails, s.next, s.lastMsg = 0, time.Time{}, ""
+}
+
+// backgroundSet runs supervisor goroutines under one cancellable context and
+// lets the owner wait for all of them. Supervisors reap their worker processes
+// in a deferred stop(), so returning before they finish could let the process
+// exit first and leave workers behind.
+type backgroundSet struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+}
+
+func newBackgroundSet(parent context.Context) *backgroundSet {
+	ctx, cancel := context.WithCancel(parent)
+	return &backgroundSet{ctx: ctx, cancel: cancel}
+}
+
+func (s *backgroundSet) run(f func(context.Context)) {
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		f(s.ctx)
+	}()
+}
+
+// stop cancels the context and blocks until every goroutine has returned.
+func (s *backgroundSet) stop() {
+	s.cancel()
+	s.wg.Wait()
 }

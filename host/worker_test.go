@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unsafe"
@@ -145,4 +147,34 @@ func TestJobStructSizes(t *testing.T) {
 	if got := unsafe.Sizeof(jobExtendedLimit{}); got != 144 {
 		t.Fatalf("JOBOBJECT_EXTENDED_LIMIT_INFORMATION = %d, want 144", got)
 	}
+}
+
+func TestBackgroundSetStopWaitsForGoroutines(t *testing.T) {
+	set := newBackgroundSet(context.Background())
+	var finished atomic.Int32
+	for i := 0; i < 5; i++ {
+		set.run(func(ctx context.Context) {
+			<-ctx.Done()
+			time.Sleep(50 * time.Millisecond) // a supervisor reaping its worker
+			finished.Add(1)
+		})
+	}
+	set.stop()
+	if n := finished.Load(); n != 5 {
+		t.Fatalf("stop returned with %d/5 goroutines finished", n)
+	}
+}
+
+func TestBackgroundSetFollowsParentContext(t *testing.T) {
+	parent, cancel := context.WithCancel(context.Background())
+	set := newBackgroundSet(parent)
+	ran := make(chan struct{})
+	set.run(func(ctx context.Context) { <-ctx.Done(); close(ran) })
+	cancel()
+	select {
+	case <-ran:
+	case <-time.After(2 * time.Second):
+		t.Fatal("goroutine did not see parent cancellation")
+	}
+	set.stop()
 }
