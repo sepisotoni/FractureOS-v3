@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -105,10 +106,7 @@ func (t *telnet) command(command string) (string, error) {
 	}
 	return body, nil
 }
-func deviceCommand(address, command string) (string, error) {
-	return deviceCommands(address, []string{command})
-}
-func deviceCommands(address string, commands []string) (string, error) {
+func deviceCommandsContext(ctx context.Context, address string, commands []string) (string, error) {
 	if len(commands) == 0 || len(commands) > 16 {
 		return "", fmt.Errorf("invalid command batch")
 	}
@@ -117,11 +115,14 @@ func deviceCommands(address string, commands []string) (string, error) {
 			return "", err
 		}
 	}
-	c, err := net.DialTimeout("tcp", net.JoinHostPort(address, devicePort), 3*time.Second)
+	dialer := net.Dialer{Timeout: 3 * time.Second}
+	c, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(address, devicePort))
 	if err != nil {
 		return "", err
 	}
 	defer c.Close()
+	stop := context.AfterFunc(ctx, func() { _ = c.Close() })
+	defer stop()
 	_ = c.SetDeadline(time.Now().Add(8 * time.Second))
 	t := telnet{c: c}
 	if _, err = t.readUntil(regexp.MustCompile(`login: *$`)); err != nil {
@@ -156,8 +157,7 @@ func deviceCommands(address string, commands []string) (string, error) {
 
 // Artwork is a fixed 18 KiB RGB565 image, served once over the trusted USB hop.
 // Nothing supplied by Spotify is interpolated into the shell command.
-func uploadMediaArt(address string, data []byte) error  { return uploadDeviceArt(address, data, false) }
-func uploadWallpaper(address string, data []byte) error { return uploadDevicePayload(address, data, 3) }
+func uploadMediaArt(address string, data []byte) error { return uploadDeviceArt(address, data, false) }
 func uploadDeviceArt(address string, data []byte, notice bool) error {
 	kind := 0
 	if notice {
@@ -166,14 +166,20 @@ func uploadDeviceArt(address string, data []byte, notice bool) error {
 	return uploadDevicePayload(address, data, kind)
 }
 func uploadDevicePayload(address string, data []byte, kind int) error {
+	return uploadDevicePayloadContext(context.Background(), address, data, kind)
+}
+func uploadDevicePayloadContext(ctx context.Context, address string, data []byte, kind int) error {
 	if (kind == 0 && len(data) != 18432) || (kind == 1 && len(data) != 4608) || (kind == 2 && (len(data) < 32 || len(data) > 8192)) || (kind == 3 && len(data) != 153600) || kind < 0 || kind > 3 {
 		return fmt.Errorf("invalid artwork size")
 	}
-	c, err := net.DialTimeout("tcp", net.JoinHostPort(address, devicePort), 3*time.Second)
+	dialer := net.Dialer{Timeout: 3 * time.Second}
+	c, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(address, devicePort))
 	if err != nil {
 		return err
 	}
 	defer c.Close()
+	stop := context.AfterFunc(ctx, func() { _ = c.Close() })
+	defer stop()
 	_ = c.SetDeadline(time.Now().Add(12 * time.Second))
 	t := telnet{c: c}
 	if _, err = t.readUntil(regexp.MustCompile(`login: *$`)); err != nil {

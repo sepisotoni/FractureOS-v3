@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"time"
 )
@@ -29,12 +30,12 @@ const (
 
 // notificationWorkerGate decides whether a notifications worker should run, and
 // returns the status text to show when it should not.
-func notificationWorkerGate(c Config) (notificationGateState, string) {
-	settings, err := integrationGet(c)
+func notificationWorkerGate(ctx context.Context, c Config) (notificationGateState, string) {
+	settings, err := integrationGetContext(ctx, c)
 	if err != nil {
 		return gateUnknown, "Cannot reach the hub; retrying"
 	}
-	raw, err := hubCall(c, "status")
+	raw, err := hubCallContext(ctx, c, "status")
 	var ds struct {
 		Notifications int `json:"notifications"`
 	}

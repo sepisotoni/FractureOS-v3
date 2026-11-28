@@ -636,7 +636,7 @@ func windowsNotificationSupervisor(ctx context.Context) {
 				// Do not start a process unless forwarding can deliver: it is a whole Go
 				// runtime. While stopped this is re-checked every tick, so turning the
 				// hub or TomTom setting on starts the worker within a few seconds.
-				if state, reason := notificationWorkerGate(c); state != gateRun {
+				if state, reason := notificationWorkerGate(ctx, c); state != gateRun {
 					if reason != lastStatus {
 						writeNotificationState(reason, 0)
 						lastStatus = reason

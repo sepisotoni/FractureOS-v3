@@ -90,7 +90,7 @@ func audioSupervisor(ctx context.Context, b *Broker, localSource string) {
 			}
 			audio := c.Audio
 			if b == nil {
-				settings, err := integrationGet(c)
+				settings, err := integrationGetContext(ctx, c)
 				if err != nil || settings.Audio == nil {
 					stop()
 					if err != nil {
@@ -108,7 +108,7 @@ func audioSupervisor(ctx context.Context, b *Broker, localSource string) {
 			if b != nil {
 				raw, err = b.call("status")
 			} else {
-				raw, err = hubCall(c, "status")
+				raw, err = hubCallContext(ctx, c, "status")
 			}
 			if err != nil {
 				stop()

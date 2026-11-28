@@ -435,8 +435,10 @@ type wallpaperDevice interface {
 	wpConnected() bool
 }
 
-func (b *Broker) wpUpload(data []byte) error { return uploadWallpaper(b.device, data) }
-func (b *Broker) wpConnected() bool          { return b != nil && b.device != "" }
+func (b *Broker) wpUpload(data []byte) error {
+	return uploadDevicePayloadContext(b.context(), b.device, data, 3)
+}
+func (b *Broker) wpConnected() bool { return b != nil && b.device != "" }
 
 var errWallpaperNoDevice = errors.New("no TomTom connected")
 

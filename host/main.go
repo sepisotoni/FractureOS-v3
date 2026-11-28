@@ -428,12 +428,18 @@ func identity(c *Config) error {
 	return saveConfig(*c)
 }
 func hubCall(c Config, cmd string) (string, error) {
+	return hubCallContext(context.Background(), c, cmd)
+}
+func hubCallContext(ctx context.Context, c Config, cmd string) (string, error) {
 	if e := validateCommand(cmd); e != nil {
 		return "", e
 	}
-	return hubRequest(c, "/api/command", map[string]string{"command": cmd})
+	return hubRequestContext(ctx, c, "/api/command", map[string]string{"command": cmd})
 }
 func hubRequest(c Config, path string, payload any) (string, error) {
+	return hubRequestContext(context.Background(), c, path, payload)
+}
+func hubRequestContext(ctx context.Context, c Config, path string, payload any) (string, error) {
 	transport, e := sharedHubTransport(c)
 	if e != nil {
 		return "", e
@@ -444,7 +450,7 @@ func hubRequest(c Config, path string, payload any) (string, error) {
 	}
 	client := http.Client{Transport: transport, Timeout: requestTimeout, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return errors.New("hub redirects refused") }}
 	body, _ := json.Marshal(payload)
-	req, e := http.NewRequest("POST", strings.TrimRight(c.Hub, "/")+path, bytes.NewReader(body))
+	req, e := http.NewRequestWithContext(ctx, "POST", strings.TrimRight(c.Hub, "/")+path, bytes.NewReader(body))
 	if e != nil {
 		return "", e
 	}
@@ -504,6 +510,7 @@ func hubTransport(c Config) (*http.Transport, error) {
 }
 
 type Broker struct {
+	ctx                context.Context
 	mu                 sync.Mutex
 	audioMu            sync.Mutex
 	audioActive        bool
@@ -515,6 +522,13 @@ type Broker struct {
 	mediaLatest        lyricsSession
 	mediaReceived      time.Time
 	providedLyrics     *lyricsRecord
+}
+
+func (b *Broker) context() context.Context {
+	if b.ctx == nil {
+		return context.Background()
+	}
+	return b.ctx
 }
 
 func (b *Broker) call(cmd string) (string, error) {
@@ -540,7 +554,7 @@ func (b *Broker) call(cmd string) (string, error) {
 			return "OK disabled", nil
 		}
 	}
-	out, e := deviceCommand(b.device, cmd)
+	out, e := deviceCommandsContext(b.context(), b.device, []string{cmd})
 	if e == nil && strings.HasPrefix(cmd, "stats-temp ") && strings.HasSuffix(cmd, " pc") {
 		b.temperaturePCUntil = time.Now().Add(8 * time.Second)
 	}
@@ -555,7 +569,7 @@ func (b *Broker) call(cmd string) (string, error) {
 func (b *Broker) batch(commands []string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	_, err := deviceCommands(b.device, commands)
+	_, err := deviceCommandsContext(b.context(), b.device, commands)
 	b.cachedAt = time.Time{}
 	return err
 }
@@ -573,7 +587,7 @@ func serveWithContext(ctx context.Context, startAudio bool) error {
 	if e = identity(&c); e != nil {
 		return e
 	}
-	b := &Broker{device: c.Device}
+	b := &Broker{device: c.Device, ctx: ctx}
 	mux := newHubMux(b, c.Token)
 	srv := &http.Server{Addr: c.Listen, Handler: mux, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 45 * time.Second, IdleTimeout: 30 * time.Second, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13}}
 	go func() {

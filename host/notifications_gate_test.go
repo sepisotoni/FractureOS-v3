@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
@@ -57,25 +58,25 @@ func TestNotificationGate(t *testing.T) {
 
 	f.webhook.Store(false)
 	f.device.Store(0)
-	if s, msg := notificationWorkerGate(c); s != gatePaused || msg != notificationPausedMessage {
+	if s, msg := notificationWorkerGate(context.Background(), c); s != gatePaused || msg != notificationPausedMessage {
 		t.Fatalf("both off: %v %q", s, msg)
 	}
 	f.webhook.Store(true)
-	if s, _ := notificationWorkerGate(c); s != gatePaused {
+	if s, _ := notificationWorkerGate(context.Background(), c); s != gatePaused {
 		t.Fatalf("webhook on, TomTom off must stay paused, got %v", s)
 	}
 	f.webhook.Store(false)
 	f.device.Store(1)
-	if s, _ := notificationWorkerGate(c); s != gatePaused {
+	if s, _ := notificationWorkerGate(context.Background(), c); s != gatePaused {
 		t.Fatalf("TomTom on, webhook off must stay paused, got %v", s)
 	}
 	f.webhook.Store(true)
-	if s, msg := notificationWorkerGate(c); s != gateRun || msg != "" {
+	if s, msg := notificationWorkerGate(context.Background(), c); s != gateRun || msg != "" {
 		t.Fatalf("both on: %v %q", s, msg)
 	}
 	// Turning the TomTom setting off wakes nothing and stops the next start.
 	f.device.Store(0)
-	if s, _ := notificationWorkerGate(c); s != gatePaused {
+	if s, _ := notificationWorkerGate(context.Background(), c); s != gatePaused {
 		t.Fatalf("settings change not seen: %v", s)
 	}
 }
@@ -86,23 +87,23 @@ func TestNotificationGateUnknownWhenHubOrDeviceFails(t *testing.T) {
 	f.device.Store(1)
 
 	f.integrations.Store(http.StatusBadGateway)
-	if s, msg := notificationWorkerGate(c); s != gateUnknown || msg != "Cannot reach the hub; retrying" {
+	if s, msg := notificationWorkerGate(context.Background(), c); s != gateUnknown || msg != "Cannot reach the hub; retrying" {
 		t.Fatalf("hub error: %v %q", s, msg)
 	}
 	f.integrations.Store(0)
 
 	f.status.Store(http.StatusBadGateway)
-	if s, msg := notificationWorkerGate(c); s != gateUnknown || msg != "TomTom unavailable; retrying" {
+	if s, msg := notificationWorkerGate(context.Background(), c); s != gateUnknown || msg != "TomTom unavailable; retrying" {
 		t.Fatalf("device error: %v %q", s, msg)
 	}
 	f.status.Store(0)
 
 	f.badStatus.Store(true)
-	if s, _ := notificationWorkerGate(c); s != gateUnknown {
+	if s, _ := notificationWorkerGate(context.Background(), c); s != gateUnknown {
 		t.Fatalf("unparseable status must be unknown, got %v", s)
 	}
 	f.badStatus.Store(false)
-	if s, _ := notificationWorkerGate(c); s != gateRun {
+	if s, _ := notificationWorkerGate(context.Background(), c); s != gateRun {
 		t.Fatalf("recovery not seen: %v", s)
 	}
 }
@@ -110,7 +111,7 @@ func TestNotificationGateUnknownWhenHubOrDeviceFails(t *testing.T) {
 func TestNotificationGateUnreachableHub(t *testing.T) {
 	resetSharedHubTransport()
 	c := Config{Hub: "https://127.0.0.1:1", Token: "t", Fingerprint: "00"}
-	if s, _ := notificationWorkerGate(c); s != gateUnknown {
+	if s, _ := notificationWorkerGate(context.Background(), c); s != gateUnknown {
 		t.Fatalf("closed port: %v", s)
 	}
 }
