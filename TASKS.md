@@ -180,6 +180,10 @@ The latest stable release is v0.1.11; v0.1.14 is the latest published prerelease
 - [x] B13-04 Add a shared Go changelog and expose it in the web and native dashboards; clearly distinguish stable releases from unpublished Beta work.
 - [x] B13-05 Refresh README and implementation/release guides to distinguish the published v0.1.14 base from the unpublished v0.1.15 Beta candidate and record remaining acceptance gates.
 
+## v0.1.18.1 integration status
+
+The v0.1.18.1 candidate preserves per-face hour-only overrides, defaults Neon to hour-only, and exposes the setting on Windows and the TomTom. Its configurable idle timeout covers ordinary menus. The candidate also adds city search and an on-demand exact screen capture alongside the web clock preview. Windows x64 installer, resize, staged updater and uninstaller checks passed. Physical Windows USB, ARM64 execution and published-update checks remain open. See [release validation](docs/RELEASE-VALIDATION.md).
+
 ## Future — not scheduled for 0.1.18.1
 
 - [ ] F-01 Menu previews. The PC preview renders only the home screen: `render()` compiles `navigation_draw()` out of the `FRACTURE_RENDER_ONLY` build and the preview forces `menu=0`. Previewing menus needs `navigation.h` (and its `agenda.h`, `forecast.h`, `power.h`, `startup.h` dependencies) in the render-only build, menu/selection state in `home-state`, and the wallpaper blur levels (`wallpaper_blur1/2`, which the device derives from the undimmed image) exported as preview assets. Needs native pixel tests like `tests/preview_drift.sh`, an ARM build, and Windows DLL validation. Declined for 0.1.18.1.

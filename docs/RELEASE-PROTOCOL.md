@@ -21,6 +21,7 @@ Every release, by anyone (human or AI agent), follows this list in order. Do not
 - Device C build: `sh tools/build-device.sh`
 - Updater: `go test ./host -run 'Version|Update'` and, for a new version format, a test for `compareVersions`
 - Installer: the `windows-installer` workflow must compile `install/fracture.iss` for amd64 and arm64
+- Download the two installers and matching renderer DLLs from the successful Windows run for the candidate. Put the installers in `build/inno/` and the DLLs in `build/windows-{amd64,arm64}/fracture-preview.dll`, respectively. Run `python3 tools/package-release.py`, then `(cd build/release && sha256sum -c SHA256SUMS)`. Publish the complete asset set together so the updater can verify both Windows installers as soon as the release is visible.
 - If the change touches wallpaper, preview, USB or the dashboards: walk through `docs/E2E-CHECKLIST.md` and mark each item pass / fail / not testable (and why)
 
 ## 3. Publish

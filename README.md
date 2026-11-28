@@ -79,6 +79,8 @@ In Windows **FractureOS → Connection** (or web **System**): select **Remote Li
 
 ### v0.1.18.1 development candidate
 
+![Resizable FractureOS v0.1.18.1 dashboard on a Windows runner, with the TomTom disconnected](docs/images/windows-dashboard-v0181.png)
+
 - The native Windows app is built in Go using Win32 and GDI. Its clock renderer is a small C DLL shared with the TomTom. The setup program is built with Inno Setup.
 - **Clock & faces** offers hour-only display at `:00` and menu timeout. Set a positive timeout to return to Home after inactivity. A value of `0` disables this, and the active player and lyrics pages stay open.
 - **Appearance → Wallpaper** stages a preview before applying. In Direct USB, PC wallpaper follows the Windows desktop automatically. With a remote Linux hub, **Use this PC’s wallpaper** sends and saves a copy of the Windows desktop image.

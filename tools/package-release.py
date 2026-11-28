@@ -38,12 +38,12 @@ for system in ('linux','windows'):
    renderer=ROOT/'build'/f'windows-{arch}'/'fracture-preview.dll'
    if not renderer.is_file(): raise RuntimeError('Missing Windows shared renderer: '+str(renderer))
    shutil.copy2(renderer,staging/'fracture-preview.dll')
-  shutil.copytree(ROOT/'assets/wallpaper-packs',staging/'assets/wallpaper-packs',dirs_exist_ok=True)
-  for file in ('tools/deploy-device.py','tools/tomtom.py','device/scripts/boot.sh','device/scripts/control.sh','device/scripts/entry.sh','build/fracture-device','build/platform-probe'):
-   target=staging/file;target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(ROOT/file,target)
-  for group in ('faces','themes','ui','branding'):
-   shutil.copytree(ROOT/'assets'/group,staging/'assets'/group,dirs_exist_ok=True)
-  (staging/'README.txt').write_text('FractureOS '+VERSION+'\nOpen fracture.exe for the tray. Right-click for Settings.\nWith Python 3 installed, run fracture.exe device install from this archive to update the USB-connected TomTom.\nSee https://github.com/sepisotoni/FractureOS-v3\n')
+   shutil.copytree(ROOT/'assets/wallpaper-packs',staging/'assets/wallpaper-packs',dirs_exist_ok=True)
+   for file in ('tools/deploy-device.py','tools/tomtom.py','device/scripts/boot.sh','device/scripts/control.sh','device/scripts/entry.sh','build/fracture-device','build/platform-probe'):
+    target=staging/file;target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(ROOT/file,target)
+   for group in ('faces','themes','ui','branding'):
+    shutil.copytree(ROOT/'assets'/group,staging/'assets'/group,dirs_exist_ok=True)
+   (staging/'README.txt').write_text('FractureOS '+VERSION+'\nOpen fracture.exe for the tray. Right-click for Settings.\nWith Python 3 installed, run fracture.exe device install from this archive to update the USB-connected TomTom.\nSee https://github.com/sepisotoni/FractureOS-v3\n')
    package=OUT/(name+'.zip')
    with zipfile.ZipFile(package,'w',zipfile.ZIP_DEFLATED) as archive:
     for child in sorted(staging.rglob('*')):
