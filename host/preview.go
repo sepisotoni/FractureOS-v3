@@ -3,12 +3,15 @@ package main
 // Home preview transports a small model plus content-addressed drawing assets.
 // It never asks the device to capture its framebuffer.
 import (
+	"bytes"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"image"
+	"image/png"
 	"net"
 	"net/http"
 	"os"
@@ -16,6 +19,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -49,7 +53,15 @@ func downloadPreviewAsset(address, kind string) ([]byte, error) {
 	if size == 0 {
 		return nil, errors.New("unknown preview asset")
 	}
-	c, e := net.DialTimeout("tcp", net.JoinHostPort(address, "23"), 3*time.Second)
+	return previewTelnet(address, func(t *telnet) ([]byte, error) {
+		return readPreviewChunks(t, size, func(at, _ int) string {
+			return fmt.Sprintf("/bin/sh /mnt/sdcard/fracture-v3/control.sh preview-asset %s %d", kind, at)
+		})
+	})
+}
+
+func previewTelnet(address string, transfer func(*telnet) ([]byte, error)) ([]byte, error) {
+	c, e := net.DialTimeout("tcp", net.JoinHostPort(address, devicePort), 3*time.Second)
 	if e != nil {
 		return nil, e
 	}
@@ -68,26 +80,59 @@ func downloadPreviewAsset(address, kind string) ([]byte, error) {
 	if _, e = t.command("stty -echo; PS1=''; PS2=''"); e != nil {
 		return nil, e
 	}
+	defer c.Write([]byte("exit\r\n"))
+	return transfer(&t)
+}
+
+func readPreviewChunks(t *telnet, size int, command func(int, int) string) ([]byte, error) {
 	data := make([]byte, 0, size)
 	for at := 0; at < size; at += 8192 {
-		raw, e := t.command(fmt.Sprintf("/bin/sh /mnt/sdcard/fracture-v3/control.sh preview-asset %s %d", kind, at))
+		want := min(size-at, 8192)
+		raw, e := t.command(command(at, want))
 		if e != nil {
 			return nil, e
 		}
 		chunk, e := hex.DecodeString(strings.TrimSpace(raw))
-		want := size - at
-		if want > 8192 {
-			want = 8192
-		}
 		if e != nil || len(chunk) != want {
 			return nil, errors.New("short preview asset")
 		}
 		data = append(data, chunk...)
 	}
-	_, _ = c.Write([]byte("exit\r\n"))
 	return data, nil
 }
+
+func captureTomTomScreen(address string) ([]byte, error) {
+	const header = "P6\n320 240\n255\n"
+	const width, height = 320, 240
+	data, err := previewTelnet(address, func(t *telnet) ([]byte, error) {
+		if out, err := t.command("/bin/sh /mnt/sdcard/fracture-v3/control.sh capture"); err != nil || strings.TrimSpace(out) != "OK" {
+			return nil, errors.New("device capture failed")
+		}
+		if _, err := t.command("slot=$(cat /mnt/sdcard/fracture-v3/current); case \"$slot\" in ''|*[!a-zA-Z0-9._-]*|.|..) false;; *) probe=/mnt/sdcard/fracture-v3/releases/$slot/platform-probe; test -x \"$probe\";; esac"); err != nil {
+			return nil, errors.New("device capture helper unavailable")
+		}
+		return readPreviewChunks(t, len(header)+width*height*3, func(at, count int) string {
+			return fmt.Sprintf("\"$probe\" --hex /tmp/fracture-v3-screen.ppm %d %d", at, count)
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !bytes.HasPrefix(data, []byte(header)) {
+		return nil, errors.New("invalid device capture")
+	}
+	frame := image.NewRGBA(image.Rect(0, 0, width, height))
+	for source, dest := len(header), 0; dest < len(frame.Pix); source, dest = source+3, dest+4 {
+		copy(frame.Pix[dest:dest+3], data[source:source+3])
+		frame.Pix[dest+3] = 255
+	}
+	var out bytes.Buffer
+	err = png.Encode(&out, frame)
+	return out.Bytes(), err
+}
+
 func registerPreview(mux *http.ServeMux, b *Broker, token string) {
+	var capture sync.Mutex
 	mux.HandleFunc("/api/preview", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+token)) != 1 {
@@ -114,6 +159,18 @@ func registerPreview(mux *http.ServeMux, b *Broker, token string) {
 				return
 			}
 			reply.Model = model + "\n"
+		} else if q.Operation == "screen" {
+			if !capture.TryLock() {
+				http.Error(w, "a TomTom capture is already running", 429)
+				return
+			}
+			data, err := captureTomTomScreen(b.device)
+			capture.Unlock()
+			if err != nil {
+				http.Error(w, "could not read the TomTom screen: "+err.Error(), 502)
+				return
+			}
+			reply.Data = data
 		} else if q.Operation == "asset" && previewAssetSize(q.Kind) > 0 && q.Hash != 0 {
 			data, e := downloadPreviewAsset(b.device, q.Kind)
 			if e != nil {
@@ -178,6 +235,16 @@ func previewCachedAsset(c Config, kind string, hash uint32) ([]byte, error) {
 	return reply.Data, nil
 }
 func fetchHomePreview(c Config, previous homePreviewPacket) (homePreviewPacket, error) {
+	packet, err := fetchHomePreviewOnce(c, previous)
+	if err == nil && time.Since(packet.Received) > time.Second {
+		if fresh, freshErr := fetchHomePreviewOnce(c, packet); freshErr == nil {
+			return fresh, nil
+		}
+	}
+	return packet, err
+}
+
+func fetchHomePreviewOnce(c Config, previous homePreviewPacket) (homePreviewPacket, error) {
 	raw, e := hubRequest(c, "/api/preview", previewRequest{Operation: "model"})
 	if e != nil {
 		return homePreviewPacket{}, e
@@ -227,10 +294,6 @@ func fetchHomePreview(c Config, previous homePreviewPacket) (homePreviewPacket, 
 	} else if packet.Wallpaper, e = previewCachedAsset(c, "wallpaper", packet.WallpaperHash); e != nil {
 		packet.Wallpaper = nil
 		packet.WallpaperHash = 0
-	}
-	// Assets can take longer on first connection: refresh the small model afterward.
-	if time.Since(packet.Received) > time.Second {
-		return fetchHomePreview(c, packet)
 	}
 	return packet, nil
 }

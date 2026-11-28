@@ -2,6 +2,11 @@
  * SDK: tomtomgo-iocasablanca-*.h, regs-gpio.h; gate by exact model and CPU. */
 static const volatile unsigned int *power_regs;
 static int power_down,power_armed,power_second;
+static void menu_timeout_tick(double now){
+ if(menu==PAGE_CLOCK||menu==PAGE_PLAYER||menu==PAGE_LYRICS||!cfg.menu_timeout)return;
+ if(now-menu_activity<cfg.menu_timeout||power_down||power_due||tap_due||(touch_down&&!touch_held))return;
+ preview_cancel();page_open(PAGE_CLOCK);
+}
 static double power_started,power_ignore_until;
 static void power_open(void){
 #ifdef __arm__

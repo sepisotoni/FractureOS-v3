@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -36,6 +37,22 @@ func openURL(url string) error {
 	return nil
 }
 func platformDefault() error { return platformTray() }
+
+func startDirectTray(c Config) error {
+	if effectiveConnectionMode(c) != "direct" {
+		return nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	tray := exec.Command(exe, "tray")
+	if err = tray.Start(); err != nil {
+		return err
+	}
+	go tray.Wait()
+	return nil
+}
 
 func deviceManagement(args []string) error {
 	if len(args) != 1 || (args[0] != "install" && args[0] != "restore") {
@@ -213,7 +230,7 @@ func directHubSupervisor(ctx context.Context) {
 	defer ticker.Stop()
 	var hubCancel context.CancelFunc
 	var hubDone chan error
-	var activeListen, activeDevice string
+	var activeListen, activeDevice, activeToken string
 	stopHub := func() {
 		if hubCancel != nil {
 			hubCancel()
@@ -227,27 +244,25 @@ func directHubSupervisor(ctx context.Context) {
 		c, err := readConfig()
 		if err != nil || effectiveConnectionMode(c) != "direct" {
 			stopHub()
-			activeListen, activeDevice = "", ""
+			activeListen, activeDevice, activeToken = "", "", ""
 			return
 		}
-		if hubCancel != nil && (activeListen != c.Listen || activeDevice != c.Device) {
+		if hubCancel != nil && (activeListen != c.Listen || activeDevice != c.Device || activeToken != c.Token) {
 			stopHub()
 		}
 		if hubCancel != nil {
 			return
 		}
-		if c.Listen == "" {
-			c.Listen = "127.0.0.1:47831"
+		configureDirectConnection(&c)
+		if err = identity(&c); err != nil {
+			log.Printf("direct USB identity: %v", err)
+			return
 		}
-		if c.Hub == "" || !strings.HasPrefix(c.Hub, "https://127.0.0.1:") {
-			c.Hub = "https://" + c.Listen
-		}
-		_ = identity(&c)
 		hubCtx, cancel := context.WithCancel(ctx)
 		done := make(chan error, 1)
-		activeListen, activeDevice = c.Listen, c.Device
+		activeListen, activeDevice, activeToken = c.Listen, c.Device, c.Token
 		hubCancel, hubDone = cancel, done
-		go func() { done <- serveWithContext(hubCtx, true) }()
+		go func() { done <- serveWithContext(hubCtx, false) }()
 	}
 	check()
 	for {
@@ -269,6 +284,18 @@ func directHubSupervisor(ctx context.Context) {
 }
 
 func platformTray() error {
+	// Take the single-instance mutex before starting any supervisor: a second
+	// launch must not spawn workers or bind the hub before it notices it is a duplicate.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	mutex, _, last := kernel32.NewProc("CreateMutexW").Call(0, 0, uintptr(unsafe.Pointer(wide("Local\\FractureOS-v3-tray"))))
+	if mutex == 0 {
+		return last
+	}
+	defer kernel32.NewProc("CloseHandle").Call(mutex)
+	if last == syscall.Errno(183) {
+		return nil
+	}
 	mediaContext, stopMedia := context.WithCancel(context.Background())
 	mediaDone := make(chan struct{})
 	audioDone := make(chan struct{})
@@ -284,20 +311,13 @@ func platformTray() error {
 		<-hubDone
 	}()
 	go func() { defer close(mediaDone); localMediaSupervisor(mediaContext) }()
+	// The tray owns the only Windows audio supervisor. In Direct USB mode the
+	// in-process hub is started with startAudio=false (directHubSupervisor); this
+	// supervisor reaches that hub over HTTPS at c.Hub, so Direct mode is covered.
 	go func() { defer close(audioDone); audioSupervisor(mediaContext, nil, "windows") }()
 	go func() { defer close(tempDone); windowsTemperatureSupervisor(mediaContext) }()
 	go func() { defer close(notificationDone); windowsNotificationSupervisor(mediaContext) }()
 	go func() { defer close(hubDone); directHubSupervisor(mediaContext) }()
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	mutex, _, last := kernel32.NewProc("CreateMutexW").Call(0, 0, uintptr(unsafe.Pointer(wide("Local\\FractureOS-v3-tray"))))
-	if mutex == 0 {
-		return last
-	}
-	defer kernel32.NewProc("CloseHandle").Call(mutex)
-	if last == syscall.Errno(183) {
-		return nil
-	}
 	instance, _, _ := kernel32.NewProc("GetModuleHandleW").Call(0)
 	icon := appIcon(instance)
 	var data notify
@@ -395,4 +415,54 @@ func platformTray() error {
 		user32.NewProc("DispatchMessageW").Call(uintptr(unsafe.Pointer(&m)))
 	}
 	return nil
+}
+
+var (
+	jobOnce   sync.Once
+	jobHandle uintptr
+)
+
+// workerJob is a job object that kills every process in it when its last
+// handle closes. The handle is never closed explicitly: it is released when this
+// process ends for any reason (exit, crash, End Task), so workers cannot be
+// orphaned and duplicated by the next tray start.
+func workerJob() uintptr {
+	jobOnce.Do(func() {
+		h, _, err := kernel32.NewProc("CreateJobObjectW").Call(0, 0)
+		if h == 0 {
+			log.Printf("job object: create failed: %v", err)
+			return
+		}
+		var info jobExtendedLimit
+		info.Basic.LimitFlags = jobLimitKillOnClose
+		r, _, err := kernel32.NewProc("SetInformationJobObject").Call(h, jobObjectExtendedLimitInfo, uintptr(unsafe.Pointer(&info)), unsafe.Sizeof(info))
+		if r == 0 {
+			log.Printf("job object: set limits failed: %v", err)
+			kernel32.NewProc("CloseHandle").Call(h)
+			return
+		}
+		jobHandle = h
+	})
+	return jobHandle
+}
+
+// trackChild puts a started worker into the kill-on-close job. Failure is
+// logged and otherwise ignored: the worker still runs, it just is not tied to us.
+func trackChild(cmd *exec.Cmd) {
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	job := workerJob()
+	if job == 0 {
+		return
+	}
+	h, _, err := kernel32.NewProc("OpenProcess").Call(processSetQuota|processTerminate, 0, uintptr(cmd.Process.Pid))
+	if h == 0 {
+		log.Printf("job object: open pid %d failed: %v", cmd.Process.Pid, err)
+		return
+	}
+	defer kernel32.NewProc("CloseHandle").Call(h)
+	if r, _, err := kernel32.NewProc("AssignProcessToJobObject").Call(job, h); r == 0 {
+		log.Printf("job object: assign pid %d failed: %v", cmd.Process.Pid, err)
+	}
 }

@@ -45,7 +45,7 @@
 #endif
 #endif /* device platform includes */
 #ifndef FRACTURE_VERSION
-#define FRACTURE_VERSION "0.1.18"
+#define FRACTURE_VERSION "0.1.18.1"
 #endif
 #define W 320
 #define H 240
@@ -76,10 +76,15 @@ static void wallpaper_blur_pass(const uint16_t *src,uint16_t *dst,int rad,int di
  free(tmp);
 }
 static void wallpaper_dim(uint16_t *buf,int pct){int i;for(i=0;i<W*H;i++){uint16_t p=buf[i];int r=((p>>11)&31)*pct/100,g=((p>>5)&63)*pct/100,b=(p&31)*pct/100;buf[i]=(uint16_t)((r<<11)|(g<<5)|b);}}
-static void wallpaper_load(void){FILE *f=fopen("/mnt/sdcard/fracture-v3/wallpaper.rgb","rb");uint16_t *raw,*b1,*b2;if(!f)return;
+static void wallpaper_path(char *path,size_t size){
+ const char *slash=strrchr(config_path,'/');
+ snprintf(path,size,"%.*s/wallpaper.rgb",slash?(int)(slash-config_path):1,slash?config_path:".");
+}
+static int wallpaper_load(void){char path[640];FILE *f;uint16_t *raw,*b1,*b2;
+ wallpaper_path(path,sizeof path);f=fopen(path,"rb");if(!f)return 0;
  raw=malloc((size_t)W*H*2);b1=malloc((size_t)W*H*2);b2=malloc((size_t)W*H*2);
- if(!raw||!b1||!b2){free(raw);free(b1);free(b2);fclose(f);return;}
- if(fread(raw,1,(size_t)W*H*2,f)!=(size_t)(W*H*2)){free(raw);free(b1);free(b2);fclose(f);return;}
+ if(!raw||!b1||!b2){free(raw);free(b1);free(b2);fclose(f);return 0;}
+ if(fread(raw,1,(size_t)W*H*2,f)!=(size_t)(W*H*2)||fgetc(f)!=EOF||ferror(f)){free(raw);free(b1);free(b2);fclose(f);return 0;}
  fclose(f);
  wallpaper_blur_pass(raw,b1,2,45);
  wallpaper_blur_pass(b1,b2,3,62);
@@ -87,6 +92,7 @@ static void wallpaper_load(void){FILE *f=fopen("/mnt/sdcard/fracture-v3/wallpape
  wallpaper_release();
  wallpaper=raw;wallpaper_blur1=b1;wallpaper_blur2=b2;
  wallpaper_hash=content_hash((const unsigned char*)wallpaper,(size_t)W*H*2);
+ return 1;
 }
 #ifndef FRACTURE_RENDER_ONLY
 static unsigned char *mapped;
@@ -292,7 +298,7 @@ static void command(char *line,char *reply,size_t cap){char *name,*a,*b,*extra;i
  if(!strcmp(name,"audio-start")&&a&&!b){if(audio_start(a)){memset(a,0,32);snprintf(reply,cap,"OK\n");}else{memset(a,0,strlen(a));snprintf(reply,cap,"ERR audio unavailable or preempted\n");}return;}
  if(!strcmp(name,"audio-stop")&&!a){audio_stop();snprintf(reply,cap,"OK\n");return;}
  if(!strcmp(name,"forecast-reload")&&!a){forecast_header();if(weather_page(menu))forecast_load();dirty=1;snprintf(reply,cap,"OK\n");return;}
- if(!strcmp(name,"wallpaper")&&a&&!b){if(!strcmp(a,"load")){wallpaper_load();dirty=1;snprintf(reply,cap,"OK\n");}else if(!strcmp(a,"clear")){wallpaper_release();unlink("/mnt/sdcard/fracture-v3/wallpaper.rgb");dirty=1;snprintf(reply,cap,"OK\n");}else snprintf(reply,cap,"ERR bad wallpaper arg\n");return;}
+ if(!strcmp(name,"wallpaper")&&a&&!b){if(!strcmp(a,"load")){if(!wallpaper_load()){snprintf(reply,cap,"ERR wallpaper could not be loaded\n");return;}dirty=1;snprintf(reply,cap,"OK\n");}else if(!strcmp(a,"clear")){char path[640];wallpaper_path(path,sizeof path);if(unlink(path)&&errno!=ENOENT){snprintf(reply,cap,"ERR wallpaper could not be removed\n");return;}wallpaper_release();dirty=1;snprintf(reply,cap,"OK\n");}else snprintf(reply,cap,"ERR bad wallpaper arg\n");return;}
  if(!strcmp(name,"boot-preview")&&!a){startup_at=mono();startup_frame=-1;dirty=1;snprintf(reply,cap,"OK\n");return;}
  if(!strcmp(name,"home-state")&&!a){home_model(reply,cap);return;}
  if(!strcmp(name,"preview-asset")&&a&&b){preview_asset(a,b,reply,cap);return;}
@@ -357,7 +363,7 @@ static int daemon_run(int seconds){struct sockaddr_un addr;struct pollfd p[2];do
  power_open();brightness();signal(SIGTERM,stop);signal(SIGINT,stop);signal(SIGPIPE,SIG_IGN);pid=fopen("/tmp/fracture-v3.pid","w");if(pid){fprintf(pid,"%ld\n",(long)getpid());fclose(pid);}
  fprintf(stderr,"FractureOS %s running\n",FRACTURE_VERSION);
  if(access("/tmp/fracture-started",F_OK)){int marker=open("/tmp/fracture-started",O_WRONLY|O_CREAT,0600);if(marker>=0)close(marker);startup_at=mono();}
- while(running){double now=mono();if(seconds>0&&now-start>=seconds)break;inputs(now);if(menu&&menu!=PAGE_PLAYER&&menu!=PAGE_LYRICS&&cfg.menu_timeout&&menu_activity>0&&now-menu_activity>=cfg.menu_timeout&&!power_down&&!touch_down){preview_cancel();page_open(PAGE_CLOCK);}if(link_at&&now-link_at>=15){link_at=0;dirty=1;}if(weather_at&&now-weather_at>=1800){weather_at=0;dirty=1;}if(stats_at&&now-stats_at>=7){stats_at=0;dirty=1;}if(notice_until&&now>=notice_until){notice_until=0;notification[0]=0;notice_release_art();dirty=1;}if(media_at&&now-media_at>=20){media_at=0;media_release_art();lyrics_release();memset(lyrics_line,0,sizeof lyrics_line);strcpy(lyrics_message,"Windows media is offline");dirty=1;}if(menu_anim_start){dirty=1;if(now-menu_anim_start>=0.18)menu_anim_start=0;}
+ while(running){double now=mono();if(seconds>0&&now-start>=seconds)break;inputs(now);menu_timeout_tick(now);if(link_at&&now-link_at>=15){link_at=0;dirty=1;}if(weather_at&&now-weather_at>=1800){weather_at=0;dirty=1;}if(stats_at&&now-stats_at>=7){stats_at=0;dirty=1;}if(notice_until&&now>=notice_until){notice_until=0;notification[0]=0;notice_release_art();dirty=1;}if(media_at&&now-media_at>=20){media_at=0;media_release_art();lyrics_release();memset(lyrics_line,0,sizeof lyrics_line);strcpy(lyrics_message,"Windows media is offline");dirty=1;}if(menu_anim_start){dirty=1;if(now-menu_anim_start>=0.18)menu_anim_start=0;}
  if(timer_end&&now>=timer_end){timer_end=0;alert=1;dirty=1;}
  localtime_now(&t);if(t.tm_year>=120&&cfg.alarm_hour==t.tm_hour&&cfg.alarm_minute==t.tm_min&&cfg.last_alarm_day!=(t.tm_year*366+t.tm_yday)){cfg.last_alarm_day=t.tm_year*366+t.tm_yday;if(!save()){alert=2;dirty=1;}}
  if(alert)audio_stop();

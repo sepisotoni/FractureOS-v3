@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
@@ -195,8 +196,11 @@ func registerIntegrations(mux *http.ServeMux, b *Broker, token string) {
 	})
 }
 func integrationGet(c Config) (IntegrationSettings, error) {
+	return integrationGetContext(context.Background(), c)
+}
+func integrationGetContext(ctx context.Context, c Config) (IntegrationSettings, error) {
 	var q IntegrationSettings
-	out, e := hubRequest(c, "/api/integrations", map[string]string{"operation": "get"})
+	out, e := hubRequestContext(ctx, c, "/api/integrations", map[string]string{"operation": "get"})
 	if e != nil {
 		return q, e
 	}

@@ -47,8 +47,16 @@ func compareVersions(a, b string) int {
 	}
 	return 0
 }
+
+// Seams for tests; production values are the public GitHub endpoints.
+var (
+	releaseListURL     = "https://api.github.com/repos/sepisotoni/FractureOS-v3/releases?per_page=20"
+	releaseDownloadURL = "https://github.com/sepisotoni/FractureOS-v3/releases/download/"
+	updateTransport    http.RoundTripper
+)
+
 func updateClient(timeout time.Duration) *http.Client {
-	return &http.Client{Timeout: timeout, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+	return &http.Client{Timeout: timeout, Transport: updateTransport, CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) > 6 || req.URL.Scheme != "https" {
 			return errors.New("update redirect refused")
 		}
@@ -59,9 +67,24 @@ func updateClient(timeout time.Duration) *http.Client {
 		return nil
 	}}
 }
+
+func updateAssetName(tag string) (string, error) {
+	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
+		return "", errors.New("unsupported update architecture")
+	}
+	switch runtime.GOOS {
+	case "windows":
+		return "fracture-" + tag + "-windows-" + runtime.GOARCH + "-setup.exe", nil
+	case "linux":
+		return "fracture-" + tag + "-linux-" + runtime.GOARCH + ".tar.gz", nil
+	default:
+		return "", errors.New("unsupported update platform")
+	}
+}
+
 func checkUpdate(ctx context.Context) (updateOffer, error) {
 	offer := updateOffer{Current: version, Version: "v" + version, Page: "https://github.com/sepisotoni/FractureOS-v3/releases"}
-	req, e := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/repos/sepisotoni/FractureOS-v3/releases?per_page=20", nil)
+	req, e := http.NewRequestWithContext(ctx, "GET", releaseListURL, nil)
 	if e != nil {
 		return offer, e
 	}
@@ -85,14 +108,32 @@ func checkUpdate(ctx context.Context) (updateOffer, error) {
 		return offer, errors.New("release list too large")
 	}
 	var releases []struct {
-		Tag   string `json:"tag_name"`
-		Draft bool   `json:"draft"`
+		Tag    string `json:"tag_name"`
+		Draft  bool   `json:"draft"`
+		Assets []struct {
+			Name  string `json:"name"`
+			State string `json:"state"`
+		} `json:"assets"`
 	}
 	if e = json.Unmarshal(data, &releases); e != nil {
 		return offer, e
 	}
 	for _, r := range releases {
-		if !r.Draft && releaseTag.MatchString(r.Tag) && compareVersions(r.Tag, offer.Version) > 0 {
+		if r.Draft || !releaseTag.MatchString(r.Tag) || compareVersions(r.Tag, offer.Version) <= 0 {
+			continue
+		}
+		name, err := updateAssetName(r.Tag)
+		if err != nil {
+			return offer, err
+		}
+		var manifest, installer bool
+		for _, asset := range r.Assets {
+			if asset.State == "uploaded" {
+				manifest = manifest || asset.Name == "SHA256SUMS"
+				installer = installer || asset.Name == name
+			}
+		}
+		if r.Assets == nil || (manifest && installer) {
 			offer.Version = r.Tag
 		}
 	}
@@ -104,20 +145,11 @@ func downloadUpdate(ctx context.Context, offer updateOffer) (string, string, err
 	if !offer.Available || !releaseTag.MatchString(offer.Version) {
 		return "", "", errors.New("no newer release")
 	}
-	suffix := ""
-	switch runtime.GOOS {
-	case "windows":
-		suffix = "windows-" + runtime.GOARCH + "-setup.exe"
-	case "linux":
-		suffix = "linux-" + runtime.GOARCH + ".tar.gz"
-	default:
-		return "", "", errors.New("unsupported update platform")
+	name, err := updateAssetName(offer.Version)
+	if err != nil {
+		return "", "", err
 	}
-	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
-		return "", "", errors.New("unsupported architecture")
-	}
-	name := "fracture-" + offer.Version + "-" + suffix
-	base := "https://github.com/sepisotoni/FractureOS-v3/releases/download/" + url.PathEscape(offer.Version) + "/"
+	base := releaseDownloadURL + url.PathEscape(offer.Version) + "/"
 	client := updateClient(90 * time.Second)
 	defer client.CloseIdleConnections()
 	fetch := func(target string, limit int64) ([]byte, error) {
@@ -147,9 +179,9 @@ func downloadUpdate(ctx context.Context, offer updateOffer) (string, string, err
 		return "", "", e
 	}
 	digest := ""
-	for _, line := range strings.Split(string(manifest), "\n") {
+	for _, line := range strings.Split(strings.TrimPrefix(string(manifest), "\ufeff"), "\n") {
 		parts := strings.Fields(line)
-		if len(parts) == 2 && parts[1] == name {
+		if len(parts) == 2 && strings.TrimPrefix(parts[1], "*") == name {
 			if digest != "" {
 				return "", "", errors.New("ambiguous update checksum")
 			}
@@ -158,7 +190,7 @@ func downloadUpdate(ctx context.Context, offer updateOffer) (string, string, err
 	}
 	expected, e := hex.DecodeString(digest)
 	if e != nil || len(expected) != 32 {
-		return "", "", errors.New("missing update checksum")
+		return "", "", fmt.Errorf("missing update checksum for %s in the published SHA256SUMS", name)
 	}
 	data, e := fetch(name, 64*1024*1024)
 	if e != nil {

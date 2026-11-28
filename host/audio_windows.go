@@ -45,7 +45,7 @@ func launchAudioWorker(ctx context.Context) (<-chan error, error) {
 	}
 	cmd := exec.CommandContext(ctx, exe, "audio-worker")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	if err = cmd.Start(); err != nil {
+	if err = startWorker(cmd); err != nil {
 		return nil, err
 	}
 	done := make(chan error, 1)
@@ -107,16 +107,18 @@ func localAudioWorker(ctx context.Context) error {
 	binary.LittleEndian.PutUint16(requested[12:14], audioChannels*2)
 	binary.LittleEndian.PutUint16(requested[14:16], 16)
 	format := mixFormat
-	formatPtr := mix
+	// Keep this an unsafe.Pointer and convert at the call site: a uintptr does not
+	// keep requested alive, so the collector could free it before Initialize reads it.
+	formatPtr := comPointer(mix)
 	var closest uintptr
 	if comCall(client, 7, 0, uintptr(unsafe.Pointer(&requested[0])), uintptr(unsafe.Pointer(&closest))) == nil && closest == 0 {
 		format = windowsAudioFormat{rate: audioRate, channels: audioChannels, bits: 16, blockAlign: audioChannels * 2}
-		formatPtr = uintptr(unsafe.Pointer(&requested[0]))
+		formatPtr = unsafe.Pointer(&requested[0])
 	}
 	if closest != 0 {
 		ole32.NewProc("CoTaskMemFree").Call(closest)
 	}
-	if err = comCall(client, 3, 0, audioClientLoopback, 200000, 0, formatPtr, 0); err != nil {
+	if err = comCall(client, 3, 0, audioClientLoopback, 200000, 0, uintptr(formatPtr), 0); err != nil {
 		return fmt.Errorf("WASAPI loopback could not start: %w", err)
 	}
 	captureID := guid("c8adbd64-e71e-48a0-a4de-185c395cd317")
@@ -184,7 +186,7 @@ capture:
 		} else if data == 0 || frames > 1<<20 {
 			err = errors.New("invalid WASAPI audio buffer")
 		} else {
-			raw := unsafe.Slice((*byte)(unsafe.Pointer(data)), int(frames)*format.blockAlign)
+			raw := unsafe.Slice((*byte)(comPointer(data)), int(frames)*format.blockAlign)
 			pcm, err = resampler.convert(raw, int(frames), format, false)
 		}
 		releaseErr := comCall(capture, 4, uintptr(frames))
@@ -245,7 +247,7 @@ func parseWindowsAudioFormat(ptr uintptr) (windowsAudioFormat, error) {
 	if ptr == 0 {
 		return out, errors.New("empty Windows audio format")
 	}
-	raw := unsafe.Slice((*byte)(unsafe.Pointer(ptr)), 18)
+	raw := unsafe.Slice((*byte)(comPointer(ptr)), 18)
 	tag := int(binary.LittleEndian.Uint16(raw[0:2]))
 	out.channels = int(binary.LittleEndian.Uint16(raw[2:4]))
 	out.rate = int(binary.LittleEndian.Uint32(raw[4:8]))
@@ -255,7 +257,7 @@ func parseWindowsAudioFormat(ptr uintptr) (windowsAudioFormat, error) {
 		if binary.LittleEndian.Uint16(raw[16:18]) < 22 {
 			return out, errors.New("unsupported extensible Windows audio format")
 		}
-		raw = unsafe.Slice((*byte)(unsafe.Pointer(ptr)), 40)
+		raw = unsafe.Slice((*byte)(comPointer(ptr)), 40)
 		subtype := binary.LittleEndian.Uint32(raw[24:28])
 		switch subtype {
 		case audioFormatPCM:

@@ -159,7 +159,6 @@ var mediaASCIIFallback = map[rune]string{
 	'\u00a0': " ", '\u2002': " ", '\u2003': " ", '\u2009': " ",
 }
 
-
 func mediaTextValid(s string) bool {
 	if s == "-" {
 		return true

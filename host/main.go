@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -34,7 +35,7 @@ import (
 	"time"
 )
 
-const version = "0.1.18"
+const version = "0.1.18.1"
 
 //go:embed ui.html
 var page string
@@ -72,6 +73,16 @@ func effectiveConnectionMode(c Config) string {
 		return "direct"
 	}
 	return "hub"
+}
+
+func configureDirectConnection(c *Config) {
+	listen := "127.0.0.1:47831"
+	if hub, err := url.Parse(c.Hub); err == nil && hub.Scheme == "https" && hub.Hostname() == "127.0.0.1" && hub.User == nil && hub.Path == "" && hub.RawQuery == "" && hub.Fragment == "" {
+		if port, err := strconv.Atoi(hub.Port()); err == nil && port > 0 && port <= 65535 {
+			listen = net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+		}
+	}
+	c.Listen, c.Hub = listen, "https://"+listen
 }
 
 func configDir() string {
@@ -417,24 +428,29 @@ func identity(c *Config) error {
 	return saveConfig(*c)
 }
 func hubCall(c Config, cmd string) (string, error) {
+	return hubCallContext(context.Background(), c, cmd)
+}
+func hubCallContext(ctx context.Context, c Config, cmd string) (string, error) {
 	if e := validateCommand(cmd); e != nil {
 		return "", e
 	}
-	return hubRequest(c, "/api/command", map[string]string{"command": cmd})
+	return hubRequestContext(ctx, c, "/api/command", map[string]string{"command": cmd})
 }
 func hubRequest(c Config, path string, payload any) (string, error) {
-	transport, e := hubTransport(c)
+	return hubRequestContext(context.Background(), c, path, payload)
+}
+func hubRequestContext(ctx context.Context, c Config, path string, payload any) (string, error) {
+	transport, e := sharedHubTransport(c)
 	if e != nil {
 		return "", e
 	}
-	defer transport.CloseIdleConnections()
 	requestTimeout := 12 * time.Second
 	if path != "/api/command" {
 		requestTimeout = 35 * time.Second
 	}
 	client := http.Client{Transport: transport, Timeout: requestTimeout, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return errors.New("hub redirects refused") }}
 	body, _ := json.Marshal(payload)
-	req, e := http.NewRequest("POST", strings.TrimRight(c.Hub, "/")+path, bytes.NewReader(body))
+	req, e := http.NewRequestWithContext(ctx, "POST", strings.TrimRight(c.Hub, "/")+path, bytes.NewReader(body))
 	if e != nil {
 		return "", e
 	}
@@ -494,6 +510,7 @@ func hubTransport(c Config) (*http.Transport, error) {
 }
 
 type Broker struct {
+	ctx                context.Context
 	mu                 sync.Mutex
 	audioMu            sync.Mutex
 	audioActive        bool
@@ -505,6 +522,13 @@ type Broker struct {
 	mediaLatest        lyricsSession
 	mediaReceived      time.Time
 	providedLyrics     *lyricsRecord
+}
+
+func (b *Broker) context() context.Context {
+	if b.ctx == nil {
+		return context.Background()
+	}
+	return b.ctx
 }
 
 func (b *Broker) call(cmd string) (string, error) {
@@ -530,7 +554,7 @@ func (b *Broker) call(cmd string) (string, error) {
 			return "OK disabled", nil
 		}
 	}
-	out, e := deviceCommand(b.device, cmd)
+	out, e := deviceCommandsContext(b.context(), b.device, []string{cmd})
 	if e == nil && strings.HasPrefix(cmd, "stats-temp ") && strings.HasSuffix(cmd, " pc") {
 		b.temperaturePCUntil = time.Now().Add(8 * time.Second)
 	}
@@ -545,7 +569,7 @@ func (b *Broker) call(cmd string) (string, error) {
 func (b *Broker) batch(commands []string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	_, err := deviceCommands(b.device, commands)
+	_, err := deviceCommandsContext(b.context(), b.device, commands)
 	b.cachedAt = time.Time{}
 	return err
 }
@@ -563,17 +587,64 @@ func serveWithContext(ctx context.Context, startAudio bool) error {
 	if e = identity(&c); e != nil {
 		return e
 	}
-	b := &Broker{device: c.Device}
+	b := &Broker{device: c.Device, ctx: ctx}
+	mux := newHubMux(b, c.Token)
+	srv := &http.Server{Addr: c.Listen, Handler: mux, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 45 * time.Second, IdleTimeout: 30 * time.Second, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13}}
+	go func() {
+		<-ctx.Done()
+		shutdown, cancelShutdown := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancelShutdown()
+		_ = srv.Shutdown(shutdown)
+	}()
+	background := newBackgroundSet(ctx)
+	defer background.stop()
+	background.run(func(c context.Context) { hubBackground(c, b) })
+	background.run(func(c context.Context) { weatherSupervisor(c, b) })
+	background.run(func(c context.Context) { agendaSupervisor(c, b) })
+	background.run(func(c context.Context) { lyricsSupervisor(c, b) })
+	background.run(func(c context.Context) { wallpaperSupervisor(c, b) })
+	if startAudio {
+		background.run(func(c context.Context) { audioSupervisor(c, b, runtime.GOOS) })
+	}
+	log.Printf("FractureOS hub %s listening on https://%s; device %s", version, c.Listen, c.Device)
+	e = srv.ListenAndServeTLS(filepath.Join(configDir(), "hub.crt"), filepath.Join(configDir(), "hub.key"))
+	if errors.Is(e, http.ErrServerClosed) {
+		return nil
+	}
+	return e
+}
+
+// Each enabled collector is a separate process; cancellation always reaps it.
+func launchMetrics(ctx context.Context) (*exec.Cmd, context.CancelFunc, <-chan error, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	child, cancel := context.WithCancel(ctx)
+	cmd := exec.CommandContext(child, exe, "metrics-worker")
+	cmd.Stderr = os.Stderr
+	if err = startWorker(cmd); err != nil {
+		cancel()
+		return nil, nil, nil, err
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	return cmd, cancel, done, nil
+}
+
+// newHubMux builds the authenticated hub API. It is separate from the server
+// so route behaviour can be tested without binding the real listener.
+func newHubMux(b *Broker, token string) *http.ServeMux {
 	mux := http.NewServeMux()
-	registerIntegrations(mux, b, c.Token)
-	registerLyrics(mux, b, c.Token)
-	registerForecast(mux, b, c.Token)
-	registerAgenda(mux, b, c.Token)
-	registerPreview(mux, b, c.Token)
-	registerAudio(mux, b, c.Token)
-	registerWallpaper(mux, b, c.Token)
+	registerIntegrations(mux, b, token)
+	registerLyrics(mux, b, token)
+	registerForecast(mux, b, token)
+	registerAgenda(mux, b, token)
+	registerPreview(mux, b, token)
+	registerAudio(mux, b, token)
+	registerWallpaper(mux, b, token)
 	mux.HandleFunc("/api/media", func(w http.ResponseWriter, r *http.Request) {
-		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+c.Token)) != 1 {
+		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+token)) != 1 {
 			http.Error(w, "unauthorized", 401)
 			return
 		}
@@ -581,7 +652,7 @@ func serveWithContext(ctx context.Context, startAudio bool) error {
 	})
 	mux.HandleFunc("/api/command", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
-		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+c.Token)) != 1 {
+		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+token)) != 1 {
 			http.Error(w, "unauthorized", 401)
 			return
 		}
@@ -611,45 +682,13 @@ func serveWithContext(ctx context.Context, startAudio bool) error {
 		w.Header().Set("Content-Type", "text/plain")
 		fmt.Fprintln(w, out)
 	})
-	srv := &http.Server{Addr: c.Listen, Handler: mux, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 45 * time.Second, IdleTimeout: 30 * time.Second, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13}}
-	go func() {
-		<-ctx.Done()
-		shutdown, cancelShutdown := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancelShutdown()
-		_ = srv.Shutdown(shutdown)
-	}()
-	go hubBackground(ctx, b)
-	go weatherSupervisor(ctx, b)
-	go agendaSupervisor(ctx, b)
-	go lyricsSupervisor(ctx, b)
-	go wallpaperSupervisor(ctx, b)
-	if startAudio {
-		go audioSupervisor(ctx, b, runtime.GOOS)
-	}
-	log.Printf("FractureOS hub %s listening on https://%s; device %s", version, c.Listen, c.Device)
-	e = srv.ListenAndServeTLS(filepath.Join(configDir(), "hub.crt"), filepath.Join(configDir(), "hub.key"))
-	if errors.Is(e, http.ErrServerClosed) {
-		return nil
-	}
-	return e
+	return mux
 }
 
-// Each enabled collector is a separate process; cancellation always reaps it.
-func launchMetrics(ctx context.Context) (*exec.Cmd, context.CancelFunc, <-chan error, error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	child, cancel := context.WithCancel(ctx)
-	cmd := exec.CommandContext(child, exe, "metrics-worker")
-	cmd.Stderr = os.Stderr
-	if err = cmd.Start(); err != nil {
-		cancel()
-		return nil, nil, nil, err
-	}
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
-	return cmd, cancel, done, nil
+// syncDeviceTime pushes the host clock to the TomTom ("time <unix>").
+func syncDeviceTime(b *Broker) error {
+	_, err := b.call(fmt.Sprintf("time %d", time.Now().Unix()))
+	return err
 }
 func hubBackground(ctx context.Context, b *Broker) {
 	ticker := time.NewTicker(3 * time.Second)
@@ -659,6 +698,7 @@ func hubBackground(ctx context.Context, b *Broker) {
 	var done <-chan error
 	lastSync := time.Time{}
 	statusFailure := time.Time{}
+	spawn := newSpawnBackoff("metrics-worker")
 	stopWorker := func() {
 		if worker != nil {
 			cancel()
@@ -672,10 +712,11 @@ func hubBackground(ctx context.Context, b *Broker) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-done:
+		case err := <-done:
 			cancel()
 			worker = nil
 			done = nil
+			spawn.exited(time.Now(), err)
 		case <-ticker.C:
 			c, err := readConfig()
 			if err != nil {
@@ -683,7 +724,7 @@ func hubBackground(ctx context.Context, b *Broker) {
 				continue
 			}
 			if time.Since(lastSync) > 5*time.Minute {
-				if _, err = b.call(fmt.Sprintf("time %d", time.Now().Unix())); err == nil {
+				if err = syncDeviceTime(b); err == nil {
 					lastSync = time.Now()
 				}
 			}
@@ -707,27 +748,22 @@ func hubBackground(ctx context.Context, b *Broker) {
 				stopWorker()
 				continue
 			}
-			if worker == nil {
-				worker, cancel, done, _ = launchMetrics(ctx)
+			if worker == nil && spawn.allowed(time.Now()) {
+				var launchErr error
+				worker, cancel, done, launchErr = launchMetrics(ctx)
+				if launchErr != nil {
+					spawn.failed(time.Now(), launchErr)
+				} else {
+					spawn.started(time.Now())
+				}
 			}
 		}
 	}
 }
 
-func settings(open bool) error { return settingsPage(open, "") }
-
-func settingsPage(open bool, initialPage string) error {
-	token, e := randomToken()
-	if e != nil {
-		return e
-	}
-	listener, e := net.Listen("tcp", "127.0.0.1:0")
-	if e != nil {
-		return e
-	}
+// newSettingsMux builds the local, session-authenticated settings UI API.
+func newSettingsMux(token string, touch func()) *http.ServeMux {
 	mux := http.NewServeMux()
-	var lastMu sync.Mutex
-	last := time.Now()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Referrer-Policy", "no-referrer")
@@ -752,9 +788,7 @@ func settingsPage(open bool, initialPage string) error {
 			http.Error(w, "unauthorized", 401)
 			return
 		}
-		lastMu.Lock()
-		last = time.Now()
-		lastMu.Unlock()
+		touch()
 		c, e := readConfig()
 		if e != nil {
 			http.Error(w, e.Error(), 500)
@@ -800,6 +834,35 @@ func settingsPage(open bool, initialPage string) error {
 			} else {
 				http.Error(w, "unknown update action", 400)
 			}
+		case "/device-screen":
+			if r.Method != "POST" {
+				http.Error(w, "POST required", 405)
+				return
+			}
+			out, err := hubRequest(c, "/api/preview", previewRequest{Operation: "screen"})
+			if err != nil {
+				http.Error(w, err.Error(), 502)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, out)
+		case "/weather-locations":
+			if r.Method != "GET" {
+				http.Error(w, "GET required", 405)
+				return
+			}
+			query := r.URL.Query().Get("q")
+			if !validLocationQuery(query) {
+				http.Error(w, "Enter a city or town name (2 to 120 characters).", 400)
+				return
+			}
+			places, err := searchWeatherLocations(r.Context(), query)
+			if err != nil {
+				http.Error(w, err.Error(), 502)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(places)
 		case "/integrations":
 			if r.Method != "GET" && r.Method != "POST" {
 				http.Error(w, "GET or POST required", 405)
@@ -833,6 +896,10 @@ func settingsPage(open bool, initialPage string) error {
 				r.Body = http.MaxBytesReader(w, r.Body, 8*1024*1024)
 				if e = json.NewDecoder(r.Body).Decode(&q); e != nil {
 					http.Error(w, "invalid wallpaper request", 400)
+					return
+				}
+				if err := localWallpaperPayload(c, q); err != nil {
+					http.Error(w, err.Error(), 400)
 					return
 				}
 				payload = q
@@ -880,16 +947,12 @@ func settingsPage(open bool, initialPage string) error {
 			newc.Agenda = current.Agenda
 			newc.Notifications = current.Notifications
 			newc.Audio = current.Audio
+			newc.Wallpaper = current.Wallpaper
 			if newc.Token == "" {
 				newc.Token = c.Token
 			}
 			if newc.ConnectionMode == "direct" {
-				if newc.Listen == "" {
-					newc.Listen = "127.0.0.1:47831"
-				}
-				if newc.Hub == "" {
-					newc.Hub = "https://" + newc.Listen
-				}
+				configureDirectConnection(&newc)
 				if newc.Device == "" {
 					newc.Device = "192.168.101.115"
 				}
@@ -928,6 +991,23 @@ func settingsPage(open bool, initialPage string) error {
 			http.NotFound(w, r)
 		}
 	})
+	return mux
+}
+
+func settings(open bool) error { return settingsPage(open, "") }
+
+func settingsPage(open bool, initialPage string) error {
+	token, e := randomToken()
+	if e != nil {
+		return e
+	}
+	listener, e := net.Listen("tcp", "127.0.0.1:0")
+	if e != nil {
+		return e
+	}
+	var lastMu sync.Mutex
+	last := time.Now()
+	mux := newSettingsMux(token, func() { lastMu.Lock(); last = time.Now(); lastMu.Unlock() })
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 120 * time.Second}
 	go func() {
 		for range time.Tick(30 * time.Second) {
@@ -941,7 +1021,7 @@ func settingsPage(open bool, initialPage string) error {
 		}
 	}()
 	url := "http://" + listener.Addr().String() + "/"
-	if regexp.MustCompile(`^[a-z]{1,20}$`).MatchString(initialPage) {
+	if regexp.MustCompile(`^[a-z]{1,20}(/[a-z-]{1,20})?$`).MatchString(initialPage) {
 		url += "?page=" + initialPage
 	}
 	url += "#" + token
@@ -1158,7 +1238,7 @@ func configCommand(a []string) error {
 	return saveConfig(c)
 }
 func help() {
-	fmt.Println(`FractureOS 0.1.18
+	fmt.Println(`FractureOS 0.1.18.1
   fracture status | profile minimal|desk|bedside | theme teal|amber|blue
   fracture theme NAME | theme-get | theme-set KEY VALUE | theme-save NEW_NAME | theme-reset
   fracture face NAME | face-get | face-set KEY VALUE | face-reset

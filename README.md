@@ -5,7 +5,7 @@
     <strong>Turns a classic TomTom ONE (v6) into a crisp, zero-bloat bedside &amp; desk companion — now with Direct USB PC hosting and a frosted glass dashboard.</strong>
   </p>
   <p>
-    <a href="https://github.com/sepisotoni/FractureOS-v3/releases/tag/v0.1.17"><img src="https://img.shields.io/badge/release-v0.1.17-62d1f8?style=for-the-badge" alt="Release v0.1.17"></a>
+    <a href="https://github.com/sepisotoni/FractureOS-v3/releases/tag/v0.1.18"><img src="https://img.shields.io/badge/prerelease-v0.1.18-62d1f8?style=for-the-badge" alt="Prerelease v0.1.18"></a>
     <img src="https://img.shields.io/badge/host-Go%201.22%20%2B%20Win32-00ADD8?style=for-the-badge" alt="Go 1.22 and Win32">
     <img src="https://img.shields.io/badge/device-C%20Framebuffer-1f2937?style=for-the-badge" alt="C Framebuffer">
     <img src="https://img.shields.io/badge/hardware-TomTom%20ONE%20v6-f28c68?style=for-the-badge" alt="TomTom ONE v6">
@@ -34,17 +34,17 @@
 Install using PowerShell (runs the verified Inno Setup `.exe` installer and creates a single **FractureOS** Start menu shortcut):
 
 ```powershell
-irm https://raw.githubusercontent.com/sepisotoni/FractureOS-v3/v0.1.17/install/install.ps1 | iex
+irm https://raw.githubusercontent.com/sepisotoni/FractureOS-v3/v0.1.18/install/install.ps1 | iex
 ```
 
-Or download `fracture-0.1.17-windows-x64-setup.exe` directly from the [v0.1.17 Release page](https://github.com/sepisotoni/FractureOS-v3/releases/tag/v0.1.17) and verify against `SHA256SUMS`.
+Or download `fracture-v0.1.18-windows-amd64-setup.exe` or the ARM64 equivalent and verify it against `SHA256SUMS`. [v0.1.18 prerelease](https://github.com/sepisotoni/FractureOS-v3/releases/tag/v0.1.18)
 
 ### Linux (Host / USB Hub — x86-64 / ARM64)
 
 On the Linux machine connected to your TomTom:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/sepisotoni/FractureOS-v3/v0.1.17/install/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/sepisotoni/FractureOS-v3/v0.1.18/install/install.sh | sh
 ```
 
 Then deploy the C clock binary to the USB-connected TomTom (requires Python 3 on the Linux host) and open Settings:
@@ -58,7 +58,7 @@ Then deploy the C clock binary to the USB-connected TomTom (requires Python 3 on
 
 ---
 
-## Choose Your Setup Mode (`v0.1.17`)
+## Choose Your Setup Mode
 
 | Mode | Best For | How It Works |
 |---|---|---|
@@ -76,6 +76,16 @@ fracture pair-info
 ```
 
 In Windows **FractureOS → Connection** (or web **System**): select **Remote Linux hub**, paste `https://192.168.101.105:47831`, the SHA-256 fingerprint, and bearer token, then save.
+
+### v0.1.18.1 development candidate
+
+![Resizable FractureOS v0.1.18.1 dashboard on a Windows runner, with the TomTom disconnected](docs/images/windows-dashboard-v0181.png)
+
+- The native Windows app is built in Go using Win32 and GDI. Its clock renderer is a small C DLL shared with the TomTom. The setup program is built with Inno Setup.
+- **Clock & faces** offers hour-only display at `:00` and menu timeout. Set a positive timeout to return to Home after inactivity. A value of `0` disables this, and the active player and lyrics pages stay open.
+- **Appearance → Wallpaper** stages a preview before applying. In Direct USB, PC wallpaper follows the Windows desktop automatically. With a remote Linux hub, **Use this PC’s wallpaper** sends and saves a copy of the Windows desktop image.
+- Web **Overview → View TomTom screen** captures the current display on request. The Windows Home preview renders locally. **Weather** can search for a city or town, or take coordinates directly.
+- For intentional device updates, run `fracture device install` from the Linux host installation. The v0.1.18.1 Windows portable ZIP also includes the USB deployment files for `fracture.exe device install` with Python 3. Updating the Windows dashboard and updating the TomTom are separate steps.
 
 ---
 

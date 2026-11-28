@@ -217,7 +217,7 @@ func windowsTemperatureSupervisor(ctx context.Context) {
 				stop()
 				continue
 			}
-			raw, e := hubCall(c, "status")
+			raw, e := hubCallContext(ctx, c, "status")
 			var s struct {
 				Menu      int `json:"menu"`
 				Telemetry int `json:"telemetry"`

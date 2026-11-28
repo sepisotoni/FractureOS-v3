@@ -1,6 +1,46 @@
 package main
 
-import "testing"
+import (
+	"context"
+	"net"
+	"testing"
+	"time"
+)
+
+func TestBrokerCancelInterruptsDeviceLogin(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	_, port, _ := net.SplitHostPort(listener.Addr().String())
+	oldPort := devicePort
+	devicePort = port
+	defer func() { devicePort = oldPort }()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	broker := &Broker{device: "127.0.0.1", ctx: ctx}
+	done := make(chan error, 1)
+	go func() {
+		_, err := broker.call("status")
+		done <- err
+	}()
+	_ = listener.(*net.TCPListener).SetDeadline(time.Now().Add(time.Second))
+	peer, err := listener.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer peer.Close()
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("cancelled login returned success")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("device login kept blocking after cancellation")
+	}
+}
 
 func TestWeatherDescription(t *testing.T) {
 	tests := map[int]string{

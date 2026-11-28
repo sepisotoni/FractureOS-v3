@@ -46,6 +46,14 @@ type WallpaperConfig struct {
 	// selection while unplugged, PC wallpaper changed, device re-flashed).
 	Applied     string `json:"applied,omitempty"`
 	AppliedHash uint32 `json:"applied_hash,omitempty"`
+
+	// Overrides records the device values this feature replaced, as
+	// {"theme.background": "<original>", "face.background": "<original>"}.
+	// Only a non-black solid colour writes them. When the selection moves to
+	// anything else, exactly these keys are set back to their recorded values
+	// and the record is cleared. The wallpaper path never calls theme-reset or
+	// face-reset, so unrelated theme/face customisation is never touched.
+	Overrides map[string]string `json:"wallpaper_overrides,omitempty"`
 }
 
 type wallpaperHistoryEntry struct {
@@ -427,8 +435,10 @@ type wallpaperDevice interface {
 	wpConnected() bool
 }
 
-func (b *Broker) wpUpload(data []byte) error { return uploadWallpaper(b.device, data) }
-func (b *Broker) wpConnected() bool          { return b != nil && b.device != "" }
+func (b *Broker) wpUpload(data []byte) error {
+	return uploadDevicePayloadContext(b.context(), b.device, data, 3)
+}
+func (b *Broker) wpConnected() bool { return b != nil && b.device != "" }
 
 var errWallpaperNoDevice = errors.New("no TomTom connected")
 
@@ -493,6 +503,24 @@ func resolveWallpaper(w WallpaperConfig, uploaded []byte) (resolvedWallpaper, er
 	return r, nil
 }
 
+func localWallpaperPayload(c Config, payload map[string]any) error {
+	if runtime.GOOS != "windows" || effectiveConnectionMode(c) == "direct" || payload["mode"] != "pc" {
+		return nil
+	}
+	raw, _, err := readPCWallpaper()
+	if err != nil {
+		return err
+	}
+	_, preview, err := imageToWallpaper(raw)
+	if err != nil {
+		return err
+	}
+	payload["mode"] = "custom"
+	payload["name"] = "Windows desktop wallpaper"
+	payload["image_base64"] = base64.StdEncoding.EncodeToString(preview)
+	return nil
+}
+
 // ---- device state ----------------------------------------------------------
 
 func parseModelUint(model, key string) (uint32, bool) {
@@ -533,11 +561,82 @@ func wallpaperDeviceHash(t wallpaperDevice) (uint32, error) {
 	return 0, nil
 }
 
-func applyColorToDevice(t wallpaperDevice, color string) error {
-	if _, err := t.call("wallpaper clear"); err != nil {
-		return err
+// wallpaperOverrideKeys is the fixed order in which overrides are written.
+var wallpaperOverrideKeys = []struct{ Key, Get, Set string }{
+	{"face.background", "face-get", "face-set background "},
+	{"theme.background", "theme-get", "theme-set background "},
+}
+
+func readDeviceBackgrounds(t wallpaperDevice) map[string]string {
+	out := map[string]string{}
+	for _, k := range wallpaperOverrideKeys {
+		raw, err := t.call(k.Get)
+		if err != nil {
+			continue
+		}
+		var j struct {
+			Background string `json:"background"`
+		}
+		if json.Unmarshal([]byte(raw), &j) == nil && wallpaperHexColor.MatchString(j.Background) {
+			out[k.Key] = strings.ToLower(j.Background)
+		}
 	}
-	return t.batch([]string{"face-set background " + color, "theme-set background " + color})
+	return out
+}
+
+func setBackgrounds(t wallpaperDevice, values map[string]string) error {
+	var cmds []string
+	for _, k := range wallpaperOverrideKeys {
+		if v, ok := values[k.Key]; ok {
+			cmds = append(cmds, k.Set+v)
+		}
+	}
+	if len(cmds) == 0 {
+		return nil
+	}
+	return t.batch(cmds)
+}
+
+// wantsOverride reports whether the selection needs theme/face overrides.
+// Solid black ("legacy") is just a cleared wallpaper and overrides nothing.
+func wantsOverride(w WallpaperConfig) bool {
+	return w.Mode == "color" && strings.ToLower(w.Color) != "000000"
+}
+
+// reconcileOverrides brings the device's theme/face backgrounds in line with
+// the selection, recording originals before the first override and restoring
+// exactly those originals afterwards. It returns the updated record.
+func reconcileOverrides(t wallpaperDevice, w WallpaperConfig) (map[string]string, error) {
+	rec := w.Overrides
+	if wantsOverride(w) {
+		if len(rec) == 0 {
+			rec = readDeviceBackgrounds(t)
+			if len(rec) == 0 {
+				return nil, errors.New("cannot read the current theme/face background, so it was not overridden")
+			}
+		}
+		target := map[string]string{}
+		for k := range rec {
+			target[k] = strings.ToLower(w.Color)
+		}
+		if err := setBackgrounds(t, target); err != nil {
+			return w.Overrides, err
+		}
+		return rec, nil
+	}
+	if len(rec) > 0 {
+		if err := setBackgrounds(t, rec); err != nil {
+			return rec, err
+		}
+	}
+	return nil, nil
+}
+
+func applyColorToDevice(t wallpaperDevice, w WallpaperConfig) (map[string]string, error) {
+	if _, err := t.call("wallpaper clear"); err != nil {
+		return w.Overrides, err
+	}
+	return reconcileOverrides(t, w)
 }
 
 // pushResolved puts a resolved selection on the device and verifies the device
@@ -545,7 +644,9 @@ func applyColorToDevice(t wallpaperDevice, color string) error {
 // Applied/AppliedHash filled in.
 func pushResolved(t wallpaperDevice, w WallpaperConfig, res resolvedWallpaper) (WallpaperConfig, error) {
 	if w.Mode == "color" {
-		if err := applyColorToDevice(t, w.Color); err != nil {
+		ov, err := applyColorToDevice(t, w)
+		w.Overrides = ov
+		if err != nil {
 			return w, err
 		}
 	} else {
@@ -556,6 +657,11 @@ func pushResolved(t wallpaperDevice, w WallpaperConfig, res resolvedWallpaper) (
 			return w, err
 		}
 		if _, err := t.call("wallpaper load"); err != nil {
+			return w, err
+		}
+		ov, err := reconcileOverrides(t, w) // give back any earlier colour override
+		w.Overrides = ov
+		if err != nil {
 			return w, err
 		}
 	}
@@ -598,7 +704,8 @@ func syncWallpaper(t wallpaperDevice) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if w.Applied == res.Key && w.AppliedHash == dev {
+	pendingRestore := !wantsOverride(w) && len(w.Overrides) > 0
+	if w.Applied == res.Key && w.AppliedHash == dev && !pendingRestore {
 		return false, nil
 	}
 	applied, perr := pushResolved(t, w, res)
@@ -608,6 +715,7 @@ func syncWallpaper(t wallpaperDevice) (bool, error) {
 			c2.Wallpaper.Preset == w.Preset && c2.Wallpaper.CustomID == w.CustomID
 		if same {
 			c2.Wallpaper.Applied, c2.Wallpaper.AppliedHash = applied.Applied, applied.AppliedHash
+			c2.Wallpaper.Overrides = applied.Overrides
 			if res.PCHash != "" {
 				c2.Wallpaper.LastPCHash = res.PCHash
 			}
@@ -652,7 +760,7 @@ func savePreviousWallpaper(w WallpaperConfig) error {
 	if err := os.MkdirAll(wallpaperDir(), 0700); err != nil {
 		return err
 	}
-	w.Applied, w.AppliedHash, w.LastPCHash = "", 0, ""
+	w.Applied, w.AppliedHash, w.LastPCHash, w.Overrides = "", 0, "", nil
 	data, err := json.MarshalIndent(w, "", "  ")
 	if err != nil {
 		return err
@@ -717,6 +825,7 @@ func applyWallpaper(t wallpaperDevice, next WallpaperConfig, uploaded []byte, op
 	if res.PCHash != "" {
 		next.LastPCHash = res.PCHash
 	}
+	next.Overrides = c.Wallpaper.Overrides // pending record survives until restored
 	c.Wallpaper = next
 	if err := saveConfig(c); err != nil {
 		return out, fmt.Errorf("cannot save settings: %w", err)

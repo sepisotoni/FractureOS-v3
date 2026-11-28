@@ -118,6 +118,9 @@ func platformDashboard() error {
 	var renderer homeRenderer
 	defer renderer.close()
 	var preview homePreviewPacket
+	var placeResults []weatherLocation
+	var placeSearchComplete bool
+	var displayedPlaces []weatherLocation
 	previewVisible := true
 	previewGeneration := 0
 	timerTicks := 0
@@ -125,12 +128,16 @@ func platformDashboard() error {
 	if err != nil {
 		return err
 	}
+	trayError := startDirectTray(c)
 	integrations := IntegrationSettings{Weather: defaultWeather()}
 	var state dashboardStatus
 	var mu sync.Mutex
 	busy := false
 	alive := true
 	message := "Connecting to your hub..."
+	if trayError != nil {
+		message = "Could not start Direct USB: " + trayError.Error()
+	}
 	lastSuccess := time.Time{}
 	invalidate := func() { user32.NewProc("InvalidateRect").Call(hwnd, 0, 0) }
 	async := func(job func() (string, error)) {
@@ -262,6 +269,9 @@ func platformDashboard() error {
 	}
 	var buildPage func()
 	buildPage = func() {
+		if latest, err := readConfig(); err == nil {
+			c = latest
+		}
 		mu.Lock()
 		previewVisible = pageIndex == 0
 		previewGeneration++
@@ -313,15 +323,25 @@ func platformDashboard() error {
 			edit(223, strconv.Itoa(st.Brightness), 42, 252, 200, false)
 			label("UTC offset (minutes)", 322, 224)
 			edit(224, strconv.Itoa(st.Offset), 322, 252, 230, false)
-			label("Menu timeout (s)", 582, 224)
-			edit(228, strconv.Itoa(st.MenuTimeout), 582, 252, 132, false)
+			label("Menu timeout (0 = Off)", 582, 224)
+			timeout := ""
+			if st.Version != "" {
+				timeout = strconv.Itoa(st.MenuTimeout)
+			}
+			edit(228, timeout, 582, 252, 132, false)
 			label("Notify (s)", 730, 224)
 			edit(229, strconv.Itoa(st.NoticeSeconds), 730, 252, 132, false)
 			check(225, "Show telemetry on the TomTom", st.Telemetry != 0, 42, 316, 380)
 			check(226, "Enable media controls on the TomTom", st.Media != 0, 42, 348, 380)
 			check(262, "Look up lyrics when the Lyrics page is open", q.LyricsEnabled == nil || *q.LyricsEnabled, 452, 316, 410)
 			button(227, "Apply to TomTom", 42, 384, 220)
-			wpOpts := []string{"PC wallpaper (auto)", "Legacy black (#000000)", "Preset: 01 Purple Blue", "Preset: 02 Midnight Sweep", "Preset: 03 Dual Current", "Custom (web studio)"}
+			combo(2204, []string{"Hour at :00 (keep setting)", "At :00, show only the hour", "At :00, show hour and minutes"}, "", 282, 386, 300)
+			button(2205, "Face layout studio", 598, 384, 212)
+			pcWallpaper := "PC wallpaper (auto)"
+			if effectiveConnectionMode(c) != "direct" {
+				pcWallpaper = "Use this PC's wallpaper"
+			}
+			wpOpts := []string{pcWallpaper, "Legacy black (#000000)", "Preset: 01 Purple Blue", "Preset: 02 Midnight Sweep", "Preset: 03 Dual Current", "Custom (web studio)"}
 			wpCur := wpOpts[0]
 			switch c.Wallpaper.Mode {
 			case "color":
@@ -390,7 +410,11 @@ func platformDashboard() error {
 			button(247, "Save weather", 42, 342, 220)
 			labelWide("Thunderstorms, heavy rain/snow and your thresholds count as unusual.", 42, 420, 820)
 			labelWide("Weather data: Open-Meteo.com (CC BY 4.0). Not official emergency alerts.", 42, 454, 820)
-			labelWide("Initial location: Johannesburg. Change coordinates above for your location.", 42, 488, 820)
+			label("Find a city or town (GeoNames)", 42, 488)
+			edit(248, "", 42, 515, 270, false)
+			button(249, "Search", 322, 512, 112)
+			displayedPlaces = nil
+			combo(2480, []string{"Choose a matching place"}, "", 452, 515, 412)
 		case 4:
 			quietStart, quietEnd := q.Notifications.QuietStart, q.Notifications.QuietEnd
 			if quietStart == "" {
@@ -444,6 +468,15 @@ func platformDashboard() error {
 		case 0x111:
 			id := int(wp & 0xffff)
 			notifyCode := wp >> 16
+			if id == 2480 && notifyCode == 1 {
+				index, _, _ := user32.NewProc("SendMessageW").Call(fields[2480], 0x147, 0, 0)
+				if index > 0 && index <= uintptr(len(displayedPlaces)) {
+					place := displayedPlaces[index-1]
+					user32.NewProc("SetWindowTextW").Call(fields[241], uintptr(unsafe.Pointer(wide(strconv.FormatFloat(place.Latitude, 'f', 4, 64)))))
+					user32.NewProc("SetWindowTextW").Call(fields[242], uintptr(unsafe.Pointer(wide(strconv.FormatFloat(place.Longitude, 'f', 4, 64)))))
+				}
+				return 0
+			}
 			if id == 290 && notifyCode == 1 {
 				if get(290) == "Direct USB to this PC" {
 					curHub := strings.TrimSpace(get(230))
@@ -480,6 +513,14 @@ func platformDashboard() error {
 					go cmd.Wait()
 				}
 			case 227:
+				timeout := strings.TrimSpace(get(228))
+				if _, err := strconv.Atoi(timeout); err != nil {
+					mu.Lock()
+					message = "Enter a menu timeout in seconds (0 turns it off)."
+					mu.Unlock()
+					invalidate()
+					return 0
+				}
 				appearance := 0
 				if get(222) == "Day" {
 					appearance = 1
@@ -493,7 +534,22 @@ func platformDashboard() error {
 					return 0
 				}
 				allowLyrics := checked(262)
-				commands := []string{"face " + get(220), "theme " + get(221), "brightness " + get(223), "offset " + get(224), fmt.Sprintf("feature appearance %d", appearance), fmt.Sprintf("feature telemetry %d", bit(checked(225))), fmt.Sprintf("feature media %d", bit(checked(226))), "ui-timeout menu " + get(228), "ui-timeout notification " + get(229)}
+				commands := []string{"face " + get(220), "theme " + get(221), "brightness " + get(223), "offset " + get(224), fmt.Sprintf("feature appearance %d", appearance), fmt.Sprintf("feature telemetry %d", bit(checked(225))), fmt.Sprintf("feature media %d", bit(checked(226))), "ui-timeout menu " + timeout, "ui-timeout notification " + get(229)}
+				switch get(2204) {
+				case "At :00, show only the hour":
+					commands = append(commands, "face-set hour_only 1")
+				case "At :00, show hour and minutes":
+					commands = append(commands, "face-set hour_only 0")
+				}
+				for _, cmd := range commands {
+					if err := validateCommand(cmd); err != nil {
+						mu.Lock()
+						message = err.Error()
+						mu.Unlock()
+						invalidate()
+						return 0
+					}
+				}
 				async(func() (string, error) {
 					conf, e := readConfig()
 					if e != nil {
@@ -528,6 +584,7 @@ func platformDashboard() error {
 					switch sel {
 					case "Legacy black (#000000)":
 						payload["mode"] = "color"
+						payload["color"] = "000000" // always black, never the previously saved colour
 					case "Preset: 01 Purple Blue":
 						payload["mode"] = "preset"
 						payload["preset"] = "01-purple-blue-ribbon-flow.jpg"
@@ -538,11 +595,24 @@ func platformDashboard() error {
 						payload["mode"] = "preset"
 						payload["preset"] = "03-dual-current.jpg"
 					case "Custom (web studio)":
-						if conf.Wallpaper.CustomID == "" {
+						raw, err := hubRequest(conf, "/api/wallpaper", map[string]string{"operation": "get"})
+						if err != nil {
+							return "", err
+						}
+						var wallpaper struct {
+							Config WallpaperConfig `json:"config"`
+						}
+						if err := json.Unmarshal([]byte(raw), &wallpaper); err != nil {
+							return "", err
+						}
+						if wallpaper.Config.CustomID == "" {
 							return "", fmt.Errorf("Open Custom / Crop studio to upload your first custom wallpaper.")
 						}
 						payload["mode"] = "custom"
-						payload["custom_id"] = conf.Wallpaper.CustomID
+						payload["custom_id"] = wallpaper.Config.CustomID
+					}
+					if err := localWallpaperPayload(conf, payload); err != nil {
+						return "", err
 					}
 					raw, e := hubRequest(conf, "/api/wallpaper", payload)
 					if e != nil {
@@ -557,18 +627,32 @@ func platformDashboard() error {
 					}
 					return "Wallpaper applied to TomTom", nil
 				})
-			case 2203:
-				exe, _ := os.Executable()
-				cmd := exec.Command(exe, "web", "wallpaper")
-				if cmd.Start() == nil {
-					go cmd.Wait()
+			case 2203, 2205:
+				route := "appearance"
+				if id == 2203 {
+					route = "appearance/wallpaper"
 				}
-				mu.Lock()
-				message = "Opened Web Dashboard directly on the Wallpaper tab."
-				mu.Unlock()
-				invalidate()
+				async(func() (string, error) {
+					exe, err := os.Executable()
+					if err != nil {
+						return "", err
+					}
+					cmd := exec.Command(exe, "web", route)
+					if err = cmd.Start(); err != nil {
+						return "", err
+					}
+					go cmd.Wait()
+					return "Opening the studio in your browser", nil
+				})
 			case 235:
-				next := c
+				next, err := readConfig()
+				if err != nil {
+					mu.Lock()
+					message = err.Error()
+					mu.Unlock()
+					invalidate()
+					return 0
+				}
 				if get(290) == "Direct USB to this PC" {
 					next.ConnectionMode = "direct"
 				} else {
@@ -587,28 +671,26 @@ func platformDashboard() error {
 				next.MediaStatus = checked(234)
 				next.WindowsTemperature = checked(236)
 				if next.ConnectionMode == "direct" {
-					if next.Listen == "" {
-						next.Listen = "127.0.0.1:47831"
-					}
-					if next.Hub == "" || !strings.HasPrefix(next.Hub, "https://127.0.0.1:") {
-						next.Hub = "https://" + next.Listen
-						user32.NewProc("SetWindowTextW").Call(fields[230], uintptr(unsafe.Pointer(wide(next.Hub))))
-					}
+					configureDirectConnection(&next)
+					user32.NewProc("SetWindowTextW").Call(fields[230], uintptr(unsafe.Pointer(wide(next.Hub))))
 				}
 				if e := saveConfig(next); e != nil {
 					mu.Lock()
 					message = e.Error()
 					mu.Unlock()
 				} else {
-					if next.ConnectionMode == "direct" && (next.Token == "" || next.Fingerprint == "") {
-						_ = identity(&next)
-						user32.NewProc("SetWindowTextW").Call(fields[231], uintptr(unsafe.Pointer(wide(next.Fingerprint))))
-					}
 					c = next
 					user32.NewProc("SetWindowTextW").Call(fields[232], uintptr(unsafe.Pointer(wide(""))))
 					mu.Lock()
 					message = "Connection saved"
+					lastSuccess = time.Time{}
+					state = dashboardStatus{}
 					mu.Unlock()
+					if err := startDirectTray(next); err != nil {
+						mu.Lock()
+						message = "Could not start Direct USB: " + err.Error()
+						mu.Unlock()
+					}
 				}
 				invalidate()
 			case 237:
@@ -654,12 +736,24 @@ func platformDashboard() error {
 					}
 					return strings.TrimSpace(string(out)), nil
 				})
+			case 249:
+				query := strings.TrimSpace(get(248))
+				async(func() (string, error) {
+					places, err := searchWeatherLocations(context.Background(), query)
+					mu.Lock()
+					placeResults, placeSearchComplete = places, true
+					mu.Unlock()
+					if err != nil {
+						return "", err
+					}
+					if len(places) == 0 {
+						return "No matching places", nil
+					}
+					return "Choose a matching place, then save weather", nil
+				})
 			case 247:
-				mu.Lock()
-				q := integrations
-				mu.Unlock()
-				q.Weather.Enabled = checked(240)
-				vals := []*float64{&q.Weather.Latitude, &q.Weather.Longitude, &q.Weather.Hot, &q.Weather.Cold, &q.Weather.Wind}
+				weather := WeatherConfig{Enabled: checked(240)}
+				vals := []*float64{&weather.Latitude, &weather.Longitude, &weather.Hot, &weather.Cold, &weather.Wind}
 				for i, dst := range vals {
 					v, e := strconv.ParseFloat(get(241+i), 64)
 					if e != nil {
@@ -682,6 +776,11 @@ func platformDashboard() error {
 					if e != nil {
 						return "", e
 					}
+					q, e := integrationGet(conf)
+					if e != nil {
+						return "", e
+					}
+					q.Weather = weather
 					if e = integrationSave(conf, q); e != nil {
 						return "", e
 					}
@@ -695,27 +794,22 @@ func platformDashboard() error {
 				})
 			case 253:
 				notificationDuration := get(254)
-				mu.Lock()
-				q := integrations
-				mu.Unlock()
-				q.Notifications.Enabled = checked(250)
-				q.Notifications.Excluded = nil
+				notifications := NotificationConfig{Enabled: checked(250)}
 				for _, v := range strings.Split(get(251), "\n") {
 					if v = strings.TrimSpace(v); v != "" {
-						q.Notifications.Excluded = append(q.Notifications.Excluded, v)
+						notifications.Excluded = append(notifications.Excluded, v)
 					}
 				}
-				q.Notifications.Allowed = nil
 				for _, v := range strings.Split(get(284), "\n") {
 					if v = strings.TrimSpace(v); v != "" {
-						q.Notifications.Allowed = append(q.Notifications.Allowed, v)
+						notifications.Allowed = append(notifications.Allowed, v)
 					}
 				}
-				q.Notifications.AllowListOnly = checked(280)
-				q.Notifications.QuietHoursEnabled = checked(281)
-				q.Notifications.QuietStart = strings.TrimSpace(get(282))
-				q.Notifications.QuietEnd = strings.TrimSpace(get(283))
-				if e := validateIntegrations(q.Weather, q.Notifications); e != nil {
+				notifications.AllowListOnly = checked(280)
+				notifications.QuietHoursEnabled = checked(281)
+				notifications.QuietStart = strings.TrimSpace(get(282))
+				notifications.QuietEnd = strings.TrimSpace(get(283))
+				if e := validateIntegrations(defaultWeather(), notifications); e != nil {
 					mu.Lock()
 					message = e.Error()
 					mu.Unlock()
@@ -726,19 +820,18 @@ func platformDashboard() error {
 				if checked(252) {
 					bit = 1
 				}
-				next := c
-				next.WindowsNotifications = checked(255)
-				if e := saveConfig(next); e != nil {
-					mu.Lock()
-					message = e.Error()
-					mu.Unlock()
-					invalidate()
-					return 0
-				}
-				c = next
+				enableWindows := checked(255)
 				async(func() (string, error) {
 					conf, e := readConfig()
 					if e != nil {
+						return "", e
+					}
+					q, e := integrationGet(conf)
+					if e != nil {
+						return "", e
+					}
+					q.Notifications = notifications
+					if e = validateCommand("ui-timeout notification " + notificationDuration); e != nil {
 						return "", e
 					}
 					if e = integrationSave(conf, q); e != nil {
@@ -751,6 +844,14 @@ func platformDashboard() error {
 					integrations = q
 					mu.Unlock()
 					if _, e = hubCall(conf, "ui-timeout notification "+notificationDuration); e != nil {
+						return "", e
+					}
+					latest, e := readConfig()
+					if e != nil {
+						return "", e
+					}
+					latest.WindowsNotifications = enableWindows
+					if e = saveConfig(latest); e != nil {
 						return "", e
 					}
 					return "Notification settings saved", nil
@@ -816,6 +917,20 @@ func platformDashboard() error {
 			}
 			return 0
 		case 0x8002:
+			mu.Lock()
+			places, searchComplete := placeResults, placeSearchComplete
+			placeResults, placeSearchComplete = nil, false
+			mu.Unlock()
+			if searchComplete && pageIndex == 3 {
+				displayedPlaces = places
+				list := fields[2480]
+				user32.NewProc("SendMessageW").Call(list, 0x14b, 0, 0)
+				user32.NewProc("SendMessageW").Call(list, 0x143, 0, uintptr(unsafe.Pointer(wide("Choose a matching place"))))
+				for _, place := range places {
+					user32.NewProc("SendMessageW").Call(list, 0x143, 0, uintptr(unsafe.Pointer(wide(place.label()))))
+				}
+				user32.NewProc("SendMessageW").Call(list, 0x14e, 0, 0)
+			}
 			invalidate()
 			return 0
 		case 0x2b:
@@ -977,8 +1092,8 @@ func platformDashboard() error {
 				}
 				draw(timerText, bottomRightCard.x+22, bottomRightCard.y+54, bottomRightCard.width-44, 28, normal, accent)
 			case 1:
-				c1 := dashboardFullCardBounds(clientWidth, 126, 256)
-				c2 := dashboardFullCardBounds(clientWidth, 396, 118)
+				c1 := dashboardFullCardBounds(clientWidth, 126, 298)
+				c2 := dashboardFullCardBounds(clientWidth, 432, 102)
 				card(c1.x, c1.y, c1.width, c1.height)
 				card(c2.x, c2.y, c2.width, c2.height)
 			case 2:
@@ -988,7 +1103,7 @@ func platformDashboard() error {
 				card(c2.x, c2.y, c2.width, c2.height)
 			case 3:
 				c1 := dashboardFullCardBounds(clientWidth, 126, 268)
-				c2 := dashboardFullCardBounds(clientWidth, 406, 124)
+				c2 := dashboardFullCardBounds(clientWidth, 406, 158)
 				card(c1.x, c1.y, c1.width, c1.height)
 				card(c2.x, c2.y, c2.width, c2.height)
 			case 4:
@@ -1050,7 +1165,7 @@ func platformDashboard() error {
 		y += (int(work.Bottom-work.Top) - 710) / 2
 	}
 	var e error
-	hwnd, _, e = user32.NewProc("CreateWindowExW").Call(0, uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(wide("FractureOS — Dashboard"))), 0x02ca0000, uintptr(x), uintptr(y), 922, 710, 0, 0, instance, 0)
+	hwnd, _, e = user32.NewProc("CreateWindowExW").Call(0, uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(wide("FractureOS — Dashboard"))), 0x02cf0000, uintptr(x), uintptr(y), 922, 710, 0, 0, instance, 0)
 	if hwnd == 0 {
 		return e
 	}
@@ -1068,7 +1183,18 @@ func platformDashboard() error {
 	user32.NewProc("SetTimer").Call(hwnd, 1, 1000, 0)
 	initialConfig := c
 	async(func() (string, error) {
-		q, e := integrationGet(initialConfig)
+		var q IntegrationSettings
+		var e error
+		for attempt := 0; attempt < 5; attempt++ {
+			initialConfig, e = readConfig()
+			if e == nil {
+				q, e = integrationGet(initialConfig)
+			}
+			if e == nil || effectiveConnectionMode(initialConfig) != "direct" {
+				break
+			}
+			time.Sleep(300 * time.Millisecond)
+		}
 		if e != nil {
 			return "", e
 		}

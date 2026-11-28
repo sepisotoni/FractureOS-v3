@@ -29,7 +29,9 @@ type fakeTomTom struct {
 	clears     int
 	batches    [][]string
 	failLoad   bool
-	noWallpape bool
+	themeBG    string
+	faceBG     string
+	resetCalls int
 }
 
 func (f *fakeTomTom) wpConnected() bool { return true }
@@ -46,6 +48,16 @@ func (f *fakeTomTom) batch(c []string) error {
 		return errors.New("offline")
 	}
 	f.batches = append(f.batches, c)
+	for _, cmd := range c {
+		switch {
+		case strings.HasPrefix(cmd, "theme-set background "):
+			f.themeBG = strings.TrimPrefix(cmd, "theme-set background ")
+		case strings.HasPrefix(cmd, "face-set background "):
+			f.faceBG = strings.TrimPrefix(cmd, "face-set background ")
+		case strings.Contains(cmd, "reset"):
+			f.resetCalls++
+		}
+	}
 	return nil
 }
 func (f *fakeTomTom) call(cmd string) (string, error) {
@@ -53,6 +65,13 @@ func (f *fakeTomTom) call(cmd string) (string, error) {
 		return "", errors.New("offline")
 	}
 	switch cmd {
+	case "theme-reset", "face-reset":
+		f.resetCalls++
+		return "OK", nil
+	case "theme-get":
+		return fmt.Sprintf(`{"background":"%s","foreground":"ffffff"}`, f.bg(f.themeBG, "101820")), nil
+	case "face-get":
+		return fmt.Sprintf(`{"atlas":"x","background":"%s"}`, f.bg(f.faceBG, "0a0a0a")), nil
 	case "wallpaper load":
 		if f.failLoad {
 			return "", errors.New("ERR")
@@ -74,6 +93,13 @@ func (f *fakeTomTom) call(cmd string) (string, error) {
 		return fmt.Sprintf(`{"wallpaper_active":%v}`, f.hash != 0), nil
 	}
 	return "", errors.New("unexpected command " + cmd)
+}
+
+func (f *fakeTomTom) bg(v, def string) string {
+	if v == "" {
+		return def
+	}
+	return v
 }
 
 // offlineTomTom is a Broker-like device that is not connected at all.
@@ -321,4 +347,82 @@ func TestHTTPDryRunRestoreAndDeleteGuard(t *testing.T) {
 	if res, _ := http.DefaultClient.Do(req); res.StatusCode != 401 {
 		t.Fatalf("unauthenticated GET = %d", res.StatusCode)
 	}
+}
+
+func TestLegacyBlackOverridesNothing(t *testing.T) {
+	wpEnv(t)
+	dev := &fakeTomTom{online: true}
+	mustApply(t, dev, presetSel(presetA))
+	mustApply(t, dev, WallpaperConfig{Mode: "color", Color: "000000"})
+	if dev.hash != 0 || dev.clears != 1 || len(dev.batches) != 0 || dev.resetCalls != 0 {
+		t.Fatalf("legacy black must only clear the wallpaper: hash=%d clears=%d batches=%v resets=%d", dev.hash, dev.clears, dev.batches, dev.resetCalls)
+	}
+}
+
+func TestColourOverridesAreRecordedAndExactlyRestored(t *testing.T) {
+	wpEnv(t)
+	dev := &fakeTomTom{online: true, themeBG: "123456", faceBG: "abcdef"}
+	mustApply(t, dev, WallpaperConfig{Mode: "color", Color: "ff0000"})
+	if dev.themeBG != "ff0000" || dev.faceBG != "ff0000" {
+		t.Fatalf("override not applied: %s %s", dev.themeBG, dev.faceBG)
+	}
+	c, _ := readConfig()
+	if c.Wallpaper.Overrides["theme.background"] != "123456" || c.Wallpaper.Overrides["face.background"] != "abcdef" {
+		t.Fatalf("originals not recorded: %v", c.Wallpaper.Overrides)
+	}
+	// a second colour must not overwrite the recorded originals
+	mustApply(t, dev, WallpaperConfig{Mode: "color", Color: "00ff00"})
+	c, _ = readConfig()
+	if c.Wallpaper.Overrides["theme.background"] != "123456" {
+		t.Fatalf("originals overwritten: %v", c.Wallpaper.Overrides)
+	}
+	// moving to a preset gives back exactly the originals, nothing else
+	mustApply(t, dev, presetSel(presetA))
+	if dev.themeBG != "123456" || dev.faceBG != "abcdef" || dev.resetCalls != 0 {
+		t.Fatalf("not restored exactly: theme=%s face=%s resets=%d", dev.themeBG, dev.faceBG, dev.resetCalls)
+	}
+	c, _ = readConfig()
+	if len(c.Wallpaper.Overrides) != 0 {
+		t.Fatalf("override record not cleared: %v", c.Wallpaper.Overrides)
+	}
+}
+
+func TestPendingRestoreCompletesWhenDeviceReturns(t *testing.T) {
+	wpEnv(t)
+	dev := &fakeTomTom{online: true, themeBG: "123456", faceBG: "abcdef"}
+	mustApply(t, dev, WallpaperConfig{Mode: "color", Color: "ff0000"})
+	mustApply(t, &offlineTomTom{}, presetSel(presetA)) // chosen while unplugged
+	c, _ := readConfig()
+	if len(c.Wallpaper.Overrides) != 2 {
+		t.Fatalf("record must persist while restore is pending: %v", c.Wallpaper.Overrides)
+	}
+	if pushed, err := syncWallpaper(dev); err != nil || !pushed {
+		t.Fatalf("sync: %v %v", pushed, err)
+	}
+	if dev.themeBG != "123456" || dev.faceBG != "abcdef" || dev.hash == 0 {
+		t.Fatalf("after sync theme=%s face=%s hash=%d", dev.themeBG, dev.faceBG, dev.hash)
+	}
+	c, _ = readConfig()
+	if len(c.Wallpaper.Overrides) != 0 {
+		t.Fatal("record not cleared after restore")
+	}
+}
+
+func TestColourRefusedWhenOriginalsUnreadable(t *testing.T) {
+	wpEnv(t)
+	dev := &fakeTomTom{online: true}
+	dev2 := &noGetTomTom{fakeTomTom: dev}
+	res := mustApply(t, dev2, WallpaperConfig{Mode: "color", Color: "ff0000"})
+	if res.DeviceApplied || res.Warning == "" || len(dev.batches) != 0 {
+		t.Fatalf("must not override blindly: %+v batches=%v", res, dev.batches)
+	}
+}
+
+type noGetTomTom struct{ *fakeTomTom }
+
+func (n *noGetTomTom) call(cmd string) (string, error) {
+	if cmd == "theme-get" || cmd == "face-get" {
+		return "", errors.New("unsupported")
+	}
+	return n.fakeTomTom.call(cmd)
 }
